@@ -1968,12 +1968,63 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             .filter((t) => t.cat == c && t.amt < 0)
             .map((t) => t.amt),
         );
+      const BF = { once: "One-time", weekly: "Every week", biweekly: "Every 2 weeks", monthly: "Every month", quarterly: "Every 3 months", yearly: "Every year" };
+      const bIso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const bDt = (k) => new Date(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10));
+      function bOn(b, k) {
+        const f = b.freq || "monthly", dt = bDt(k);
+        if (!b.start) return b.due == dt.getDate();
+        const st = bDt(b.start);
+        if (dt < st) return false;
+        if (f == "once") return k == b.start;
+        const dd = Math.round((dt - st) / 864e5);
+        if (f == "weekly") return dd % 7 == 0;
+        if (f == "biweekly") return dd % 14 == 0;
+        const mm = (dt.getFullYear() - st.getFullYear()) * 12 + dt.getMonth() - st.getMonth();
+        const last = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+        if (dt.getDate() != Math.min(st.getDate(), last)) return false;
+        if (f == "yearly") return mm % 12 == 0;
+        if (f == "quarterly") return mm % 3 == 0;
+        return true;
+      }
+      function bPaid(b, k) {
+        return (b.paidOn || []).includes(k) || ((b.freq || "monthly") == "monthly" && b.paid == k.slice(0, 7));
+      }
+      function live(b) {
+        return !(b.freq == "once" && b.start && bPaid(b, b.start));
+      }
+      function paidNow(b) {
+        const f = b.freq || "monthly";
+        if (f == "once") return !!b.start && bPaid(b, b.start);
+        if (f == "monthly") return b.paid == ym;
+        const p = (b.paidOn || []).slice(-1)[0];
+        if (!p) return false;
+        const lim = { weekly: 7, biweekly: 14, quarterly: 92, yearly: 366 }[f];
+        return Math.round((bDt(today) - bDt(p)) / 864e5) < lim;
+      }
       function nextDue(b) {
         if (b.nd) return b.nd;
-        let d = new Date(T.getFullYear(), T.getMonth(), b.due);
-        if (b.paid == ym || (d < new Date(today) && 0))
-          d = new Date(T.getFullYear(), T.getMonth() + 1, b.due);
-        return d;
+        const f = b.freq || "monthly", t0 = bDt(today);
+        let lo = f == "weekly" || f == "biweekly" ? t0 : new Date(t0.getFullYear(), t0.getMonth(), 1);
+        if (f == "once" && b.start) lo = bDt(b.start);
+        for (let i = 0; i < 800; i++) {
+          const d = new Date(lo.getFullYear(), lo.getMonth(), lo.getDate() + i);
+          if (bOn(b, bIso(d)) && !bPaid(b, bIso(d))) return d;
+        }
+        return bDt(b.start || today);
+      }
+      function bLbl(b) {
+        const f = b.freq || "monthly", st = b.start ? bDt(b.start) : null, dn = st ? st.getDate() : b.due;
+        const o = (n) => n + (n % 10 == 1 && n != 11 ? "st" : n % 10 == 2 && n != 12 ? "nd" : n % 10 == 3 && n != 13 ? "rd" : "th");
+        const L = (opt) => st.toLocaleDateString("en-PH", opt);
+        if (f == "once") return "One-time · " + L({ month: "short", day: "numeric" });
+        if (f == "weekly" || f == "biweekly") return BF[f] + " · " + L({ weekday: "short" });
+        if (f == "yearly") return "Every year · " + L({ month: "short", day: "numeric" });
+        return BF[f] + " · " + o(dn);
+      }
+      function bWhen(b) {
+        const n = days(b);
+        return n < 0 ? Math.abs(n) + " day" + (n < -1 ? "s" : "") + " overdue" : n == 0 ? "due today" : "in " + n + " day" + (n > 1 ? "s" : "");
       }
       const days = (b) => Math.round((nextDue(b) - new Date(today)) / 864e5);
       const logoH = (a) => {
@@ -2101,9 +2152,9 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
               nd: nextCardDue(a),
               al: a.alD,
             })),
-          due = [...S.bills, ...cb].filter((b) => days(b) <= Math.max(0, ...(b.al || [1, 7, -1]))),
+          due = [...S.bills.filter(live), ...cb].filter((b) => days(b) <= Math.max(0, ...(b.al || [1, 7, -1]))),
           over = Object.keys(S.budgets).filter((c) => spent(c) > S.budgets[c]);
-        const up = [...S.bills, ...cb].sort((a, b) => days(a) - days(b));
+        const up = [...S.bills.filter(live), ...cb].sort((a, b) => days(a) - days(b));
         return `<div class="eyebrow">${T.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}</div><div class="m">${greet()},</div><h1>${esc(S.name || "Your money")}</h1>
 <p class="m">You spent <b style="color:var(--tx)">${php(td)}</b> today.${due.length ? ` <b style="color:var(--tx)">${due.length} bill${due.length > 1 ? "s" : ""}</b> coming up soon.` : ""}</p>
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
@@ -2477,7 +2528,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         );
         if (lp && out > lp * 1.2)
           tips.push(["📈", `On pace for ${php((out / dm) * dim)} this month`]);
-        const bn = sum(S.bills.filter((b) => days(b) >= 0 && days(b) <= 7).map((b) => b.amt));
+        const bn = sum(S.bills.filter((b) => live(b) && days(b) >= 0 && days(b) <= 7).map((b) => b.amt));
         if (bn) tips.push(["🧾", `${php(bn)} in bills due this week`]);
         if (rate !== null)
           tips.push(
@@ -2551,7 +2602,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             "🔎",
             `${top[0]} makes up ${Math.round((top[1] / out) * 100)}% of your spending, so small cuts there help the most.`,
           ]);
-        const bn = sum(S.bills.filter((b) => days(b) >= 0 && days(b) <= 7).map((b) => b.amt));
+        const bn = sum(S.bills.filter((b) => live(b) && days(b) >= 0 && days(b) <= 7).map((b) => b.amt));
         if (bn)
           tips.push([
             "🧾",
@@ -2616,7 +2667,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             if (dueOn(c, k)) a.push({ c: "u", t: c.bank + " Due Date", kind: "due", id: c.id });
           });
         S.bills.forEach((b) => {
-          if (b.due == d)
+          if (bOn(b, k))
             a.push({ c: "u", t: b.name + " Due (" + php(b.amt) + ")", kind: "bill", id: b.id });
         });
         return a;
@@ -2637,7 +2688,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
           o = S.bills.find((x) => x.id == e.id);
           ic = "🧾";
           sub =
-            "Bill · " + (o.paid == k.slice(0, 7) ? "Paid" : k >= today ? "Planned" : "Scheduled");
+            "Bill · " + (bPaid(o, k) ? "Paid" : k >= today ? "Planned" : "Scheduled");
           am = `<b class="r">−${php(o.amt)}</b>`;
         } else {
           o = acct(e.id);
@@ -2668,7 +2719,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
                   (x[0].kind != "tx" || k > today) &&
                   !(
                     x[0].kind == "bill" &&
-                    S.bills.find((b) => b.id == x[0].id).paid == k.slice(0, 7)
+                    bPaid(S.bills.find((b) => b.id == x[0].id), k)
                   ),
               );
           if (l.length)
@@ -2756,7 +2807,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
                   (x[0].kind != "tx" || k > today) &&
                   !(
                     x[0].kind == "bill" &&
-                    S.bills.find((b) => b.id == x[0].id).paid == k.slice(0, 7)
+                    bPaid(S.bills.find((b) => b.id == x[0].id), k)
                   ),
               );
           if (l.length) h += grp(k, l.map((x) => rowH(k, x[0], x[1])).join(""), "Planned");
@@ -2791,7 +2842,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         openS(`<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="pill" onclick="closeS()">✕ Close</button></div><div style="display:flex;gap:12px"><div style="width:5px;border-radius:9px;background:${col};flex:none"></div><div><h2 style="font-size:26px;margin:0 0 6px">${tx ? o.note || o.cat : tt(e.t)}</h2><div>${ds}</div><div>${tx ? acct(o.acct).name + " · " + o.cat : "All-day"}</div>${tx ? `<div class="${o.amt > 0 ? "g" : "r"}" style="font-size:22px;font-weight:700">${php(o.amt)}</div>` : `<div class="m">🔁 Repeats monthly</div>${e.kind == "bill" ? `<div class="r" style="font-size:22px;font-weight:700">${php(o.amt)}</div>` : ""}`}</div></div>
 <div class="eyebrow" style="margin:18px 0 6px">Options</div><div class="card" style="display:flex;justify-content:space-between;margin-bottom:10px"><span>🗓 Calendar</span><span class="m"><span style="color:${col}">●</span> ${tx ? (o.amt > 0 ? "Income" : "Expenses") : e.kind == "bill" ? "Bills" : "Credit Card"}</span></div>
 ${tx ? "" : `<div class="card" style="margin-bottom:10px">${[0, 1, 2].map((i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0">🔔 Alert<select style="width:auto;margin:0" onchange="setAl('${e.kind}',${e.id},${i},this.value)">${ALO.map((a) => `<option value="${a[0]}" ${al[i] == a[0] ? "selected" : ""}>${a[1]}</option>`).join("")}</select></div>`).join("")}<p class="m" style="font-size:12px;margin:6px 0 0">Alerts appear under "Needs attention" on Home as the date gets close. They are not phone notifications.</p></div>`}
-${e.kind == "bill" && o.paid != k.slice(0, 7) ? `<button class="btn" style="width:100%;margin-bottom:10px" onclick="payBill(${e.id})">Mark as paid</button>` : ""}
+${e.kind == "bill" && !bPaid(o, k) ? `<button class="btn" style="width:100%;margin-bottom:10px" onclick="payBill(${e.id},'${k}')">Mark as paid</button>` : ""}
 ${tx ? `<button class="btn s" style="width:100%;margin-bottom:8px" onclick="closeS();editTx(${e.id})">Edit transaction</button>` : ""}<button class="btn s" style="width:100%;color:#ff453a" onclick="sure(this,()=>evDel('${e.kind}',${e.id}))">${tx ? "Delete entry" : "Delete Event"}</button>`);
       }
       function setAl(kd, id, i, v) {
@@ -2882,7 +2933,7 @@ ${calH()}<p>${["All", "Expenses", "Income", "Upcoming"].map((f) => `<button clas
               if (c.due == d) a.push(["u", c.bank + " Due Date"]);
             });
           S.bills.forEach((b) => {
-            if (b.due == d) a.push(["u", b.name + " Due"]);
+            if (bOn(b, k)) a.push(["u", b.name + " Due"]);
           });
           return a;
         };
@@ -3346,7 +3397,7 @@ ${D.length ? `<div class="card"><div class="eyebrow">Done</div>${D.map((g) => `<
             return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span>${ci(c)} ${c}</span><span class="${s > b && b ? "r" : "m"}">${php(s)} / <input style="width:90px;display:inline;padding:3px 6px;margin:0" type="number" value="${b}" onchange="S.budgets['${c}']=+this.value;render()"></span></div><div class="bar ${s > b && b ? "o" : ""}"><b style="width:${p}%"></b></div></div>`;
           })
           .join("")}</div>
-<div class="card"><h2>Bills & recurring</h2>${S.bills.map((b) => `<div class="row"><div class="ico">🧾</div><div class="f">${b.name}<small>Every ${b.due}th · ${b.paid == ym ? "Paid this month ✓" : "in " + days(b) + " days"}<br><span class="pf" onclick="billAcct(${b.id})">${b.acct && acct(b.acct).id ? "💳 " + esc(acct(b.acct).name) : "＋ Choose payment account"}</span></small></div><b>${php(b.amt)}</b>${b.paid == ym ? "" : `<button class="pill" onclick="payBill(${b.id})">Pay</button>`}<button class="pill" onclick="S.bills=S.bills.filter(x=>x.id!=${b.id});render()">✕</button></div>`).join("")}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
+<div class="card"><h2>Bills &amp; Subscriptions</h2>${S.bills.map((b) => `<div class="row"><div class="ico">🧾</div><div class="f">${esc(b.name)}<small>${bLbl(b)} · ${paidNow(b) ? (b.freq == "once" ? "Paid ✓" : "Paid ✓ · next " + bWhen(b)) : bWhen(b)}<br><span class="pf" onclick="billAcct(${b.id})">${b.acct && acct(b.acct).id ? "💳 " + esc(acct(b.acct).name) : "＋ Choose payment account"}</span></small></div><b>${php(b.amt)}</b>${paidNow(b) ? "" : `<button class="pill" onclick="payBill(${b.id})">Pay</button>`}<button class="pill" onclick="S.bills=S.bills.filter(x=>x.id!=${b.id});render()">✕</button></div>`).join("")}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
       }
       function Accounts() {
         const cash = sum(S.accts.filter((a) => a.type != "credit").map((a) => a.bal)),
@@ -3532,12 +3583,28 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
       }
       function openBill() {
         openS(
-          `<h2>New bill</h2><input id="bn" placeholder="Name"><input id="ba" type="number" placeholder="Amount (${CS()})"><input id="bd" type="number" min="1" max="28" placeholder="Day of month due"><select id="bp"><option value="0">Pay from… (choose later)</option>${S.accts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select><button class="btn" onclick="S.bills.push({id:Date.now(),name:$('#bn').value||'Bill',amt:+$('#ba').value||0,due:+$('#bd').value||1,acct:+($('#bp')||{}).value||0,paid:''});closeS();render()">Save</button>`,
+          `<h2>New bill</h2><input id="bn" placeholder="Name (e.g. Rent, Netflix)"><input id="ba" type="number" placeholder="Amount (${CS()})"><label class="m">First due date</label><input id="bd" type="date" value="${today}"><label class="m">Repeats</label><select id="br"><option value="once">Never (one-time)</option><option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly" selected>Every month</option><option value="quarterly">Every 3 months</option><option value="yearly">Every year</option></select><select id="bp"><option value="0">Pay from… (choose later)</option>${S.accts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select><button class="btn" onclick="saveBill()">Save</button>`,
         );
       }
-      function payBill(id) {
+      function saveBill() {
+        const st = $("#bd").value || today;
+        S.bills.push({
+          id: Date.now(),
+          name: $("#bn").value || "Bill",
+          amt: +$("#ba").value || 0,
+          due: +st.slice(8, 10),
+          freq: $("#br").value || "monthly",
+          start: st,
+          acct: +($("#bp") || {}).value || 0,
+          paid: "",
+          paidOn: [],
+        });
+        closeS();
+        render();
+      }
+      function payBill(id, k) {
         const b = S.bills.find((x) => x.id == id);
-        if (!b || b.paid == ym) return;
+        if (!b || (k ? bPaid(b, k) : paidNow(b))) return;
         const method = (a) =>
             a.name +
             " · " +
@@ -3548,7 +3615,7 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
                 : "Bank account"),
           options = S.accts.map((a) => `<option value="${a.id}" ${a.id == b.acct ? "selected" : ""}>${method(a)}</option>`).join("");
         openS(
-          `<h2>Pay ${esc(b.name)}</h2><p class="m">Choose the account or card to pay from.</p>${S.accts.length ? `<select id="bill-account" onchange="billPayPreview(${id})">${options}</select>` : '<p class="r">Add an account or card before paying a bill.</p>'}<div class="card" id="bill-preview" style="margin:0 0 12px"><div class="eyebrow">Payment summary</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span id="bill-method">${esc(dflt(b) ? method(dflt(b)) : "No account selected")}</span><b>${php(b.amt)}</b></div></div><button class="btn" ${S.accts.length ? "" : "disabled"} onclick="confirmBillPay(${id})">Confirm payment</button> <button class="btn s" onclick="closeS()">Cancel</button>`,
+          `<h2>Pay ${esc(b.name)}</h2><p class="m">Choose the account or card to pay from.</p>${S.accts.length ? `<select id="bill-account" onchange="billPayPreview(${id})">${options}</select>` : '<p class="r">Add an account or card before paying a bill.</p>'}<div class="card" id="bill-preview" style="margin:0 0 12px"><div class="eyebrow">Payment summary</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span id="bill-method">${esc(dflt(b) ? method(dflt(b)) : "No account selected")}</span><b>${php(b.amt)}</b></div></div><button class="btn" ${S.accts.length ? "" : "disabled"} onclick="confirmBillPay(${id},${k ? `'${k}'` : 'null'})">Confirm payment</button> <button class="btn s" onclick="closeS()">Cancel</button>`,
         );
       }
       function billPayPreview(id) {
@@ -3561,11 +3628,13 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
             (a.type == "credit" ? "Credit card" : a.type == "ewallet" ? "E-wallet" : "Bank account")
           : "No account selected";
       }
-      function confirmBillPay(id) {
+      function confirmBillPay(id, k) {
         const b = S.bills.find((x) => x.id == id),
           a = S.accts.find((x) => x.id == +($("#bill-account") || {}).value);
-        if (!b || b.paid == ym || !a) return;
-        b.paid = ym; b.acct = a.id;
+        if (b) k = k || bIso(nextDue(b));
+        if (!b || bPaid(b, k) || !a) return;
+        (b.paidOn = b.paidOn || []).push(k);
+        b.paid = k.slice(0, 7); b.acct = a.id;
         S.tx.push({
           id: Date.now() + Math.floor(Math.random() * 1000),
           d: today,
@@ -3717,6 +3786,148 @@ try{localStorage.setItem('pera_pre',snap)}catch(e){}IMP=null;closeS();render();t
 function impUndo(){try{S=JSON.parse(localStorage.getItem('pera_pre'));localStorage.removeItem('pera_pre');render();openSettings();toast('Restored the data from before the last import')}catch(e){toast('Nothing to restore')}}
       render();
       if (typeof claude != "undefined") dbInit();
+    </script>
+    <style id="cap-ui-css">
+/* ===== Floating sheet, date field fix, picker dropdowns ===== */
+@keyframes capBgIn{from{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}to{opacity:1}}
+@keyframes capBgOut{to{opacity:0}}
+@keyframes capSheetIn{0%{opacity:0;transform:translateY(44px) scale(.93)}55%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes capSheetOut{to{opacity:0;transform:translateY(24px) scale(.96)}}
+@keyframes capPopIn{from{opacity:0;transform:translateY(-6px) scale(.97)}}
+@keyframes capPopOut{to{opacity:0;transform:translateY(-4px) scale(.98)}}
+#sheet{padding:12px;padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));overscroll-behavior:contain}
+#sheet.open{animation:capBgIn .32s ease both}
+#sheet.closing{animation:capBgOut .2s ease forwards}
+#sheet>#sb{width:100%;max-width:520px;border-radius:28px;max-height:100%;overflow:auto;overscroll-behavior:contain;
+  box-shadow:0 28px 70px #0006,0 6px 18px #0003,inset 0 1px 0 #ffffff40;will-change:transform,opacity}
+#sheet.open>#sb{animation:capSheetIn .5s cubic-bezier(.16,1,.3,1) both}
+#sheet.closing>#sb{animation:capSheetOut .2s cubic-bezier(.4,0,1,1) forwards}
+@media (min-width:640px){#sheet{align-items:center}}
+@media (prefers-reduced-motion:reduce){#sheet.open,#sheet.open>#sb,#sheet.closing,#sheet.closing>#sb,.ps-pop{animation-duration:.01s!important}}
+
+/* date inputs: no overflow, aligned with the other fields */
+#sheet input,#sheet select{min-width:0;max-width:100%}
+#sheet input[type=date]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-height:46px;
+  text-align:left;overflow:hidden;padding:11px 12px;line-height:1.25}
+#sheet input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.25em}
+#sheet input[type=date]::-webkit-datetime-edit{padding:0}
+#sheet input[type=date]::-webkit-calendar-picker-indicator{opacity:.55;margin:0}
+
+/* picker button + dropdown (images beside names) */
+.ps-btn{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:8px 12px;margin-bottom:10px;border-radius:12px;
+  border:1px solid var(--gb,var(--line));background:var(--gl,var(--bg));color:var(--tx);font:inherit;text-align:left;cursor:pointer}
+.ps-btn:focus-visible,.ps-opt:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.ps-btn[aria-expanded=true]{border-color:var(--ac)}
+.ps-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-t small{display:block;color:var(--mut);font-size:12px}
+.ps-ic{width:30px;height:30px;flex:none;display:grid;place-items:center;font-size:21px;background:none}
+.ps-ic .ci,.ps-ic .bl{width:20px;height:20px;vertical-align:0}
+.ps-card{width:44px;height:28px;flex:none;border-radius:6px;object-fit:cover;display:grid;place-items:center;font-size:15px;
+  background:var(--bg);box-shadow:0 0 0 1px #00000022,0 2px 5px #0003}
+.ps-chev{flex:none;opacity:.55;transition:transform .2s ease}
+.ps-btn[aria-expanded=true] .ps-chev{transform:rotate(180deg)}
+.ps-pop{position:fixed;z-index:40;overflow:auto;padding:6px;border-radius:16px;background:var(--card);border:1px solid var(--line);
+  box-shadow:0 18px 44px #0005,0 2px 8px #0003;animation:capPopIn .18s cubic-bezier(.2,.8,.2,1);transform-origin:top center;overscroll-behavior:contain}
+.ps-pop.up{transform-origin:bottom center}
+.ps-pop.out{animation:capPopOut .14s ease forwards}
+.ps-opt{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:11px;background:none;color:var(--tx);font:inherit;text-align:left;cursor:pointer;min-height:46px}
+.ps-opt:hover,.ps-opt:focus-visible{background:var(--bg)}
+.ps-opt.on{background:var(--bg);font-weight:600}
+.ps-opt .ck{flex:none;color:var(--g)}
+
+    
+.ps-mini{position:relative;width:88px;height:56px;flex:none;display:block;overflow:hidden;border-radius:9px}
+.ps-mini>.pick{display:block;width:176px;margin:0;transform:scale(.5);transform-origin:0 0;pointer-events:none}
+.ps-mini .cc{box-shadow:none;border-radius:18px}
+.ps-btn:has(.ps-mini){padding:6px 12px 6px 6px}
+.ps-pop.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px}
+.ps-copt{display:block;min-width:0;border-radius:18px;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent}
+.ps-copt .pick{display:block;margin:0}
+.ps-copt .cc{transition:transform .15s ease,outline-color .15s ease;outline:3px solid transparent;outline-offset:0;font-size:11px}
+.ps-copt:hover .cc{transform:translateY(-1px)}
+.ps-copt:active .cc{transform:scale(.98)}
+.ps-copt.on .cc,.ps-copt:focus-visible .cc{outline-color:var(--g)}
+.ps-cap{display:block;margin:5px 2px 2px;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    </style>
+    <script id="cap-ui-js">
+/* ===== Floating sheet + picker dropdowns with images ===== */
+(function(){
+  const CHEV='<svg class="ps-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+  const CHECK='<svg class="ck" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+  let pop=null,cur=null;
+  const base=t=>String(t).split(' · ')[0].trim();
+  const acctOf=v=>S.accts.find(a=>String(a.id)==String(v));
+  const typeLbl=a=>a.type=='credit'?'Credit card':a.type=='ewallet'?'E-wallet':'Bank account';
+  function kindOf(s){
+    const o=[...s.options]; if(!o.length)return null;
+    if(s.id=='ct'||o.every(x=>Object.prototype.hasOwnProperty.call(CATS,x.value)))return 'cat';
+    if(o.every(x=>acctOf(x.value)&&acctOf(x.value).name==base(x.text)))return 'acct';
+    return null;
+  }
+  function icon(kind,v){
+    if(kind=='cat')return `<span class="ps-ic">${ci(v)}</span>`;
+    const a=acctOf(v); if(!a)return '';
+    return `<span class="ps-mini" aria-hidden="true"><span class="pick">${cardH(a,false,false)}</span></span>`;
+  }
+  function label(kind,o){
+    if(kind=='cat')return esc(o.value);
+    const a=acctOf(o.value);
+    return a?`${esc(a.name)}<small>${typeLbl(a)}${a.l4?' •• '+esc(a.l4):''}</small>`:esc(o.text);
+  }
+  function paint(s,b,kind){
+    const o=s.options[s.selectedIndex]; if(!o)return;
+    const a=kind=='acct'?acctOf(o.value):null;
+    b.innerHTML=`${icon(kind,o.value)}<span class="ps-t">${kind=='cat'?esc(o.value):esc(a?a.name:o.text)}</span>${CHEV}`;
+  }
+  function close(refocus){
+    if(!pop)return; const p=pop,c=cur; pop=null;cur=null;
+    c.b.setAttribute('aria-expanded','false'); p.classList.add('out'); setTimeout(()=>p.remove(),140);
+    if(refocus)c.b.focus();
+  }
+  function open(s,b,kind){
+    close();
+    const p=document.createElement('div'); p.className='ps-pop'; p.setAttribute('role','listbox');
+    if(kind=='acct'){p.classList.add('grid');
+      p.innerHTML=[...s.options].map((o,i)=>{const a=acctOf(o.value);
+        return `<div class="ps-copt${o.selected?' on':''}" role="option" tabindex="0" aria-selected="${o.selected}" aria-label="${esc(a?a.name:o.text)}" data-i="${i}"><div class="pick">${a?cardH(a,false,false):''}</div><span class="ps-cap">${a?esc(a.name)+(a.l4?' •• '+esc(a.l4):''):esc(o.text)}</span></div>`}).join('');
+    }else
+    p.innerHTML=[...s.options].map((o,i)=>`<button type="button" class="ps-opt${o.selected?' on':''}" role="option" aria-selected="${o.selected}" data-i="${i}">${icon(kind,o.value)}<span class="ps-t">${label(kind,o)}</span>${o.selected?CHECK:''}</button>`).join('');
+    document.body.appendChild(p);
+    const r=b.getBoundingClientRect(),vh=innerHeight,below=vh-r.bottom-14,above=r.top-14,need=Math.min(kind=='acct'?420:300,p.scrollHeight);
+    const down=below>=need||below>=above;
+    p.style.left=r.left+'px'; p.style.width=r.width+'px';
+    p.style.maxHeight=Math.max(140,Math.min(kind=='acct'?420:300,down?below:above))+'px';
+    if(down)p.style.top=(r.bottom+6)+'px'; else{p.style.bottom=(vh-r.top+6)+'px';p.classList.add('up')}
+    pop=p;cur={s,b,kind}; b.setAttribute('aria-expanded','true');
+    const sel=p.querySelector('.on'); if(sel)sel.scrollIntoView({block:'nearest'});
+    p.addEventListener('click',e=>{const x=e.target.closest('.ps-opt,.ps-copt');if(!x)return;
+      s.selectedIndex=+x.dataset.i; s.dispatchEvent(new Event('change',{bubbles:true})); close(true)});
+    p.addEventListener('keydown',e=>{const L=[...p.querySelectorAll('.ps-opt,.ps-copt')],i=L.indexOf(document.activeElement),st=kind=='acct'?2:1;
+      if(e.key=='ArrowDown'||e.key=='ArrowRight'){e.preventDefault();L[Math.min(L.length-1,i+(e.key=='ArrowDown'?st:1))].focus()}
+      else if(e.key=='ArrowUp'||e.key=='ArrowLeft'){e.preventDefault();L[Math.max(0,i-(e.key=='ArrowUp'?st:1))].focus()}
+      else if((e.key=='Enter'||e.key==' ')&&document.activeElement.classList.contains('ps-copt')){e.preventDefault();document.activeElement.click()}
+      else if(e.key=='Escape'){e.stopPropagation();close(true)}});
+  }
+  function enhance(){
+    const root=document.getElementById('sb'); if(!root)return;
+    root.querySelectorAll('select').forEach(s=>{
+      if(s.dataset.ps)return; const kind=kindOf(s); if(!kind)return; s.dataset.ps=1;
+      const b=document.createElement('button'); b.type='button'; b.className='ps-btn';
+      b.setAttribute('aria-haspopup','listbox'); b.setAttribute('aria-expanded','false');
+      const lb=s.getAttribute('aria-label')||s.id; b.setAttribute('aria-label',lb?'Choose '+lb:'Choose');
+      s.style.display='none'; s.after(b); paint(s,b,kind);
+      s.addEventListener('change',()=>paint(s,b,kind));
+      b.addEventListener('click',()=>{cur&&cur.s===s?close():open(s,b,kind)});
+    });
+    root.addEventListener('scroll',()=>close(),{passive:true,once:true});
+  }
+  document.addEventListener('pointerdown',e=>{if(pop&&!e.target.closest('.ps-pop,.ps-btn'))close()},true);
+  addEventListener('resize',()=>close());
+  const _open=window.openS,_close=window.closeS;
+  window.openS=function(h){close();_open.call(this,h);enhance()};
+  window.closeS=function(){close();return _close.apply(this,arguments)};
+})();
+
     </script>
   </body>
 </html>
