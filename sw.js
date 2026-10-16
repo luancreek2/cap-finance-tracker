@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever Cap.html or other shell files change. */
-const VERSION = "cap-shell-v2";
+const VERSION = "cap-shell-v3";
 const SHELL = [
   "./index.html",
   "./manifest.webmanifest",
