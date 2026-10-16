@@ -2314,8 +2314,8 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
       const $ = (s) => document.querySelector(s),
         php = (n) => fmt(n);
       const iso = (d) =>
-          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-        T = new Date(),
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      let T = new Date(),
         today = iso(T);
       const ago = (n) => {
         const d = new Date(T);
@@ -2438,8 +2438,8 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         }, 900);
       };
       const acct = (id) => S.accts.find((a) => a.id == id) || { name: "—" };
-      const ym = today.slice(0, 7),
-        inM = S.tx.filter;
+      let ym = today.slice(0, 7);
+      const inM = S.tx.filter;
       const mtx = () => S.tx.filter((t) => t.d.startsWith(ym));
       const sum = (a) => a.reduce((s, x) => s + x, 0);
       const spent = (c) =>
@@ -2506,7 +2506,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         const n = days(b);
         return n < 0 ? Math.abs(n) + " day" + (n < -1 ? "s" : "") + " overdue" : n == 0 ? "due today" : "in " + n + " day" + (n > 1 ? "s" : "");
       }
-      const days = (b) => Math.round((nextDue(b) - new Date(today)) / 864e5);
+      const days = (b) => Math.round((nextDue(b) - bDt(today)) / 864e5);
       const logoH = (a) => {
         const k = LOGOB[a.bank];
         return k
@@ -2625,7 +2625,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         const cb = S.accts
             .filter((a) => a.type == "credit" && nextCardDue(a))
             .map((a) => ({
-              name: a.bank + " card payment",
+              name: a.name + " Payment",
               cardId: a.id,
               amt: dueAmt(a),
               due: a.due || 1,
@@ -2641,8 +2641,8 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
 <div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"}">${php(inc - out)}</b></div></div>
   <div class="grid" style="margin-top:14px"><div>${spendingChart()}</div>
-<div><div class="card"><div class="eyebrow">Needs attention</div>${due.map((b) => `<div class="row"><div class="ico">${bIc(b,'⏰')}</div><div class="f">${b.name}<small>Due ${days(b) <= 0 ? "today" : "in " + days(b) + "d"}</small></div><b>${php(b.amt)}</b></div>`).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${php(spent(c) - S.budgets[c])}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
-<div class="card"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map((b) => `<div class="row"><div class="ico">${bIc(b)}</div><div class="f">${b.name}<small>${nextDue(b).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}${b.acct && acct(b.acct).id ? " · " + esc(acct(b.acct).name) : ""}</small></div><b>−${php(b.amt)}</b></div>`).join("")}</div></div></div>`;
+<div><div class="card"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${php(spent(c) - S.budgets[c])}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
+<div class="card"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map(upRow).join("")}</div></div></div>`;
       }
       let CH = null;
       /* Balance chart helpers */
@@ -3615,7 +3615,7 @@ ${calH()}<p>${["All", "Expenses", "Income", "Upcoming"].map((f) => `<button clas
       }
       let CPH='';
 const ci=c=>{const o=(S.cats||[]).find(x=>x.n==c);if(o&&o.l)return `<img class="ci" src="${o.l}" alt="">`;return bnd(c)||CATS[c]||'📦'};
-const ti=t=>{const n=String(t.note||'').toLowerCase(),o=(S.cats||[]).find(x=>x.l&&x.n&&n.includes(x.n.toLowerCase()));const cp=/card payment/i.test(t.note||'')?cardFor(t.note):null;return (o?`<img class="ci" src="${o.l}" alt="">`:'')||(cp?cardLogo(cp):'')||bnd(t.note)||ci(t.cat)};
+const ti=t=>{const n=String(t.note||'').toLowerCase(),o=(S.cats||[]).find(x=>x.l&&x.n&&n.includes(x.n.toLowerCase()));const cp=/card payment| payment$/i.test(t.note||'')?cardFor(t.note):null;return (o?`<img class="ci" src="${o.l}" alt="">`:'')||(cp?cardLogo(cp):'')||bnd(t.note)||ci(t.cat)};
 /* ===== Brand badges + card logos (inline SVG, no external assets) ===== */
 const _bd=(bg,inner)=>`<svg viewBox="0 0 24 24" class="bl bb" aria-hidden="true"><rect width="24" height="24" rx="6" fill="${bg}"/>${inner}</svg>`;
 const _tx=(t,sz,fill,y)=>`<text x="12" y="${y||16}" text-anchor="middle" font-family="-apple-system,system-ui,Helvetica,Arial,sans-serif" font-weight="800" font-size="${sz}" fill="${fill||'#fff'}">${t}</text>`;
@@ -3684,10 +3684,75 @@ function cardLogo(a){
 function cardFor(name,id){
   let a=id!=null?S.accts.find(x=>x.id==id):null;
   if(!a){const m=String(name||'').match(/^(.+?)\s+card payment/i);if(m)a=S.accts.find(x=>x.type=='credit'&&String(x.bank).toLowerCase()==m[1].trim().toLowerCase())}
+  if(!a){const m=String(name||'').match(/^(.+?)\s+payment$/i);if(m)a=S.accts.find(x=>x.type=='credit'&&String(x.name).toLowerCase()==m[1].trim().toLowerCase())}
   return a||null;
 }
 /* icon for a bill / card-payment entry; fb = emoji when nothing matches */
 const bIc=(b,fb)=>{const c=cardFor(b.name,b.cardId);return c?cardLogo(c):(bnd(b.name)||fb||'🧾')};
+
+/* ===== Home: bill rows (red urgency) + long-press / right-click editing ===== */
+const billAttr=b=>b.cardId?`data-bcard="${b.cardId}"`:`data-bill="${b.id}"`;
+const billAria=(b,t)=>`tabindex="0" role="button" aria-label="${esc(b.name)}, ${t}, ${php(b.amt)}. Press and hold, right-click or press Enter to edit."`;
+/* urgency tiers by whole days left: overdue (<0) deep red · 0-3 red · 4-7 yellow · later neutral */
+const urgOf=n=>n<0?'o':n<=3?'r':n<=7?'y':'n';
+const urgTxt=n=>n<0?'<span class="odb">Overdue</span>'+Math.abs(n)+'d':n==0?'Due today':'Due in '+n+'d';
+function attnRow(b){
+  const nd=nextDue(b),n=days(b),u=urgOf(n),plain=n<0?'Overdue by '+Math.abs(n)+'d':n==0?'Due today':'Due in '+n+'d';
+  return `<div class="row urg-${u}" data-due="${bIso(nd)}" ${billAttr(b)} ${billAria(b,plain)}><div class="ico">${bIc(b,'⏰')}</div><div class="f">${esc(b.name)}<small class="du">${urgTxt(n)}</small></div><b class="du">${php(b.amt)}</b></div>`;
+}
+/* recolour the rows already on screen (so colours fade between tiers instead of being re-rendered) */
+function refreshUrgency(){
+  const t0=bDt(today);
+  document.querySelectorAll('#app .row[data-due]').forEach(function(row){
+    const n=Math.round((bDt(row.getAttribute('data-due'))-t0)/864e5),u=urgOf(n);
+    ['o','r','y','n'].forEach(function(x){row.classList.toggle('urg-'+x,x===u)});
+    const sm=row.querySelector('small.du'),h=urgTxt(n);
+    if(sm&&sm.innerHTML!==h)sm.innerHTML=h;
+  });
+}
+/* the calendar day can change while the app stays open (midnight, phone asleep, tab restored) */
+let _rollT=0;
+function schedRoll(){clearTimeout(_rollT);const n=new Date(),ms=new Date(n.getFullYear(),n.getMonth(),n.getDate()+1,0,0,1)-n;_rollT=setTimeout(rollDay,Math.min(Math.max(ms,1000),2147000000))}
+function rollDay(){
+  const k=iso(new Date());
+  if(k===today){if(!_rollT)schedRoll();return}
+  T=new Date();today=k;ym=k.slice(0,7);
+  refreshUrgency();                                           /* colours transition in place */
+  clearTimeout(window._rr);window._rr=setTimeout(function(){try{render()}catch(e){}},700);   /* then sync the lists / totals */
+  schedRoll();
+}
+document.addEventListener('visibilitychange',function(){if(!document.hidden)rollDay()});
+window.addEventListener('focus',rollDay);window.addEventListener('pageshow',rollDay);
+setInterval(rollDay,60000);schedRoll();
+function upRow(b){
+  const d=nextDue(b).toLocaleDateString("en-PH",{month:"short",day:"numeric"}),ac=b.acct&&acct(b.acct).id?" · "+esc(acct(b.acct).name):"";
+  return `<div class="row" ${billAttr(b)} ${billAria(b,d)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small>${d}${ac}</small></div><b>−${php(b.amt)}</b></div>`;
+}
+function editBillSheet(id){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  const nd=bIso(nextDue(b)),fq=b.freq||'monthly';
+  openS(`<h2>Edit bill</h2><label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">Amount (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}"><label class="m">Due date</label><input id="eb-d" type="date" value="${nd}" data-o="${nd}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><label class="m">Pay from</label><select id="eb-p"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><button class="btn" onclick="saveBillEdit(${id})">Save changes</button><button class="btn dng" onclick="delBillAsk(${id})">Delete</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Cancel</button>`);
+}
+function saveBillEdit(id){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  const n=$('#eb-n').value.trim(),a=parseFloat($('#eb-a').value),dEl=$('#eb-d'),f=$('#eb-r').value;
+  if(!n)return toast('Enter a name');
+  if(!(a>=0))return toast('Enter a valid amount');
+  const dateChanged=dEl.value&&dEl.value!==dEl.dataset.o,freqChanged=f!==(b.freq||'monthly');
+  b.name=n;b.amt=a;b.acct=+$('#eb-p').value||0;
+  /* only re-anchor the schedule when the date or frequency was actually changed */
+  if(dateChanged||freqChanged){const st=dEl.value||dEl.dataset.o;b.start=st;b.due=+st.slice(8,10);b.freq=f}
+  closeS();render();toast('Bill updated');
+}
+function delBillAsk(id){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  confirmBox('Are you sure you want to delete?',b.name+' · '+php(b.amt),()=>{S.bills=S.bills.filter(x=>x.id!=id);closeS();render();toast('Bill deleted')});
+}
+function cardPayInfo(cid){
+  const a=S.accts.find(x=>x.id==cid);if(!a)return;
+  const nd=nextCardDue(a),R=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0"><span class="m">${l}</span><b style="text-align:right">${v}</b></div>`;
+  openS(`<h2>${esc(a.name)} Payment</h2><p class="m" style="font-size:13px">This payment comes from the card itself, so its name, amount and due date follow the card's settings.</p><div class="card" style="margin:0 0 12px">${R('Card',esc(a.name))}${R('Amount due',php(dueAmt(a)))}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}</div><button class="btn" onclick="acctMenu(${a.id})">Edit card &amp; due date</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`);
+}
 
 function ensureCats(){migrate();if(!Array.isArray(S.cats)||!S.cats.length)S.cats=CAT0.map(c=>({n:c.n,i:c.i}));for(const k of Object.keys(CATS))delete CATS[k];S.cats.forEach(c=>{CATS[c.n]=c.i||'📦'})}
 function imgPick(inp,mw,fmt,cb){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,mw/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*k)),hh=Math.max(1,Math.round(im.height*k)),c=document.createElement('canvas');c.width=w;c.height=hh;c.getContext('2d').drawImage(im,0,0,w,hh);cb(fmt=='png'?c.toDataURL('image/png'):c.toDataURL('image/jpeg',.78))};im.src=r.result};r.readAsDataURL(f)}
@@ -4238,6 +4303,35 @@ function askDel(id){const f=fTx(id);if(!f)return;confirmBox('Are you sure you wa
   document.addEventListener('contextmenu',e=>{if(e.target.closest&&e.target.closest('.row[data-tx]'))e.preventDefault()},true);
   document.addEventListener('click',e=>{if(Date.now()-(window._lp||0)<700){e.stopPropagation();e.preventDefault()}},true);
 })();
+/* ---- long-press (or right-click / Enter) a bill or subscription on Home to edit it */
+(function(){
+  const MS=450,MOVE=10,SEL='.row[data-bill],.row[data-bcard]';let st=null;
+  const open=el=>{const b=el.getAttribute('data-bill'),c=el.getAttribute('data-bcard');if(b)editBillSheet(+b);else if(c)cardPayInfo(+c)};
+  const stop=()=>{if(!st)return;clearTimeout(st.t);st.el.classList.remove('lp');st=null};
+  document.addEventListener('pointerdown',e=>{
+    if(e.button>0||st)return;
+    const el=e.target.closest&&e.target.closest(SEL);
+    if(!el||e.target.closest('button,a,input,select,textarea,label'))return;
+    st={el,x:e.clientX,y:e.clientY,t:setTimeout(()=>{
+      window._lp=Date.now();el.classList.remove('lp');void el.offsetWidth;el.classList.add('lp-done');
+      setTimeout(()=>el.classList.remove('lp-done'),340);
+      if(navigator.vibrate)try{navigator.vibrate(14)}catch(_){}
+      st=null;open(el)
+    },MS)};
+    el.classList.add('lp');
+  },true);
+  document.addEventListener('pointermove',e=>{if(st&&Math.hypot(e.clientX-st.x,e.clientY-st.y)>MOVE)stop()},true);
+  ['pointerup','pointercancel','pointerleave','dragstart'].forEach(t=>document.addEventListener(t,()=>stop(),true));
+  window.addEventListener('scroll',stop,true);
+  document.addEventListener('contextmenu',e=>{
+    const el=e.target.closest&&e.target.closest(SEL);if(!el)return;
+    e.preventDefault();
+    if(Date.now()-(window._lp||0)>700){stop();open(el)} /* desktop right-click / context-menu key; touch long-press already opened it */
+  },true);
+  document.addEventListener('keydown',e=>{
+    if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches(SEL)){e.preventDefault();open(e.target)}
+  });
+})();
 function postTx(id){const f=fTx(id);if(!f||!f.p)return;openS(`<h2>Mark as posted</h2><p class="m">${esc(f.t.note||f.t.cat)} · ${php(f.t.amt)}</p><label class="m">Posting date (decides the billing cycle)</label><input id="pdx" type="date" min="${f.t.d}" value="${today<f.t.d?f.t.d:today}"><button class="btn" onclick="postOk(${id})">Confirm posted</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
 function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);bApply(f.t,1);closeS();flash(id);render();toast('Posted · balance updated')}
 function rowT(t){const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
@@ -4269,14 +4363,14 @@ out=-sum(l.filter(t=>t.amt<0).map(t=>t.amt)),inc=sum(l.filter(t=>t.amt>0).map(t=
 const R=(k,v,c)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${k}</span><b class="${c||''}">${v}</b></div>`;
 if(!l.length)return`<p class="m" style="margin-top:10px">No transactions in ${mLbl(m)}.</p>`;
 const g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
-return`<div class="card" style="margin-top:10px">${R('Money out',php(out),out?'r':'')}${R('Money in',php(inc),inc?'g':'')}${R('Net',(inc-out<0?'−':'+')+php(Math.abs(inc-out)))}${R('Transactions',l.length)}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
+return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(acct(id).name)}</div>${R('Money Out',php(out),out?'r':'')}${R('Money In',php(inc),inc?'g':'')}${R('Net',(inc-out<0?'−':'+')+php(Math.abs(inc-out)))}${R('Transactions',l.length)}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
 function acctTx(id){const a=acct(id);if(a.type!='credit')return acctTxM(id);if(!a.stmt)return`<div class="eyebrow" style="margin:16px 0 6px">Billing cycles</div><p class="m" style="font-size:13px">Set this card’s statement closing date (⋯ › Rename / edit card) to view billing cycles.</p>${acctTx0(id)}`;
 return`<div class="eyebrow" style="margin:16px 0 6px">Transactions</div><select onchange="BC[${id}]=+this.value;billRef(${id})">${[0,1,2,3,4,5].map(i=>{const c=cyc(a,i);return`<option value="${i}" ${(BC[id]||0)==i?'selected':''}>${i?'Statement':'Current cycle'} · ${noteD(c.st)} – ${noteD(c.en)}</option>`}).join('')}</select><div id="bill-${id}">${billH(a)}</div>`}
 function billRef(id){const e=$('#bill-'+id);e.innerHTML=billH(acct(id));e.classList.remove('pg');void e.offsetWidth;e.classList.add('pg')}
 function billH(a){const i=BC[a.id]||0,s=cSum(a,i),c=s.c,pn=S.pend.filter(t=>t.acct==a.id),R=(l,v,k)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${l}</span><b class="${k||''}">${v}</b></div>`,
 L=e=>e.t?rowT(e.t):`<div class="row"><div class="ico">💸</div><div class="f">Payment${e.x.from?' from '+esc(acct(e.x.from).name):''}<small>${noteD(e.x.d)}</small></div><b class="g">+${php(e.x.amt)}</b><button class="pill" onclick="sure(this,()=>delPay(${e.x.id}))">✕</button></div>`,
 G=(t,l)=>l.length?`<div class="eyebrow" style="margin:12px 0 4px">${t} · ${l.length}</div><div class="card" style="padding:2px 14px">${l.map(L).join('')}</div>`:'';
-return`<div class="card" style="margin-top:10px">${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',php(c.open?balAt(a,c.en):s.close))}${R('Opening balance',php(s.open))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',php(s.due),s.due?'r':'g')+(s.paid?R('Paid since closing',php(s.paid),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
+return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(a.name)}</div>${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',php(c.open?balAt(a,c.en):s.close))}${R('Opening balance',php(s.open))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',php(s.due),s.due?'r':'g')+(s.paid?R('Paid since closing',php(s.paid),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
 function payCard(id){const a=acct(id),s=a.stmt?cSum(a,Math.max(1,BC[id]||0)):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${php(a.bal)}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${php(x.bal)}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
 function payOk(id){const a=acct(id),m=+$('#pa').value,f=S.accts.find(z=>z.id==+$('#pf').value);if(!(m>0))return toast('Enter a payment amount');if(m>a.bal+.005)return toast('Payment is more than the amount owed');
 S.xfer.push({id:uid(),d:$('#pdd').value||today,amt:m,from:f?f.id:0,to:id});a.bal-=m;if(f)f.bal-=m;render();acctMenu(id);toast('Payment recorded')}
@@ -4732,6 +4826,9 @@ window.localLog=function(q){
   overflow:hidden;isolation:isolate;contain:paint;transform:translateZ(0);
   -webkit-mask-image:-webkit-radial-gradient(white,black);will-change:box-shadow}
 .cardfx-fly .cc *{max-width:100%}
+.cardfx-txt{position:fixed;margin:0;z-index:61;pointer-events:none;contain:layout style}
+.cardfx-txt .cc{position:absolute;inset:0;width:100%;height:100%;margin:0;aspect-ratio:auto;cursor:default;overflow:visible!important;background:none!important;box-shadow:none!important;border-radius:0;-webkit-user-select:none;user-select:none}
+.cardfx-txt .cc:before,.cardfx-txt .cc:after{display:none!important}
 /* credit card detail: tappable to flip balance <-> available credit */
 #sb .cc.detail.cfx-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 #sb .cc.detail .at small,#sb .cc.detail .at .v{will-change:transform,opacity}
@@ -4768,12 +4865,47 @@ window.localLog=function(q){
     tilt.appendChild(body);root.appendChild(tilt);document.body.appendChild(root);
     return{root,tilt,body};
   }
-  function pairs(f,src){
-    const q='.at small,.at .v,.at .pr span',a=[].slice.call(f.body.querySelectorAll(q)),b=[].slice.call(src.querySelectorAll(q));
-    if(a.length!==b.length)return[];
-    return a.map(function(el,i){return{el:el,det:el.textContent,src:b[i].textContent}});
+  /* ---------- balance text: transform-only overlay ----------
+     The balance block is NOT resized with the flying card (that re-laid-out the text on every frame, animated
+     font-size/line-height, and ended at the wrong size). Instead a text-only copy of the REAL detail card sits at the
+     detail card's final rect, so every glyph is laid out exactly once at its final size and position. Each part
+     (label, amount, bar, footer) is then moved with transform only (translate + uniform scale, compositor-driven) between
+     the tile's matching element and its final place. The last frame is pixel-identical to the real card, so the hand-off
+     does not move or resize anything. When the text differs (credit card: BALANCE vs AVAILABLE CREDIT) the two versions
+     cross-fade on the same animation clock - nothing is swapped by timers and the bar never disappears. */
+  const PARTS=['.at small','.at .v','.at .pb','.at .pr span'];
+  const FADE_OUT=[{opacity:1},{opacity:1,offset:.2},{opacity:0,offset:.5},{opacity:0}],
+        FADE_IN=[{opacity:0},{opacity:0,offset:.36},{opacity:1,offset:.66},{opacity:1}];
+  function textFx(f,src,det,rect,opening,o){
+    const own=f.body.querySelector('.at');if(own)own.style.visibility='hidden';   // never two copies of the balance
+    if(!det||!det.querySelector('.at'))return;
+    const root=document.createElement('div');root.className='cardfx-txt';Object.assign(root.style,px(rect));
+    const cc=det.cloneNode(true);cc.removeAttribute('onclick');cc.classList.remove('cfx-tap');cc.style.visibility='visible';
+    [].slice.call(cc.children).forEach(function(c){if(!c.classList.contains('at'))c.style.visibility='hidden';});
+    root.appendChild(cc);document.body.appendChild(root);f.ghost=root;
+    const lin={duration:o.duration,easing:'linear',fill:'forwards'};
+    PARTS.forEach(function(q){
+      const gs=[].slice.call(cc.querySelectorAll(q)),ss=[].slice.call(src.querySelectorAll(q));
+      gs.forEach(function(g,i){
+        const s=ss.length===gs.length?ss[i]:null;
+        g.style.transformOrigin='0 0';g.style.willChange='transform,opacity';
+        const gr=g.getBoundingClientRect(),sr=s&&s.getBoundingClientRect();
+        if(!s||!gr.width||!sr.width){g.animate(opening?[{opacity:0},{opacity:1}]:[{opacity:1},{opacity:0}],lin);return;}
+        const bar=g.classList.contains('pb');
+        const k=bar?sr.width/gr.width:parseFloat(getComputedStyle(s).fontSize)/parseFloat(getComputedStyle(g).fontSize);
+        const A='translate('+(sr.left-gr.left)+'px,'+((sr.top+sr.height/2)-(gr.top+gr.height*k/2))+'px) scale('+k+')',B='translate(0px,0px) scale(1)';
+        const tf=opening?[{transform:A},{transform:B}]:[{transform:B},{transform:A}];
+        g.animate(tf,o);
+        if(!bar&&g.textContent!==s.textContent){            /* text differs between tile and detail: cross-fade */
+          const og=g.cloneNode(false);og.textContent=s.textContent;og.setAttribute('aria-hidden','true');
+          og.style.cssText+=';position:absolute;left:'+g.offsetLeft+'px;top:'+g.offsetTop+'px;width:'+g.offsetWidth+'px;margin:0';
+          g.parentNode.appendChild(og);og.animate(tf,o);
+          g.animate(opening?FADE_IN:FADE_OUT,lin);og.animate(opening?FADE_OUT:FADE_IN,lin);
+        }
+      });
+    });
   }
-  function fly(f,src,small,big,opening,shSmall,shBig){
+  function fly(f,src,small,big,opening,shSmall,shBig,det){
     const [sx]=center(small),[bx]=center(big),dir=sx>=bx?1:-1;
     const dur=opening?OPEN_MS:CLOSE_MS,o={duration:dur,easing:opening?OUT:IN,fill:'forwards'};
     const move=f.root.animate(opening?[px(small),px(big)]:[px(big),px(small)],o);
@@ -4781,17 +4913,7 @@ window.localLog=function(q){
     f.tilt.animate([t(0,0),Object.assign(t(opening?6:4,dir*(opening?3:2)),{offset:.4}),t(0,0)],{duration:dur,easing:'ease-in-out',fill:'forwards'});
     const mid='0 38px 72px rgba(0,0,0,.42)';
     f.body.animate(opening?[{boxShadow:shSmall},{boxShadow:mid,offset:.45},{boxShadow:shBig}]:[{boxShadow:shBig},{boxShadow:mid,offset:.35},{boxShadow:shSmall}],{duration:dur,easing:'ease-in-out',fill:'forwards'});
-    const v=f.body.querySelector('.at .v'),sv=src.querySelector('.at .v');
-    if(v&&sv){const cv=getComputedStyle(v),cs=getComputedStyle(sv);
-      const D={fontSize:cv.fontSize,lineHeight:cv.lineHeight},T={fontSize:cs.fontSize,lineHeight:cs.lineHeight};
-      v.animate(opening?[T,D]:[D,T],o);}
-    const pr=pairs(f,src);
-    if(pr.length&&pr.some(function(p){return p.det!==p.src})){
-      const at=f.body.querySelector('.at');
-      pr.forEach(function(p){p.el.textContent=opening?p.src:p.det});
-      at.animate([{opacity:1},{opacity:1,offset:.3},{opacity:0,offset:.45},{opacity:0,offset:.5},{opacity:1,offset:.65},{opacity:1}],{duration:dur,easing:'linear',fill:'forwards'});
-      setTimeout(function(){pr.forEach(function(p){p.el.textContent=opening?p.det:p.src})},dur*.47);
-    }
+    textFx(f,src,det,big,opening,o);
     return move.finished;
   }
 
@@ -4883,8 +5005,8 @@ window.localLog=function(q){
       if(ch===card)return;
       ch.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:340,delay:180+Math.min(i,6)*40,easing:OUT,fill:'backwards'});
     });
-    const done=function(){card.style.visibility='';f.root.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
-    fly(f,src,from,to,true,shSmall,shBig).then(done,done);
+    const done=function(){card.style.visibility='';f.root.remove();if(f.ghost)f.ghost.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
+    fly(f,src,from,to,true,shSmall,shBig,card).then(done,done);
   };
   function plain(){$1('#sheet').classList.remove('cardfx');fx=null;}
   window.closeS=function(){
@@ -4903,11 +5025,11 @@ window.localLog=function(q){
     sheet.classList.add('closing');
     $1('#sb').animate([{opacity:1},{opacity:0}],{duration:240,easing:'ease-in',fill:'forwards'});
     const done=function(){
-      f.root.remove();clearHide();
+      f.root.remove();if(f.ghost)f.ghost.remove();clearHide();
       sheet.classList.remove('open','closing','cardfx');document.body.classList.remove('sheet-open');
       $1('#sb').getAnimations().forEach(function(a){a.cancel()});
       fx=null;busy=false;phase='';};
-    fly(f,src,to,from,false,shSmall,shBig).then(done,done);
+    fly(f,src,to,from,false,shSmall,shBig,card).then(done,done);
   };
   new MutationObserver(function(){const s=$1('#sheet');if(hid!=null&&!busy&&!s.classList.contains('open')){settle();clearHide();}})
     .observe($1('#sheet'),{attributes:true,attributeFilter:['class']});
@@ -4965,6 +5087,27 @@ select,input[type=file],input[type=range],input[type=checkbox],input[type=radio]
 }
 img,svg{-webkit-user-drag:none;user-drag:none}
 </style>
+<style id="cap-bills-css">
+/* Needs attention: date-based urgency colours  (yellow 4-7d · red 0-3d · deep red overdue) */
+:root{--uy:#b7791f;--ud:#b00020}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--uy:#f5c542;--ud:#ef233c}}
+:root[data-theme="dark"]{--uy:#f5c542;--ud:#ef233c}
+.row .f small.du{font-weight:600;transition:color .45s ease}
+.row>b.du{transition:color .45s ease}
+.row.urg-y .f small.du,.row.urg-y>b.du{color:var(--uy)}
+.row.urg-r .f small.du,.row.urg-r>b.du{color:var(--r)}
+.row.urg-o .f small.du,.row.urg-o>b.du{color:var(--ud)}
+.row.urg-n .f small.du{color:var(--mut)}
+.row.urg-o .f small.du{font-weight:700}
+.row.urg-o>b.du{font-weight:800}
+.odb{display:inline-block;margin-right:6px;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--ud) 16%,transparent);color:var(--ud);font-size:.82em;font-weight:700;letter-spacing:.05em;text-transform:uppercase;animation:odPulse 1.9s ease-in-out infinite}
+@keyframes odPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ud) 0%,transparent);background:color-mix(in srgb,var(--ud) 16%,transparent)}50%{box-shadow:0 0 10px 1px color-mix(in srgb,var(--ud) 55%,transparent);background:color-mix(in srgb,var(--ud) 30%,transparent)}}
+@media (prefers-reduced-motion:reduce){.odb{animation:none}}
+/* long-press feedback reuses .row.lp / .row.lp-done; keep it from selecting text or popping the callout */
+.row[data-bill],.row[data-bcard]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.row[data-bill]:focus-visible,.row[data-bcard]:focus-visible{outline:2px solid var(--r);outline-offset:2px;border-radius:12px}
+</style>
+
 <script id="cap-nosel-all">
 /* Blocks selection start, long-press menus and drags on all non-editable UI.
    Typing, selecting and copying inside inputs / textareas / editable content is untouched. */
@@ -4999,14 +5142,13 @@ img,svg{-webkit-user-drag:none;user-drag:none}
   const st = document.createElement("style");
   st.textContent =
     "html,body{overscroll-behavior-y:contain}" + // stop the browser's own pull-to-refresh / bounce chaining
-    "#cap-ptr{position:fixed;left:50%;top:0;z-index:6;width:" + SIZE + "px;height:" + SIZE + "px;margin-left:-" + SIZE / 2 + "px;border-radius:50%;display:grid;place-items:center;color:var(--tx);background:var(--card);border:1px solid var(--line);box-shadow:0 6px 18px #0002,0 1px 3px #0001;opacity:0;pointer-events:none;will-change:transform,opacity;transform:translate3d(0,-60px,0) scale(.5)}" +
-    "#cap-ptr svg{grid-area:1/1;width:22px;height:22px;transition:opacity .2s,transform .25s}" +
+    "#cap-ptr{position:fixed;left:50%;top:0;z-index:6;width:" + SIZE + "px;height:" + SIZE + "px;margin-left:-" + SIZE / 2 + "px;border-radius:50%;display:grid;place-items:center;color:#8a8a8e;background:none;border:0;box-shadow:none;opacity:0;pointer-events:none;will-change:transform,opacity;transform:translate3d(0,-60px,0) scale(.5)}" +
+    "#cap-ptr svg{grid-area:1/1;width:26px;height:26px;transition:opacity .2s,transform .25s}" +
     "#cap-ptr .ring{transform-origin:50% 50%}" +
-    "#cap-ptr .ck,#cap-ptr .off{opacity:0;transform:scale(.6)}" +
-    "#cap-ptr[data-s=spin] .ring{animation:capPtrSpin .8s linear infinite}" +
-    "#cap-ptr[data-s=ok] .ring,#cap-ptr[data-s=off] .ring{opacity:0}" +
-    "#cap-ptr[data-s=ok] .ck,#cap-ptr[data-s=off] .off{opacity:1;transform:none}" +
-    "#cap-ptr[data-s=ready] .ring{color:var(--g)}" +
+    "#cap-ptr .off{opacity:0;transform:scale(.6)}" +
+    "#cap-ptr[data-s=spin] .ring,#cap-ptr[data-s=ok] .ring{animation:capPtrSpin .9s linear infinite}" +
+    "#cap-ptr[data-s=off] .ring{opacity:0}" +
+    "#cap-ptr[data-s=off] .off{opacity:1;transform:none}" +
     "@keyframes capPtrSpin{to{transform:rotate(360deg)}}" +
     "#app.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1)}" +
     "#cap-ptr.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1),opacity .3s}";
@@ -5016,11 +5158,11 @@ img,svg{-webkit-user-drag:none;user-drag:none}
   el.id = "cap-ptr";
   el.setAttribute("aria-hidden", "true");
   el.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><g class="ring"><circle cx="12" cy="12" r="9" stroke-opacity=".18"/><circle class="arc" cx="12" cy="12" r="9" stroke-dasharray="56.55" stroke-dashoffset="56.55" transform="rotate(-90 12 12)"/></g></svg>' +
-    '<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="var(--g)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><g class="ring"><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(0 12 12)" stroke-opacity="1"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-45 12 12)" stroke-opacity=".85"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-90 12 12)" stroke-opacity=".7"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-135 12 12)" stroke-opacity=".56"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-180 12 12)" stroke-opacity=".44"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-225 12 12)" stroke-opacity=".34"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-270 12 12)" stroke-opacity=".26"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-315 12 12)" stroke-opacity=".2"/></g></svg>' +
     '<svg class="off" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8a15 15 0 0 0-9.3-3.7M5 12.5a10 10 0 0 1 3.1-2M19 12.5a10 10 0 0 0-3-2M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".6" fill="#f59e0b"/><path d="M3 3l18 18"/></svg>';
   document.body.appendChild(el);
-  const arc = el.querySelector(".arc"), ring = el.querySelector(".ring");
+  const ring = el.querySelector(".ring"), bars = Array.from(el.querySelectorAll(".b")), base = bars.map((b) => +b.getAttribute("stroke-opacity"));
+  const showBars = (n) => bars.forEach((b, i) => { b.style.strokeOpacity = n === null ? "" : Math.max(0, Math.min(1, n - i)) * base[i]; });
 
   let gap = 0, top0 = 0, busy = false, raf = 0, pull = 0, cooldown = 0;
   const app = () => document.getElementById("app");
@@ -5040,10 +5182,7 @@ img,svg{-webkit-user-drag:none;user-drag:none}
     const y = top0 + Math.max(0, p / 2 - SIZE / 2);
     el.style.opacity = Math.min(1, p / 26);
     el.style.transform = "translate3d(0," + (p > 0 ? y : y - 30) + "px,0) scale(" + (0.55 + 0.45 * Math.min(1, p / 40)) + ")";
-    if (el.dataset.s !== "spin") {
-      arc.style.strokeDashoffset = 56.55 * (1 - prog);
-      ring.style.transform = "rotate(" + prog * 270 + "deg)";
-    }
+    if (el.dataset.s !== "spin" && el.dataset.s !== "ok") showBars(prog * 8);
   }
   function schedule(p) { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => paint(p, false)); }
   const rubber = (dy) => MAX * (1 - Math.exp(-dy / (MAX * 1.2)));
@@ -5057,7 +5196,7 @@ img,svg{-webkit-user-drag:none;user-drag:none}
       el.style.opacity = 0;
       const a = app(); a.style.transform = ""; a.classList.remove("cap-ptr-anim");
       el.classList.remove("cap-ptr-anim");
-      arc.style.strokeDashoffset = 56.55; ring.style.transform = "";
+      ring.style.transform = ""; showBars(0);
     }, 420);
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -5066,7 +5205,7 @@ img,svg{-webkit-user-drag:none;user-drag:none}
     if (busy) return;
     busy = true;
     el.dataset.s = "spin";
-    ring.style.transform = ""; arc.style.strokeDashoffset = 56.55 * 0.28;
+    ring.style.transform = ""; showBars(null);
     paint(HOLD, true);
     try { navigator.vibrate && navigator.vibrate(8); } catch (e) {}
     let msg = "", state = "ok";
@@ -5090,7 +5229,6 @@ img,svg{-webkit-user-drag:none;user-drag:none}
     const left = 650 - (Date.now() - t0);
     if (left > 0) await sleep(left); // let the spinner be seen
     el.dataset.s = state;
-    if (typeof toast === "function" && msg) toast(msg);
     await sleep(state === "off" ? 900 : 550);
     busy = false;
     cooldown = Date.now() + 600;
