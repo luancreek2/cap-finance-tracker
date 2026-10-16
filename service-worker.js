@@ -1,12 +1,49 @@
 /* Cap service worker — offline app shell.
-   Bump VERSION whenever Cap.html or other shell files change. */
-const VERSION = "cap-shell-v6";
-const SHELL = [
+   Bump VERSION whenever index.html or other shell files change. */
+const VERSION = "cap-shell-v9";
+const CORE = [
   "./index.html",
-  "./manifest.webmanifest",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/icon-512-maskable.png",
+  "./manifest.json",
+  "./css/styles.css",
+  "./css/animations.css",
+  "./js/cards.js",
+  "./js/app.js",
+  "./js/transactions.js",
+  "./js/animations.js",
+];
+const MEDIA = [
+  "./assets/icons/icon-192.png",
+  "./assets/icons/icon-512.png",
+  "./assets/icons/icon-512-maskable.png",
+  "./assets/media/media-01bcd366ea16.webp",
+  "./assets/media/media-068255fe1779.png",
+  "./assets/media/media-08b3cc0df3e1.webp",
+  "./assets/media/media-0fbff12eb8bb.png",
+  "./assets/media/media-1a18fbe8f565.webp",
+  "./assets/media/media-215edc69b160.png",
+  "./assets/media/media-2a6401e1171c.webp",
+  "./assets/media/media-3c75ecbaa728.png",
+  "./assets/media/media-45199bcfde38.webp",
+  "./assets/media/media-50c013ade32c.webp",
+  "./assets/media/media-7825d6f52373.webp",
+  "./assets/media/media-784db5476c1a.webp",
+  "./assets/media/media-7bfe4c0e22b7.png",
+  "./assets/media/media-8209b1c7d4fc.webp",
+  "./assets/media/media-8f7192d31f1f.png",
+  "./assets/media/media-912569743662.webp",
+  "./assets/media/media-99bbbeeab150.webp",
+  "./assets/media/media-a4e60c549be5.png",
+  "./assets/media/media-a76f10d262db.webp",
+  "./assets/media/media-b8b19cb7338b.webp",
+  "./assets/media/media-bc32baa2d8d0.webp",
+  "./assets/media/media-c2a841854f13.webp",
+  "./assets/media/media-c556353f406c.png",
+  "./assets/media/media-c72d8b39a5da.webp",
+  "./assets/media/media-d42b1d2c752f.webp",
+  "./assets/media/media-db2cc84b3a80.webp",
+  "./assets/media/media-ec2a6f2b4283.png",
+  "./assets/media/media-f094ad645fc2.webp",
+  "./assets/media/media-fb3475fba90a.webp",
 ];
 const APP = "./index.html";
 
@@ -14,9 +51,9 @@ self.addEventListener("install", (e) => {
   e.waitUntil(
     (async () => {
       const c = await caches.open(VERSION);
-      // The HTML must cache or install fails; icons are best-effort.
-      await c.add(new Request(APP, { cache: "reload" }));
-      await Promise.allSettled(SHELL.slice(1).map((u) => c.add(new Request(u, { cache: "reload" }))));
+      // Core files must cache or the separated app cannot boot offline; media is best-effort.
+      await Promise.all(CORE.map((u) => c.add(new Request(u, { cache: "reload" }))));
+      await Promise.allSettled(MEDIA.map((u) => c.add(new Request(u, { cache: "reload" }))));
       await self.skipWaiting();
     })(),
   );

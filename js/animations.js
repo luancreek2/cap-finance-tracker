@@ -1,0 +1,241 @@
+function toast(m,ok){document.querySelectorAll('.toast').forEach(x=>x.remove());const e=document.createElement('div');e.className='toast';e.setAttribute('role','status');if(ok)e.insertAdjacentHTML('beforeend','<svg class="tk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>');e.appendChild(document.createTextNode(m));document.body.appendChild(e);setTimeout(()=>e.classList.add('x'),2000);setTimeout(()=>e.remove(),2350)}
+function fx(){const a=$('#app');a.classList.add('fx');clearTimeout(window._fx);window._fx=setTimeout(()=>a.classList.remove('fx'),800)}
+function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;const sn=window._seen=window._seen||{},re=sn[k];sn[k]=1;a.classList.remove('pg','pg2');void a.offsetWidth;a.classList.add(re?'pg2':'pg');if(!re)fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
+const flash=id=>{window._fl=id};
+function openS(h){clearTimeout(window._cl);document.body.classList.add('sheet-open');const e=$('#sheet');e.classList.remove('closing');$('#sb').innerHTML=h;e.classList.add('open')}
+function closeS(){const e=$('#sheet');if(!e.classList.contains('open'))return;e.classList.add('closing');clearTimeout(window._cl);window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open')},200)}
+function playPaymentConfirmation(){
+  try{
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(AudioCtx){
+      const c=window._payAudio||(window._payAudio=new AudioCtx()),t=c.currentTime,g=c.createGain();
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.16,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+.48);g.connect(c.destination);
+      [[659.25,0,.18],[987.77,.11,.28]].forEach(([f,d,l])=>{const o=c.createOscillator(),v=c.createGain();o.type='sine';o.frequency.setValueAtTime(f,t+d);v.gain.setValueAtTime(.0001,t+d);v.gain.exponentialRampToValueAtTime(.7,t+d+.012);v.gain.exponentialRampToValueAtTime(.0001,t+d+l);o.connect(v);v.connect(g);o.start(t+d);o.stop(t+d+l+.02)});
+      if(c.state==='suspended')c.resume();
+    }
+    if(navigator.vibrate)navigator.vibrate([12,32,18]);
+  }catch(_){/* Payment must still complete if sound or haptics are unavailable. */}
+}
+document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))m.classList.remove('open')});
+
+
+function initGlobalNoSelection() {
+
+/* Blocks selection start, long-press menus and drags on all non-editable UI.
+   Typing, selecting and copying inside inputs / textareas / editable content is untouched. */
+(function(){
+  if(window.__noselAll)return;window.__noselAll=1;
+  const EDIT='input,textarea,select,[contenteditable]:not([contenteditable="false"])';
+  const el=n=>n&&(n.nodeType===1?n:n.parentElement);
+  const ui=n=>{const e=el(n);return !!(e&&!(e.closest&&e.closest(EDIT)));};
+  const block=e=>{if(ui(e.target))e.preventDefault();};
+  document.addEventListener('selectstart',block,true);
+  document.addEventListener('contextmenu',block,true);
+  document.addEventListener('dragstart',block,true);
+  /* iOS: a long press can start a selection before selectstart is cancelled - drop it right away */
+  document.addEventListener('selectionchange',function(){
+    const s=window.getSelection&&getSelection();
+    if(!s||s.isCollapsed||!s.rangeCount)return;
+    const a=el(s.anchorNode),f=el(s.focusNode),ae=document.activeElement;
+    if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName))return;        // selection inside a field
+    if((a&&a.closest&&a.closest(EDIT))||(f&&f.closest&&f.closest(EDIT)))return;
+    if(a&&a.closest&&a.closest('[contenteditable]:not([contenteditable="false"])'))return;
+    s.removeAllRanges();
+  });
+})();
+
+}
+
+
+function initPullToRefresh() {
+
+/* ===== Cap pull-to-refresh: native-feeling, data-safe (never reloads the page) ===== */
+(function () {
+  "use strict";
+  const THRESH = 58, MAX = 120, HOLD = 52, SLOP = 8, SIZE = 40;
+  const root = document.documentElement;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const st = document.createElement("style");
+  st.textContent =
+    "html,body{overscroll-behavior-y:contain}" + // stop the browser's own pull-to-refresh / bounce chaining
+    "#cap-ptr{position:fixed;left:50%;top:0;z-index:6;width:" + SIZE + "px;height:" + SIZE + "px;margin-left:-" + SIZE / 2 + "px;border-radius:50%;display:grid;place-items:center;color:#8a8a8e;background:none;border:0;box-shadow:none;opacity:0;pointer-events:none;will-change:transform,opacity;transform:translate3d(0,-60px,0) scale(.5)}" +
+    "#cap-ptr svg{grid-area:1/1;width:26px;height:26px;transition:opacity .2s,transform .25s}" +
+    "#cap-ptr .ring{transform-origin:50% 50%}" +
+    "#cap-ptr .off{opacity:0;transform:scale(.6)}" +
+    "#cap-ptr[data-s=spin] .ring,#cap-ptr[data-s=ok] .ring{animation:capPtrSpin .9s linear infinite}" +
+    "#cap-ptr[data-s=off] .ring{opacity:0}" +
+    "#cap-ptr[data-s=off] .off{opacity:1;transform:none}" +
+    "@keyframes capPtrSpin{to{transform:rotate(360deg)}}" +
+    "#app.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1)}" +
+    "#cap-ptr.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1),opacity .3s}";
+  document.head.appendChild(st);
+
+  const el = document.createElement("div");
+  el.id = "cap-ptr";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><g class="ring"><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(0 12 12)" stroke-opacity="1"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-45 12 12)" stroke-opacity=".85"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-90 12 12)" stroke-opacity=".7"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-135 12 12)" stroke-opacity=".56"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-180 12 12)" stroke-opacity=".44"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-225 12 12)" stroke-opacity=".34"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-270 12 12)" stroke-opacity=".26"/><line class="b" x1="12" y1="6.4" x2="12" y2="2.6" transform="rotate(-315 12 12)" stroke-opacity=".2"/></g></svg>' +
+    '<svg class="off" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8a15 15 0 0 0-9.3-3.7M5 12.5a10 10 0 0 1 3.1-2M19 12.5a10 10 0 0 0-3-2M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".6" fill="#f59e0b"/><path d="M3 3l18 18"/></svg>';
+  document.body.appendChild(el);
+  const ring = el.querySelector(".ring"), bars = Array.from(el.querySelectorAll(".b")), base = bars.map((b) => +b.getAttribute("stroke-opacity"));
+  const showBars = (n) => bars.forEach((b, i) => { b.style.strokeOpacity = n === null ? "" : Math.max(0, Math.min(1, n - i)) * base[i]; });
+
+  let gap = 0, top0 = 0, busy = false, raf = 0, pull = 0, cooldown = 0;
+  const app = () => document.getElementById("app");
+  const scrollTop = () => (document.scrollingElement || root).scrollTop;
+
+  function navBottom() {
+    const n = document.querySelector("nav");
+    return n ? Math.max(0, n.getBoundingClientRect().bottom) : 0;
+  }
+  function paint(p, animate) {
+    pull = p;
+    const a = app();
+    if (animate) { a.classList.add("cap-ptr-anim"); el.classList.add("cap-ptr-anim"); }
+    else { a.classList.remove("cap-ptr-anim"); el.classList.remove("cap-ptr-anim"); }
+    a.style.transform = p > 0.5 ? "translate3d(0," + p + "px,0)" : "";
+    const prog = Math.min(1, p / THRESH);
+    const y = top0 + Math.max(0, p / 2 - SIZE / 2);
+    el.style.opacity = Math.min(1, p / 26);
+    el.style.transform = "translate3d(0," + (p > 0 ? y : y - 30) + "px,0) scale(" + (0.55 + 0.45 * Math.min(1, p / 40)) + ")";
+    if (el.dataset.s !== "spin" && el.dataset.s !== "ok") showBars(prog * 8);
+  }
+  function schedule(p) { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => paint(p, false)); }
+  const rubber = (dy) => MAX * (1 - Math.exp(-dy / (MAX * 1.2)));
+
+  function settle() {
+    cancelAnimationFrame(raf);
+    paint(0, true);
+    setTimeout(() => {
+      if (busy) return;
+      el.dataset.s = "";
+      el.style.opacity = 0;
+      const a = app(); a.style.transform = ""; a.classList.remove("cap-ptr-anim");
+      el.classList.remove("cap-ptr-anim");
+      ring.style.transform = ""; showBars(0);
+    }, 420);
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    el.dataset.s = "spin";
+    ring.style.transform = ""; showBars(null);
+    paint(HOLD, true);
+    try { navigator.vibrate && navigator.vibrate(8); } catch (e) {}
+    let msg = "", state = "ok";
+    const t0 = Date.now();
+    try {
+      if (!navigator.onLine) {
+        state = "off"; msg = "You're offline — showing your saved data. Changes will sync when you're back online.";
+      } else {
+        // Check for a newer app version (service worker), and sync pending changes with the cloud if connected.
+        try { navigator.serviceWorker && navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {}); } catch (e) {}
+        if (window.CapOff) {
+          await Promise.race([CapOff.sync(), sleep(12000)]);
+          const s = CapOff.status();
+          if (s.cloud && s.status === "error") { state = "off"; msg = "Couldn't sync right now — your changes are safe on this device and will retry."; }
+          else msg = "";
+        } else msg = "";
+        try { render(); } catch (e) {} // redraw from the stored data (nothing is reloaded or erased)
+      }
+    } catch (e) { state = "off"; msg = "Couldn't refresh — your data is safe."; }
+    const left = 650 - (Date.now() - t0);
+    if (left > 0) await sleep(left); // let the spinner be seen
+    el.dataset.s = state;
+    await sleep(state === "off" ? 900 : 550);
+    busy = false;
+    cooldown = Date.now() + 600;
+    settle();
+  }
+
+  /* ---------- eligibility ---------- */
+  const BLOCK = 'input,textarea,select,[contenteditable],#sheet,#pop,.fab,#chw,#calwrap,.goal-card,.sw-c,.sw';
+  function blockedBy(t) {
+    if (!(t instanceof Element)) return true;
+    if (t.closest(BLOCK)) return true;
+    if (document.body.classList.contains("sheet-open")) return true;
+    const sh = document.getElementById("sheet"), pp = document.getElementById("pop");
+    if ((sh && sh.classList.contains("open")) || (pp && pp.classList.contains("open"))) return true;
+    for (let n = t; n && n !== document.body && n !== root; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 2) return true; // horizontal scroller (tabs, carousels)
+      if (/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 2 && n.scrollTop > 0) return true;
+    }
+    return false;
+  }
+
+  /* ---------- touch (iPhone, iPad, Android) ---------- */
+  let sx = 0, sy = 0, mode = 0; // 0 idle, 1 tracking, 2 pulling, -1 ignore
+  addEventListener("touchstart", (e) => {
+    mode = 0;
+    if (busy || e.touches.length !== 1 || Date.now() < cooldown) { mode = -1; return; }
+    if (scrollTop() > 0 || blockedBy(e.target)) { mode = -1; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; mode = 1; top0 = navBottom();
+  }, { passive: true });
+  addEventListener("touchmove", (e) => {
+    if (mode < 1) return;
+    const x = e.touches[0].clientX, y = e.touches[0].clientY, dx = x - sx, dy = y - sy;
+    if (mode === 1) {
+      if (scrollTop() > 0) { mode = -1; return; }
+      if (Math.abs(dx) > SLOP && Math.abs(dx) > Math.abs(dy) * 0.7) { mode = -1; return; } // sideways swipe
+      if (dy < -SLOP) { mode = -1; return; } // scrolling down the page
+      if (dy < SLOP || dy < Math.abs(dx) * 1.5) return; // not clearly a downward pull yet
+      mode = 2; sy = y - SLOP; // start the pull from here so it doesn't jump
+    }
+    if (mode === 2) {
+      const d = y - sy;
+      if (d <= 0) { schedule(0); return; }
+      if (e.cancelable) e.preventDefault(); // blocks browser pull-to-refresh / iOS rubber-band while we own the gesture
+      const p = rubber(d);
+      el.dataset.s = p >= THRESH ? "ready" : "";
+      if (p >= THRESH && !el._r) { el._r = 1; try { navigator.vibrate && navigator.vibrate(6); } catch (_) {} }
+      if (p < THRESH) el._r = 0;
+      schedule(p);
+    }
+  }, { passive: false });
+  function end() {
+    const was = mode; mode = 0; el._r = 0;
+    if (was !== 2) return;
+    if (pull >= THRESH) refresh(); else settle();
+  }
+  addEventListener("touchend", end, { passive: true });
+  addEventListener("touchcancel", () => { if (mode === 2) { mode = 0; settle(); } else mode = 0; }, { passive: true });
+
+  /* ---------- desktop trackpad (two-finger pull at the top of the page) ---------- */
+  let acc = 0, wt = 0, wlast = 0;
+  addEventListener("wheel", (e) => {
+    if (busy || Date.now() < cooldown) return;
+    const t = Date.now();
+    if (e.deltaY >= 0 || scrollTop() > 0 || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { if (acc) { acc = 0; settle(); } return; }
+    if (Math.abs(e.deltaY) >= 60 && e.deltaMode === 0 && !acc) return; // a notched mouse wheel, not a trackpad
+    if (blockedBy(e.target)) return;
+    if (!acc) top0 = navBottom();
+    acc = Math.min(acc - e.deltaY, 420);
+    wlast = t;
+    const p = rubber(acc * 0.9);
+    el.dataset.s = p >= THRESH ? "ready" : "";
+    schedule(p);
+    clearTimeout(wt);
+    wt = setTimeout(() => {
+      const go = pull >= THRESH; acc = 0;
+      if (go) refresh(); else settle();
+    }, 140);
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+})();
+
+
+}
+
+
+bindStaticEvents();
+CapOff.init({ get: () => S, set: (value) => (S = value) });
+CapOff.boot();
+initUiEnhancements();
+initTransactionV2();
+initCardAnimations();
+initTransactionNoSelection();
+initGlobalNoSelection();
+initPullToRefresh();

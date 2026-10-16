@@ -1,0 +1,184 @@
+
+      .pick .cc {
+        transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, filter 0.3s ease;
+      }
+      .pick .cc.sel.pop {
+        animation: cardPop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      @keyframes cardPop {
+        0% {
+          transform: scale(0.965);
+          filter: brightness(1);
+        }
+        45% {
+          transform: scale(1.045);
+          filter: brightness(1.12);
+        }
+        100% {
+          transform: scale(1.025);
+          filter: brightness(1);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .pick .cc,
+        .pick .cc.sel.pop {
+          transition: none;
+          animation: none;
+        }
+      }
+      @keyframes goalInFromLeft {
+        from {
+          opacity: 0.25;
+          transform: translateX(-36%) rotate(-7deg) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotate(0) scale(1);
+        }
+      }
+      @keyframes goalInFromRight {
+        from {
+          opacity: 0.25;
+          transform: translateX(36%) rotate(7deg) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0) rotate(0) scale(1);
+        }
+      }
+      @keyframes goalOutToLeft {
+        to {
+          opacity: 0;
+          transform: translateX(-110%) rotate(-10deg) scale(0.94);
+        }
+      }
+      @keyframes goalOutToRight {
+        to {
+          opacity: 0;
+          transform: translateX(110%) rotate(10deg) scale(0.94);
+        }
+      }
+      .goal-card.goal-in-left {
+        animation: goalInFromLeft 0.32s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+      }
+      .goal-card.goal-in-right {
+        animation: goalInFromRight 0.32s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+      }
+      .goal-card.goal-out-left {
+        animation: goalOutToLeft 0.19s ease-in both;
+      }
+      .goal-card.goal-out-right {
+        animation: goalOutToRight 0.19s ease-in both;
+      }
+      @keyframes spendDonutIn {
+        from {
+          opacity: 0.25;
+          transform: rotate(-16deg) scale(0.9);
+        }
+        to {
+          opacity: 1;
+          transform: rotate(0) scale(1);
+        }
+      }
+      @keyframes spendBarIn {
+        from {
+          transform: scaleY(0.04);
+          opacity: 0.35;
+        }
+        to {
+          transform: scaleY(1);
+          opacity: 1;
+        }
+      }
+      .spend-donut {
+        animation: spendDonutIn 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+        transform-origin: center;
+      }
+      .spend-bar {
+        transform-origin: bottom;
+        animation: spendBarIn 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+      }
+.fab.ai{animation:fabIn .45s cubic-bezier(.2,.8,.2,1) .15s backwards}
+@keyframes fabIn{from{opacity:0;transform:translateY(16px)}}
+@keyframes pgIn{from{opacity:0;transform:translateY(8px)}}
+@keyframes fadeIn{from{opacity:0}}@keyframes fadeOut{to{opacity:0}}
+@keyframes sheetUp{from{opacity:0;transform:translateY(28px)}}@keyframes sheetDown{to{opacity:0;transform:translateY(28px)}}
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(-4px)}}
+@keyframes rowIn{from{opacity:0;transform:translateY(-6px);background:#4ade8026}}@keyframes rowOut{to{opacity:0;transform:translateX(24px)}}
+@keyframes barIn{from{transform:scaleX(0)}}@keyframes arcIn{from{opacity:0}}@keyframes spin{to{transform:rotate(1turn)}}
+.pg{animation:pgIn .3s cubic-bezier(.2,.7,.2,1) backwards}
+#sheet.open{animation:fadeIn .2s ease}#sheet.open>div{animation:sheetUp .3s cubic-bezier(.2,.8,.2,1)}
+#sheet.closing{animation:fadeOut .2s ease forwards}#sheet.closing>div{animation:sheetDown .2s ease forwards}
+#pop.open{animation:fadeIn .2s ease}#pop.open #pp{animation:popIn .22s ease}
+button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color .2s ease,opacity .2s ease,filter .2s ease}
+.row.new{animation:rowIn .4s ease}.row.out{animation:rowOut .26s ease forwards}
+.spend-donut circle+circle{animation:arcIn .5s ease both}
+#app.fx .bar b{transform-origin:left;animation:barIn .6s cubic-bezier(.2,.7,.2,1) both}
+.spend-bar{transition:filter .25s ease,box-shadow .25s ease}
+.menu{transform-origin:top right;transition:opacity .18s ease,transform .18s ease}
+.toast{animation:toastIn .25s ease;transition:opacity .3s ease}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}}
+.spin{animation:spin .7s linear infinite}.sw-c{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+@keyframes capBgIn{from{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}to{opacity:1}}
+@keyframes capBgOut{to{opacity:0}}
+@keyframes capSheetIn{0%{opacity:0;transform:translateY(44px) scale(.93)}55%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes capSheetOut{to{opacity:0;transform:translateY(24px) scale(.96)}}
+@keyframes capPopIn{from{opacity:0;transform:translateY(-6px) scale(.97)}}
+@keyframes capPopOut{to{opacity:0;transform:translateY(-4px) scale(.98)}}
+#sheet.open{animation:capBgIn .32s ease both}
+#sheet.closing{animation:capBgOut .2s ease forwards}
+#sheet>#sb{will-change:transform,opacity}
+#sheet.open>#sb{animation:capSheetIn .5s cubic-bezier(.16,1,.3,1) both}
+#sheet.closing>#sb{animation:capSheetOut .2s cubic-bezier(.4,0,1,1) forwards}
+.ps-chev{transition:transform .2s ease}
+.ps-pop{animation:capPopIn .18s cubic-bezier(.2,.8,.2,1);transform-origin:top center}
+.ps-pop.up{transform-origin:bottom center}
+.ps-pop.out{animation:capPopOut .14s ease forwards}
+.ps-mini>.pick{transform-origin:0 0}
+.ps-copt .cc{transition:transform .15s ease,outline-color .15s ease}
+.pill.dots{transition:transform .15s ease,background-color .2s ease}
+.btn.dng{transition:transform .15s ease,background-color .2s ease}
+#cfm{transition:background-color .22s ease,backdrop-filter .22s ease,-webkit-backdrop-filter .22s ease}
+.cfm-box{transition:opacity .22s ease,transform .3s cubic-bezier(.2,.9,.25,1.15)}
+#cfm.closing .cfm-box{transition:opacity .18s ease,transform .18s ease}
+@keyframes lpPress{0%{transform:scale(1);box-shadow:inset 0 0 0 999px #8880}60%{box-shadow:inset 0 0 0 999px #8888881c}100%{transform:scale(.955);box-shadow:inset 0 0 0 999px #8888882e}}
+@keyframes lpPop{0%{transform:scale(.955)}55%{transform:scale(1.015)}100%{transform:scale(1)}}
+.row.lp{animation:lpPress .45s cubic-bezier(.3,.1,.2,1) forwards}
+.row.lp-done{animation:lpPop .32s cubic-bezier(.2,.9,.25,1.2)}
+@media (prefers-reduced-motion:reduce){#cfm,.cfm-box{transition:none!important}}
+.sr-wrap #activity-search{transition:box-shadow .25s ease,border-color .25s ease}
+.sr-dd{transform-origin:top center;
+  transition:opacity .2s ease,transform .32s cubic-bezier(.2,.9,.25,1.05),visibility 0s linear .32s}
+.sr-i{
+  transition:background .15s ease}
+.sr-dd.fresh .sr-i{animation:srIn .32s cubic-bezier(.2,.8,.2,1) both}
+@keyframes srIn{from{opacity:0;transform:translateY(6px)}}
+@keyframes capRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.cap-in{animation:capRise .42s cubic-bezier(.2,.8,.2,1) both}
+.acal .dc::before{
+  transition:opacity .28s ease,transform .42s cubic-bezier(.2,.9,.25,1.15)}
+.acal .dc .n span{transition:background .25s ease,color .25s ease,transform .3s cubic-bezier(.2,.9,.25,1.2)}
+.acal .dc .ap{transition:transform .25s ease}
+#sheet.cardfx.open>#sb,#sheet.cardfx.closing>#sb{animation:none!important}
+#sheet.cardfx.open{animation:capBgIn .4s ease both}
+#sheet.cardfx.closing{animation:capBgOut .34s ease forwards}
+.cardfx-tilt{will-change:transform;transform-origin:50% 50%}
+.cardfx-fly .cc{will-change:box-shadow}
+#sb .cc.detail .at small,#sb .cc.detail .at .v{will-change:transform,opacity}
+.row .f small.du{transition:color .45s ease}
+.row>b.du{transition:color .45s ease}
+.odb{animation:odPulse 1.9s ease-in-out infinite}
+@keyframes odPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ud) 0%,transparent);background:color-mix(in srgb,var(--ud) 16%,transparent)}50%{box-shadow:0 0 10px 1px color-mix(in srgb,var(--ud) 55%,transparent);background:color-mix(in srgb,var(--ud) 30%,transparent)}}
+@media (prefers-reduced-motion:reduce){.odb{animation:none}}
+
+
+
+.pg{animation:pgIn .3s cubic-bezier(.22,.61,.36,1) backwards}
+.pg2{animation:pgRe .2s cubic-bezier(.22,.61,.36,1) backwards}
+@keyframes pgIn{from{opacity:0;transform:translateY(6px)}}
+@keyframes pgRe{from{opacity:0;transform:translateY(2px)}}
+.toast{animation:toastIn .28s cubic-bezier(.22,.61,.36,1);transition:opacity .3s ease,transform .3s ease}
+.tk path,.ck2 path{animation:ckDraw .38s .06s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes ckDraw{to{stroke-dashoffset:0}}
+.btn.paid-ok{transition:background-color .25s ease,transform .25s ease}
+@media(prefers-reduced-motion:reduce){.pg,.pg2{animation:none}.tk path,.ck2 path{animation:none}}
