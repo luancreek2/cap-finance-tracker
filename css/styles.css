@@ -1785,7 +1785,8 @@ img,svg{-webkit-user-drag:none;user-drag:none}
 @media(prefers-reduced-motion:reduce){.tk path,.ck2 path{stroke-dashoffset:0}}
 
 /* ===== Bills: Edit sheet polish — status chip, latest payment, sticky footer ===== */
-#sheet>#sb{overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#sheet>#sb{overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line) transparent;scrollbar-gutter:stable}
+#sheet>#sb>#sv{display:flow-root}
 #sheet>#sb::-webkit-scrollbar{width:8px;height:0}
 #sheet>#sb::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
 #sheet>#sb::-webkit-scrollbar-track{background:transparent}
@@ -1834,7 +1835,9 @@ img,svg{-webkit-user-drag:none;user-drag:none}
 #sb .btn.danger-t{color:#ff453a}
 #sb .pd-h{display:flex;align-items:center;gap:12px;margin-bottom:10px;min-width:0}
 #sb .pd-h b{font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#sb .sf{position:sticky;bottom:0;z-index:3;display:flex;gap:10px;margin:26px -20px -20px;
+/* Full-bleed sticky action bar. It is pinned with bottom:-20px (the container's 20px padding)
+   so the bar itself covers that strip; with bottom:0 the scrolled content bleeds through below it. */
+#sb .sf{position:sticky;bottom:-20px;z-index:3;display:flex;gap:10px;margin:26px -20px -20px;
   padding:14px 20px calc(14px + env(safe-area-inset-bottom,0px));background:var(--card);
   box-shadow:0 -12px 20px -16px #0007;border-top:1px solid var(--line);border-radius:0 0 28px 28px}
 #sb .sf .btn{flex:1;min-width:0}

@@ -183,10 +183,16 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 .btn.paid-ok{transition:background-color .25s ease,transform .25s ease}
 @media(prefers-reduced-motion:reduce){.pg,.pg2{animation:none}.tk path,.ck2 path{animation:none}}
 
-/* view swaps inside the sheet (Edit bill ↔ Payment history ↔ Payment details) */
-#sheet.open>#sb.nav-in{animation:pgIn .22s cubic-bezier(.22,.61,.36,1)}
+/* view swaps inside the sheet (Edit bill ↔ Payment history ↔ Payment details).
+   navS() fades #sv and animates #sb's height; only the entering content animates itself. */
 .pcard{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards}
-@media (prefers-reduced-motion:reduce){#sheet.open>#sb.nav-in,.pcard{animation:none}}
+@media (prefers-reduced-motion:reduce){.pcard{animation:none}}
+
+/* subtle press feedback for the sheet's own controls (150-250ms) */
+#sb .sh-h .pill:active{transform:scale(.92)}
+#sb .sf .btn:active,#sb .btn.dng:active,#sb .btn.danger-t:active{transform:scale(.985)}
+.cfm-b .btn:active{transform:scale(.97)}
+@media (prefers-reduced-motion:reduce){#sb .sh-h .pill:active,#sb .sf .btn:active,#sb .btn.dng:active,#sb .btn.danger-t:active,.cfm-b .btn:active{transform:none}}
 
 /* payment details + tappable payment rows */
 #sb .pd-hero{animation:pgIn .24s cubic-bezier(.22,.61,.36,1) backwards}

@@ -2,8 +2,79 @@ function toast(m,ok){document.querySelectorAll('.toast').forEach(x=>x.remove());
 function fx(){const a=$('#app');a.classList.add('fx');clearTimeout(window._fx);window._fx=setTimeout(()=>a.classList.remove('fx'),800)}
 function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;const sn=window._seen=window._seen||{},re=sn[k];sn[k]=1;a.classList.remove('pg','pg2');void a.offsetWidth;a.classList.add(re?'pg2':'pg');if(!re)fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
 const flash=id=>{window._fl=id};
-function openS(h){clearTimeout(window._cl);document.body.classList.add('sheet-open');const e=$('#sheet');e.classList.remove('closing');$('#sb').innerHTML=h;e.classList.add('open')}
-function closeS(){const e=$('#sheet');if(!e.classList.contains('open'))return;e.classList.add('closing');clearTimeout(window._cl);window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open')},200)}
+/* ---- One stable modal shell: #sheet (dimmed backdrop + blur) > #sb (the container) > #sv (the
+   animated view). The backdrop and the container are built once. Moving between screens only
+   swaps #sv and resizes #sb, so the background never fades out and back in, the modal never
+   re-centres, and the container never jumps: the top edge is what animates. ---- */
+const SV_MS=300,        /* container resize */
+      SV_OUT=150,       /* current view leaving */
+      SV_IN=250,        /* new view arriving */
+      SV_EASE='cubic-bezier(.32,.72,.28,1)';
+let SVKEY='';           /* which screen #sv currently shows */
+const SVSC={},          /* per-screen scroll positions */
+      SVKEEP={};        /* screens whose scroll we restore when coming back */
+/* Drop every inline style the navigator set, so the shell is back to its stylesheet defaults. */
+function svSettle(sb){
+  sb=sb||$('#sb');if(!sb)return;
+  const sv=sb.firstElementChild;
+  if(sv){sv.style.transition='';sv.style.opacity='';sv.style.transform=''}
+  sb.style.transition='';sb.style.height='';sb.style.overflow='';
+}
+/* Update the content of the screen that is already open (the payment-history year filter) and
+   let the container glide to the new height instead of snapping. Keeps its own timer and bails
+   out if a screen swap takes over, so it can never fight navS(). */
+function svGlide(sb,apply,ms){
+  if(!sb)return;
+  ms=ms||220;
+  const h0=Math.round(sb.offsetHeight);
+  sb.style.transition='none';sb.style.height=h0+'px';sb.style.overflow='hidden';
+  apply();
+  sb.style.height='auto';
+  const target=Math.round(sb.offsetHeight);
+  if(Math.abs(target-h0)<2){                       /* nothing to glide: paint and stay unlocked */
+    clearTimeout(window._nr);window._nr=0;
+    sb.style.transition='';sb.style.height='';sb.style.overflow='';
+    return;
+  }
+  sb.style.height=h0+'px';void sb.offsetHeight;
+  sb.style.transition='height '+ms+'ms '+SV_EASE;
+  sb.style.height=target+'px';
+  clearTimeout(window._nr);
+  window._nr=setTimeout(()=>{window._nr=0;if(window._navBusy)return;sb.style.transition='';sb.style.height='';sb.style.overflow=''},ms+140);
+}
+/* Hold a restored scroll position while the container is still resizing, so an intermediate
+   height can never clamp it back to the top. Short-lived and cheap: one property write per frame. */
+function svHold(want,ms){
+  if(!(want>0))return;
+  window._svWant=want;window._svUntil=performance.now()+ms+140;
+  if(window._svRaf)return;
+  const tick=()=>{
+    window._svRaf=0;
+    const sb=$('#sb');
+    if(!sb||window._svWant<0)return;
+    if(sb.scrollTop!==window._svWant)sb.scrollTop=window._svWant;
+    if(performance.now()<window._svUntil)window._svRaf=requestAnimationFrame(tick);
+    else window._svWant=-1;
+  };
+  window._svRaf=requestAnimationFrame(tick);
+}
+function openS(h){
+  clearTimeout(window._cl);clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;
+  const e=$('#sheet'),sb=$('#sb');if(!e||!sb)return;
+  svSettle(sb);
+  SVKEY=window._svKey||'';window._svKey='';
+  document.body.classList.add('sheet-open');
+  e.classList.remove('closing');
+  sb.innerHTML='<div id="sv">'+h+'</div>';
+  sb.scrollTop=0;
+  e.classList.add('open');
+}
+function closeS(){
+  const e=$('#sheet');if(!e||!e.classList.contains('open'))return;
+  clearTimeout(window._cl);clearTimeout(window._nt);
+  e.classList.add('closing');
+  window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open');svSettle($('#sb'))},200);
+}
 /* Bundled payment-confirmation chime. Decoded once, then played sample-accurately so
    the sound lands the moment you tap Pay. Sound defaults on; Settings can mute it. */
 const PAY_SOUND_URL='assets/media/payment-confirm.mp3';

@@ -718,7 +718,7 @@ function initCardAnimations() {
     const f=flyer(card,to);
     card.style.visibility='hidden';setHide(id);
     sb.animate([{opacity:0},{opacity:1}],{duration:300,delay:40,easing:'ease-out',fill:'backwards'});
-    [].slice.call(sb.children).forEach(function(ch,i){
+    [].slice.call((sb.querySelector('#sv')||sb).children).forEach(function(ch,i){
       if(ch===card)return;
       ch.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:340,delay:180+Math.min(i,6)*40,easing:OUT,fill:'backwards'});
     });

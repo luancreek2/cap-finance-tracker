@@ -1610,18 +1610,59 @@ function billStatusChip(b){
   if(n===1)return '<span class="chip due">Due tomorrow</span>';
   return `<span class="chip due">Due in ${n} days</span>`;
 }
-/* swap the sheet's contents with a short transition (falls back to a fresh open) */
-function navS(html){
+/* Move between the connected screens inside the one sheet. The current view fades out, the
+   container resizes to whatever the incoming view needs, then that view fades in - so the
+   backdrop never resets and the modal never jumps. `key` names the screen; opts.keep makes
+   its scroll position come back when you return to it. */
+function navS(html,key,opts){
+  opts=opts||{};
   const sheet=$('#sheet'),sb=$('#sb');
-  if(!sheet||!sheet.classList.contains('open'))return openS(html);
-  clearTimeout(window._cl);
-  sb.innerHTML=html;sb.scrollTop=0;if(window.psEnhance)window.psEnhance();
-  if(!matchMedia('(prefers-reduced-motion:reduce)').matches){sb.classList.remove('nav-in');void sb.offsetWidth;sb.classList.add('nav-in');clearTimeout(window._nt);window._nt=setTimeout(()=>sb.classList.remove('nav-in'),300)}
+  if(!sheet||!sb||!sheet.classList.contains('open')){window._svKey=key||'';openS(html);return}
+  clearTimeout(window._cl);clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;
+  const busy=!!window._navBusy;window._navBusy=0;
+  if(SVKEY)SVSC[SVKEY]=sb.scrollTop;                    /* remember where we left the old screen */
+  SVKEY=key||'';
+  if(opts.keep)SVKEEP[SVKEY]=1;
+  const want=SVKEEP[SVKEY]?(SVSC[SVKEY]||0):0;          /* only restored screens keep their place */
+  const sv=sb.firstElementChild;
+  const sync=()=>{if(window.psEnhance)window.psEnhance()};
+  const settle=()=>{clearTimeout(window._nt);window._navBusy=0;svSettle(sb);sb.scrollTop=want};
+  if(!sv){sb.innerHTML='<div id="sv">'+html+'</div>';sync();svSettle(sb);sb.scrollTop=want;return}
+  const commit=()=>{
+    clearTimeout(window._nt);window._navBusy=0;
+    sv.innerHTML=html;sync();
+    sb.scrollTop=want;
+    sb.style.height='auto';                             /* let the incoming view size the container */
+    const target=Math.round(sb.offsetHeight);           /* already clamped to the viewport */
+    sb.style.height=h0+'px';void sb.offsetHeight;       /* pin the current height so the resize animates */
+    sv.style.transition='none';sv.style.opacity='0';sv.style.transform='translateY(9px) scale(.996)';
+    void sv.offsetHeight;                               /* flush the starting frame */
+    sb.style.transition='height '+SV_MS+'ms '+SV_EASE;
+    sv.style.transition='opacity '+SV_IN+'ms '+SV_EASE+' 40ms,transform '+SV_IN+'ms '+SV_EASE+' 40ms';
+    sb.style.height=target+'px';
+    sv.style.opacity='1';sv.style.transform='none';
+    svHold(want,SV_MS);
+    window._nt=setTimeout(settle,SV_MS+160);
+  };
+  const h0=Math.round(sb.offsetHeight);
+  if(busy)return commit();
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches){
+    sv.innerHTML=html;sync();svSettle(sb);sb.scrollTop=want;return;
+  }
+  /* keep the shell's size while the old view leaves, then hand over */
+  sb.style.transition='none';
+  sb.style.height=h0+'px';
+  sb.style.overflow='hidden';
+  sv.style.transition='opacity '+SV_OUT+'ms ease,transform '+SV_OUT+'ms ease';
+  sv.style.opacity='0';
+  sv.style.transform='translateY(-7px) scale(.995)';
+  window._navBusy=1;
+  window._nt=setTimeout(commit,SV_OUT);
 }
 function editBillSheet(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   const nd=bIso(nextDue(b)),fq=b.freq||'monthly',pays=billPayments(b),last=pays[0];
-  navS(`<div class="sh-h"><h2>Edit bill</h2>${billStatusChip(b)}</div><label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">Amount (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}"><label class="m">Due date</label><input id="eb-d" type="date" value="${nd}" data-o="${nd}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">Next due ${bDt(nd).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id})">Save changes</button></div>`);
+  navS(`<div class="sh-h"><h2>Edit bill</h2>${billStatusChip(b)}</div><label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">Amount (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}"><label class="m">Due date</label><input id="eb-d" type="date" value="${nd}" data-o="${nd}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">Next due ${bDt(nd).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id},this)">Save changes</button></div>`,'bill'+id);
 }
 /* ---- payment history: year filter + month groups (shared by bills and cards) ---- */
 const PH={},PHC={};
@@ -1642,7 +1683,13 @@ function payHistHtml(list,pick){
     +(years.length>1?`<div class="ph-years">${years.map(y=>`<button class="pill${y===sel?' on':''}" aria-pressed="${y===sel}" onclick="${pick.fn}(${pick.id},${y})">${y}</button>`).join('')}</div>`:'')
     +groups.map(g=>`<div class="ph-mo"><span class="eyebrow">${payMonthLbl(g.k)}</span><b>${php(g.total)}</b></div><div class="plist">${g.items.map(p=>payCardHtml(p,{logoHtml:p.logoHtml,onclick:p.onclick,delay:Math.min(ix++,5)*18})).join('')}</div>`).join('');
 }
-function phSwap(box,html){if(!box)return;box.innerHTML=html;if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;box.classList.remove('pg2');void box.offsetWidth;box.classList.add('pg2')}
+function phSwap(box,html){
+  if(!box)return;
+  const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches,sb=$('#sb');
+  const paint=()=>{box.innerHTML=html;if(!reduce){box.classList.remove('pg2');void box.offsetWidth;box.classList.add('pg2')}};
+  if(reduce||!sb)return paint();
+  svGlide(sb,paint,220);
+}
 function billHistBody(b){
   return payHistHtml(billPayments(b).map(p=>({d:p.d,amt:p.amt,acct:p.acct,acctName:p.acctName,due:p.due,logoHtml:bIc(b,'🧾'),onclick:`payDetail(${p.tx.id})`})),{year:PH[b.id],fn:'phY',id:b.id});
 }
@@ -1656,8 +1703,8 @@ function billBack(id){return `<button class="btn s" style="margin-top:10px;width
 function billHistory(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   const pays=billPayments(b),head=`<div class="sh-h"><button class="pill" aria-label="Back to bill" onclick="editBillSheet(${id})">‹</button><h2>Payment history</h2></div><p class="m ph-sub">${esc(b.name)}</p>`;
-  if(!pays.length)return navS(head+'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'+billBack(id));
-  navS(head+`<div id="ph-body">${billHistBody(b)}</div>`+(paidNow(b)?`<button class="btn s" style="margin-top:14px;width:100%" onclick="unpayBillAsk(${id})">Mark the latest payment as unpaid</button>`:'')+billBack(id));
+  if(!pays.length)return navS(head+'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'+billBack(id),'hist'+id,{keep:1});
+  navS(head+`<div id="ph-body">${billHistBody(b)}</div>`+(paidNow(b)?`<button class="btn s" style="margin-top:14px;width:100%" onclick="unpayBillAsk(${id})">Mark the latest payment as unpaid</button>`:'')+billBack(id),'hist'+id,{keep:1});
 }
 function payDetail(txId){
   const t=S.tx.find(x=>x.id==txId);if(!t)return;
@@ -1669,14 +1716,14 @@ function payDetail(txId){
     +`<div class="card" style="margin:0 0 12px">${R('Paid on',noteD(t.d))}${due?R('Original due date',noteD(due)):''}${R('Paid with',paySrcHtml(t.acct,t.acctName))}${t.desc?R('Note',esc(t.desc)):''}</div>`
     +`<button class="btn s" style="width:100%" onclick="editTx(${t.id})">Open in Activity</button>`
     +`${bill?`<button class="btn s dng" onclick="unpayFromDetail(${bill.id},${t.id})">Mark as unpaid</button>`:''}`
-    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back to payments</button>`);
+    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back to payments</button>`,'pd'+t.id);
 }
 function unpayFromDetail(bid,tid){
   const b=S.bills.find(x=>x.id==bid),t=S.tx.find(x=>x.id==tid);
   if(!b||!t)return;
   confirmBox('Mark this payment as unpaid?',b.name+' · '+php(Math.abs(t.amt))+' · '+noteD(t.d),()=>{undoBillPayment(b,t,t.billDue);closeS();render();toast('Bill marked unpaid')});
 }
-function saveBillEdit(id){
+function saveBillEdit(id,btn){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   const n=$('#eb-n').value.trim(),a=parseFloat($('#eb-a').value),dEl=$('#eb-d'),f=$('#eb-r').value;
   if(!n)return toast('Enter a name');
@@ -1685,7 +1732,13 @@ function saveBillEdit(id){
   b.name=n;b.amt=a;b.acct=+$('#eb-p').value||0;
   /* only re-anchor the schedule when the date or frequency was actually changed */
   if(dateChanged||freqChanged){const st=dEl.value||dEl.dataset.o;b.start=st;b.due=+st.slice(8,10);b.freq=f}
-  closeS();render();toast('Bill updated');
+  const done=()=>{closeS();render();toast('Bill updated',true)};
+  /* acknowledge the save on the button itself, then let the sheet go */
+  if(btn&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
+    btn.style.minWidth=btn.offsetWidth+'px';btn.disabled=true;btn.classList.add('paid-ok');
+    btn.innerHTML='<svg class="ck2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Saved';
+    setTimeout(done,420);
+  } else done();
 }
 function delBillAsk(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
@@ -1697,7 +1750,7 @@ function cardPayInfo(cid){
   const a=S.accts.find(x=>x.id==cid);if(!a)return;
   const open=outstandingCardStatements().find(x=>x.a.id==cid),nd=open?bDt(open.due):nextCardDue(a),amount=open?open.amount:dueAmt(a),R=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0"><span class="m">${l}</span><b style="text-align:right">${v}</b></div>`;
   const pays=S.xfer.filter(x=>x.to==cid);
-  navS(`<div class="sh-h"><h2>${esc(a.name)} Payment</h2></div><p class="m" style="font-size:13px">This payment comes from the card itself, so its name, amount and due date follow the card's settings.</p><div class="card" style="margin:0 0 12px">${R('Card',esc(a.name))}${open?R('Statement period',noteD(open.statement.c.st)+' – '+noteD(open.statement.c.en)):''}${R('Amount due',php(amount))}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}</div>${open?`<button class="btn" onclick="payCard(${a.id},1)">Pay statement</button> `:''}${pays.length?`<div id="ph-body">${cardHistBody(a)}</div>`:'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'}<button class="btn s" onclick="acctMenu(${a.id})">Edit card &amp; due date</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`);
+  navS(`<div class="sh-h"><h2>${esc(a.name)} Payment</h2></div><p class="m" style="font-size:13px">This payment comes from the card itself, so its name, amount and due date follow the card's settings.</p><div class="card" style="margin:0 0 12px">${R('Card',esc(a.name))}${open?R('Statement period',noteD(open.statement.c.st)+' – '+noteD(open.statement.c.en)):''}${R('Amount due',php(amount))}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}</div>${open?`<button class="btn" onclick="payCard(${a.id},1)">Pay statement</button> `:''}${pays.length?`<div id="ph-body">${cardHistBody(a)}</div>`:'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'}<button class="btn s" onclick="acctMenu(${a.id})">Edit card &amp; due date</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
 }
 function cardPayDetail(xid,cid){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;
@@ -1707,7 +1760,7 @@ function cardPayDetail(xid,cid){
     +`<div class="pd-hero"><div class="pd-h"><span class="ico">${c?cardLogo(c):'💳'}</span><div class="pd-tt"><b>${esc(c?c.name:'Card')}</b><small>Card payment</small></div></div><div class="pd-amt"><span class="pd-v">${php(x.amt)}</span><span class="chip ok">✓ Paid</span></div>${n==null?'':`<div class="pd-tm"><span class="chip ${n<0?'warn':'ok'}">${payTimingLabel(n)}</span></div>`}</div>`
     +`<div class="card" style="margin:0 0 12px">${R('Paid on',noteD(x.d))}${x.due?R('Statement due',noteD(x.due)):''}${R('Paid from',f?paySrcHtml(f.id):'Outside this app')}${x.note?R('Note',esc(x.note)):''}</div>`
     +`<button class="btn s dng" onclick="undoCardPay(${x.id},${cid})">Mark as unpaid</button>`
-    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="cardPayInfo(${cid})">‹ Back to payments</button>`);
+    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="cardPayInfo(${cid})">‹ Back to payments</button>`,'cpd'+x.id);
 }
 function undoCardPay(xid,cid){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;
