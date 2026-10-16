@@ -1914,52 +1914,45 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
     return r;
   }
 
-  /* ---------- status pill ---------- */
-  let pill = null, fadeT = null, status = "idle", cloud = false, lastErr = "";
-  function mkPill() {
+  /* ---------- status (shown inside Settings) ---------- */
+  let status = "idle", cloud = false, lastErr = "", lastS = "online", lastText = "";
+  function mkStyle() {
     const st = document.createElement("style");
     st.textContent =
-      "#capnet{position:fixed;left:14px;bottom:calc(78px + env(safe-area-inset-bottom,0px));z-index:7;display:flex;align-items:center;gap:6px;max-width:calc(100vw - 24px);padding:4px 9px;border-radius:99px;font:600 11px/1.2 -apple-system,'Segoe UI',Inter,Roboto,sans-serif;color:var(--mut);background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;opacity:0;transform:translateY(4px);transition:opacity .35s,transform .35s;-webkit-tap-highlight-color:transparent;pointer-events:none}" +
-      "#capnet.on{opacity:.95;transform:none;pointer-events:auto}#capnet.dim{opacity:.55}" +
-      "#capnet i{width:7px;height:7px;border-radius:50%;flex:none;background:var(--g)}" +
+      "#capnet{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:7px 12px;border-radius:99px;font:600 13px/1.2 -apple-system,'Segoe UI',Inter,Roboto,sans-serif;color:var(--tx);background:var(--bg);border:1px solid var(--line)}" +
+      "#capnet i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--g)}" +
       "#capnet[data-s=offline] i{background:#f59e0b}#capnet[data-s=error] i{background:var(--r)}" +
       "#capnet[data-s=syncing] i{background:#3b82f6;animation:capPulse 1s ease-in-out infinite}" +
-      "@keyframes capPulse{50%{opacity:.25;transform:scale(.7)}}@media (prefers-reduced-motion:reduce){#capnet[data-s=syncing] i{animation:none}}" +
-      "#capnet span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}";
+      "@keyframes capPulse{50%{opacity:.25;transform:scale(.7)}}@media (prefers-reduced-motion:reduce){#capnet[data-s=syncing] i{animation:none}}";
     document.head.appendChild(st);
-    pill = document.createElement("div");
-    pill.id = "capnet";
-    pill.setAttribute("role", "status");
-    pill.setAttribute("aria-live", "polite");
-    pill.innerHTML = "<i></i><span></span>";
-    pill.onclick = () => { if (typeof toast === "function") toast(explain()); sync(); };
-    document.body.appendChild(pill);
   }
   function explain() {
     const n = pendingCount();
-    if (!cloud) return "Saved on this device (works offline). Cross-device cloud sync isn't connected here.";
-    if (!navigator.onLine) return "Offline — " + (n ? n + " change" + (n == 1 ? "" : "s") + " saved on this device, will sync automatically." : "everything is saved on this device.");
-    if (status === "error") return "Sync failed (" + (lastErr || "network") + "). " + n + " change" + (n == 1 ? "" : "s") + " kept safely and will retry.";
-    return n ? n + " change" + (n == 1 ? "" : "s") + " waiting to sync." : "All changes synced.";
+    const s = n + " change" + (n == 1 ? "" : "s");
+    if (!cloud) return "Your data is saved on this device only and works offline. Nobody else can see it. Cross-device cloud sync isn't connected here.";
+    if (!navigator.onLine) return "You're offline. " + (n ? s + " saved on this device and will sync automatically when you're back online." : "Everything is saved on this device.");
+    if (status === "error") return "Sync failed (" + (lastErr || "network") + "). " + s + " kept safely on this device and will retry automatically.";
+    return (n ? s + " waiting to sync. " : "All changes synced. ") + "Your data is saved privately to your account and synced across your devices.";
   }
-  function show(s, text, hold) {
-    status = s;
-    if (!pill) return;
-    pill.dataset.s = s;
-    pill.querySelector("span").textContent = text;
-    pill.title = explain();
-    pill.classList.add("on");
-    pill.classList.remove("dim");
-    clearTimeout(fadeT);
-    if (hold) return;
-    fadeT = setTimeout(() => pill.classList.add("dim"), 2600);
+  function paint() {
+    const el = document.getElementById("capnet");
+    if (el) { el.dataset.s = lastS; el.querySelector("span").textContent = lastText; }
+    const nt = document.getElementById("capnet-note");
+    if (nt) nt.textContent = explain();
   }
+  function show(s, text) { status = s; lastS = s; lastText = text; paint(); }
   function refreshStatus() {
     const n = pendingCount(), p = n ? " · " + n + " pending" : "";
-    if (!navigator.onLine) return show("offline", cloud ? "Offline · saved on device" + p : "Offline · saved on device", true);
+    if (!navigator.onLine) return show("offline", "Offline · saved on device" + p);
     if (!cloud) return show("local", "Saved on this device");
-    if (status === "error") return show("error", "Sync paused" + p + " · retrying", true);
+    if (status === "error") return show("error", "Sync paused" + p + " · retrying");
     show("online", n ? "Online" + p : "Online · synced");
+  }
+  function settingsHtml() {
+    refreshStatus();
+    return '<div style="margin:0 0 8px"><div id="capnet" role="status" aria-live="polite" data-s="' + lastS + '"><i></i><span>' + lastText + "</span></div></div>" +
+      '<p class="m" id="capnet-note" style="font-size:13px">' + explain() + "</p>" +
+      (cloud ? '<button class="btn s" onclick="CapOff.sync()">Sync now</button> ' : "");
   }
 
   /* ---------- cloud sync ---------- */
@@ -1997,7 +1990,7 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
     try {
       cloud = await connect();
       if (!cloud) { refreshStatus(); return; }
-      show("syncing", "Syncing…", true);
+      show("syncing", "Syncing…");
       for (let attempt = 0; attempt < 4; attempt++) {
         const sj = J(api.get());
         const snap = JSON.parse(sj);
@@ -2012,7 +2005,7 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
           merged = normalize(remote);
         } else merged = normalize(mergeDoc(base, snap, normalize(remote)));
         const mj = J(merged);
-        if (mj.length > MAX_DOC) { show("error", "Too large to sync · saved on device", true); return; }
+        if (mj.length > MAX_DOC) { show("error", "Too large to sync · saved on device"); return; }
         if (mj !== rj) await withTO(DBD.set({ json: mj, t: now() }));
         const chk = await withTO(DBD.get());
         const cj = chk && chk.exists ? (chk.data() || {}).json : null;
@@ -2030,7 +2023,7 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
       fails = 0;
       status = "online";
       const left = pendingCount();
-      show(left ? "online" : "online", left ? "Online · " + left + " pending" : "Synced ✓");
+      show("online", left ? "Online · " + left + " pending" : "Synced ✓");
     } catch (e) {
       fails++;
       lastErr = (e && e.message) || "network";
@@ -2057,8 +2050,9 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
     sync,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
+    settingsHtml,
     async boot() {
-      mkPill();
+      mkStyle();
       let hadLS = false;
       try { hadLS = !!localStorage.getItem("pera"); } catch (e) {}
       const startMt = (api.get() || {})._mt || 0;
@@ -2084,7 +2078,7 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
   window.CapOff = CapOff;
 
   /* ---------- events ---------- */
-  addEventListener("online", () => { show("online", "Back online", true); sync(); });
+  addEventListener("online", () => { show("online", "Back online"); sync(); });
   addEventListener("offline", () => { refreshStatus(); });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { flush(); } else if (navigator.onLine) sync();
@@ -3375,7 +3369,7 @@ ${calH()}<p>${["All", "Expenses", "Income", "Upcoming"].map((f) => `<button clas
             )
             .join(
               "",
-            )}</p><p class="m" style="font-size:12px">Auto follows your device's light or dark setting.</p>${prefHtml()}<div class="eyebrow" style="margin:14px 0 6px">Categories</div><button class="btn s" onclick="catMgr()">Edit categories</button>${dataHtml()}<div class="eyebrow" style="margin:14px 0 6px">Privacy</div><p class="m" style="font-size:13px">${SYNC == "big" ? "Your data is too large to sync to your account (card photos or logos take space). It is saved on this device only." : SYNC == "cloud" ? "Your data is saved privately to your account and synced across your devices. Nobody else can see it, even if they open this page." : "Your data is saved on this device only. Nobody else can see it."}</p><button class="btn s" onclick="closeS()">Done</button> <button class="btn s" style="color:#ff453a" onclick="sure(this,()=>{S={accts:[],tx:[],bills:[],budgets:{},notes:[],goals:[],debts:[]};closeS();render()})">Reset all data</button>`,
+            )}</p><p class="m" style="font-size:12px">Auto follows your device's light or dark setting.</p>${prefHtml()}<div class="eyebrow" style="margin:14px 0 6px">Categories</div><button class="btn s" onclick="catMgr()">Edit categories</button>${dataHtml()}<div class="eyebrow" style="margin:14px 0 8px">Privacy &amp; sync</div>${window.CapOff ? CapOff.settingsHtml() : ""}<button class="btn s" onclick="closeS()">Done</button> <button class="btn s" style="color:#ff453a" onclick="sure(this,()=>{S={accts:[],tx:[],bills:[],budgets:{},notes:[],goals:[],debts:[]};closeS();render()})">Reset all data</button>`,
         );
       }
       function calH() {
