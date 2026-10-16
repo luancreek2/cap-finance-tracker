@@ -4218,7 +4218,8 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
         const b = S.bills.find((x) => x.id == id),
           a = S.accts.find((x) => x.id == +($("#bill-account") || {}).value);
         if (b) k = k || bIso(nextDue(b));
-        if (!b || bPaid(b, k) || !a) return;
+        if (!b || bPaid(b, k) || !a || window._paying) return;
+        window._paying = true;
         (b.paidOn = b.paidOn || []).push(k);
         b.paid = k.slice(0, 7); b.acct = a.id;
         S.tx.push({
@@ -4230,8 +4231,15 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
           note: b.name,
         });
         a.bal += a.type == "credit" ? b.amt : -b.amt;
-        closeS();
-        render();
+        save();
+        const btn = document.querySelector('#sb button[onclick^="confirmBillPay"]'),
+          done = () => { window._paying = false; closeS(); render(); toast("Paid · " + b.name, true); };
+        if (btn && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          btn.style.minWidth = btn.offsetWidth + "px";
+          btn.disabled = true; btn.classList.add("paid-ok");
+          btn.innerHTML = '<svg class="ck2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Paid';
+          setTimeout(done, 560);
+        } else done();
       }
 
 /* ===================== v1.01 additions ===================== */
@@ -4240,9 +4248,9 @@ const CS=()=>(CURS[S&&S.cur]||CURS.PHP)[0];
 function fmt(n){n=+n||0;const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0,v=Math.abs(n),r=d?Math.round(v*100)/100:Math.round(v);return(n<0&&r?'−':'')+c[0]+r.toLocaleString(c[1],{minimumFractionDigits:d,maximumFractionDigits:d})}
 function migrate(){S.pend=S.pend||[];S.xfer=S.xfer||[];S.cur=S.cur||'PHP';(S.accts||[]).forEach(a=>{if(a&&a.bank=='GCash'&&!a.photo&&(a.img=='gcashg'||/^GCash (Mastercard|Visa Debit|Visa Card)$/.test(a.name))){a.name='GCash Visa Card';a.type='ewallet';a.net='visa';a.img='gcashg';a.g=['#0b2a7a','#2f6fe0']}})}
 let _u=0;const uid=()=>Date.now()*1000+(++_u),dflt=b=>S.accts.find(a=>a.id==b.acct)||S.accts[0];
-function toast(m){const e=document.createElement('div');e.className='toast';e.setAttribute('role','status');e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.classList.add('x'),2300);setTimeout(()=>e.remove(),2600)}
+function toast(m,ok){document.querySelectorAll('.toast').forEach(x=>x.remove());const e=document.createElement('div');e.className='toast';e.setAttribute('role','status');if(ok)e.insertAdjacentHTML('beforeend','<svg class="tk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>');e.appendChild(document.createTextNode(m));document.body.appendChild(e);setTimeout(()=>e.classList.add('x'),2000);setTimeout(()=>e.remove(),2350)}
 function fx(){const a=$('#app');a.classList.add('fx');clearTimeout(window._fx);window._fx=setTimeout(()=>a.classList.remove('fx'),800)}
-function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;a.classList.remove('pg');void a.offsetWidth;a.classList.add('pg');fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
+function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;const sn=window._seen=window._seen||{},re=sn[k];sn[k]=1;a.classList.remove('pg','pg2');void a.offsetWidth;a.classList.add(re?'pg2':'pg');if(!re)fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
 const flash=id=>{window._fl=id};
 function openS(h){clearTimeout(window._cl);document.body.classList.add('sheet-open');const e=$('#sheet');e.classList.remove('closing');$('#sb').innerHTML=h;e.classList.add('open')}
 function closeS(){const e=$('#sheet');if(!e.classList.contains('open'))return;e.classList.add('closing');clearTimeout(window._cl);window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open')},200)}
@@ -4810,6 +4818,7 @@ window.localLog=function(q){
   if(note&&note==note.toLowerCase())note=note.replace(/\b[a-z]/g,c=>c.toUpperCase());
   const acct=ac||S.accts.find(a=>a.id==g0.hacct)||S.accts[0],cat=g0.cat;
   const id=addEntry({type:inc?'income':'expense',amount:amt,category:cat,note:note||cat,account_id:acct?acct.id:null,date:pd.d});
+  if(!id)return{reply:'That amount is zero, so nothing was logged. Try "'+(note||'Lunch')+' 250".',ids:[]};
   return{reply:`Logged ${inc?'income':'expense'} ${php(amt)}\n${note||cat} · ${cat}\n${acct?acct.name:'No account'} · ${dlab(pd.d)}${ac?'':'\n(Add a card name to pick another account, e.g. "'+(note||'Spotify')+' '+amt+' '+(S.accts[1]||S.accts[0]||{name:'BDO'}).name+'".)'}`,ids:id?[id]:[]};
 };
 })();
@@ -5220,9 +5229,8 @@ img,svg{-webkit-user-drag:none;user-drag:none}
           await Promise.race([CapOff.sync(), sleep(12000)]);
           const s = CapOff.status();
           if (s.cloud && s.status === "error") { state = "off"; msg = "Couldn't sync right now — your changes are safe on this device and will retry."; }
-          else if (!s.cloud) msg = "Refreshed";
-          else msg = "Up to date";
-        } else msg = "Refreshed";
+          else msg = "";
+        } else msg = "";
         try { render(); } catch (e) {} // redraw from the stored data (nothing is reloaded or erased)
       }
     } catch (e) { state = "off"; msg = "Couldn't refresh — your data is safe."; }
@@ -5312,5 +5320,19 @@ img,svg{-webkit-user-drag:none;user-drag:none}
 })();
 
 </script>
+<style id="cap-motion-css">
+.pg{animation:pgIn .3s cubic-bezier(.22,.61,.36,1) backwards}
+.pg2{animation:pgRe .2s cubic-bezier(.22,.61,.36,1) backwards}
+@keyframes pgIn{from{opacity:0;transform:translateY(6px)}}
+@keyframes pgRe{from{opacity:0;transform:translateY(2px)}}
+.toast{display:flex;align-items:center;gap:8px;animation:toastIn .28s cubic-bezier(.22,.61,.36,1);transition:opacity .3s ease,transform .3s ease}
+.toast.x{opacity:0;transform:translate(-50%,6px)}
+.toast .tk,.btn .ck2{width:16px;height:16px;flex:none}
+.btn .ck2{margin-right:6px;vertical-align:-3px}
+.tk path,.ck2 path{stroke-dasharray:24;stroke-dashoffset:24;animation:ckDraw .38s .06s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes ckDraw{to{stroke-dashoffset:0}}
+.btn.paid-ok{pointer-events:none;opacity:1;transition:background-color .25s ease,transform .25s ease;transform:scale(.985)}
+@media(prefers-reduced-motion:reduce){.pg,.pg2{animation:none}.tk path,.ck2 path{animation:none;stroke-dashoffset:0}}
+</style>
 </body>
 </html>
