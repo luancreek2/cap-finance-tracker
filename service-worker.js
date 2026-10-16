@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v9";
+const VERSION = "cap-shell-v20";
 const CORE = [
   "./index.html",
   "./manifest.json",
@@ -15,6 +15,7 @@ const MEDIA = [
   "./assets/icons/icon-192.png",
   "./assets/icons/icon-512.png",
   "./assets/icons/icon-512-maskable.png",
+  "./assets/media/payment-confirm.mp3",
   "./assets/media/media-01bcd366ea16.webp",
   "./assets/media/media-068255fe1779.png",
   "./assets/media/media-08b3cc0df3e1.webp",
@@ -46,6 +47,9 @@ const MEDIA = [
   "./assets/media/media-fb3475fba90a.webp",
 ];
 const APP = "./index.html";
+// The payment chime is fetched by code (not an <audio> element), so match it by path
+// to serve it from cache when the app is offline.
+const SOUND = ["./assets/media/payment-confirm.mp3"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -105,6 +109,8 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== self.location.origin) return; // never touch cross-origin / API traffic
   if (req.mode === "navigate") e.respondWith(navigate(req));
   else if (["style", "script", "image", "font", "manifest"].includes(req.destination)) e.respondWith(swr(req));
+  else if (["audio", "video"].includes(req.destination)) e.respondWith(swr(req));
+  else if (SOUND.some((u) => new URL(u, self.location.origin).pathname === url.pathname)) e.respondWith(swr(req));
   // everything else (fetch/XHR data calls) goes straight to the network
 });
 

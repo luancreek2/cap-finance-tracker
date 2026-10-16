@@ -4,17 +4,46 @@ function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._p
 const flash=id=>{window._fl=id};
 function openS(h){clearTimeout(window._cl);document.body.classList.add('sheet-open');const e=$('#sheet');e.classList.remove('closing');$('#sb').innerHTML=h;e.classList.add('open')}
 function closeS(){const e=$('#sheet');if(!e.classList.contains('open'))return;e.classList.add('closing');clearTimeout(window._cl);window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open')},200)}
-function playPaymentConfirmation(){
+/* Bundled payment-confirmation chime. Decoded once, then played sample-accurately so
+   the sound lands the moment you tap Pay. Sound defaults on; Settings can mute it. */
+const PAY_SOUND_URL='assets/media/payment-confirm.mp3';
+let payBuf=null,payCtx=null,payStart=0,payEnd=0,payLoading=0;
+function sndOn(){try{return S.snd!=0}catch(_){return true}}
+function decodeClip(ctx,ab){return new Promise((res,rej)=>{const p=ctx.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej);});}
+function primePaymentSound(){
   try{
-    const AudioCtx=window.AudioContext||window.webkitAudioContext;
-    if(AudioCtx){
-      const c=window._payAudio||(window._payAudio=new AudioCtx()),t=c.currentTime,g=c.createGain();
-      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.16,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+.48);g.connect(c.destination);
-      [[659.25,0,.18],[987.77,.11,.28]].forEach(([f,d,l])=>{const o=c.createOscillator(),v=c.createGain();o.type='sine';o.frequency.setValueAtTime(f,t+d);v.gain.setValueAtTime(.0001,t+d);v.gain.exponentialRampToValueAtTime(.7,t+d+.012);v.gain.exponentialRampToValueAtTime(.0001,t+d+l);o.connect(v);v.connect(g);o.start(t+d);o.stop(t+d+l+.02)});
-      if(c.state==='suspended')c.resume();
-    }
-    if(navigator.vibrate)navigator.vibrate([12,32,18]);
-  }catch(_){/* Payment must still complete if sound or haptics are unavailable. */}
+    if(payBuf||payLoading)return;
+    const OCTX=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+    if(!OCTX)return;
+    payLoading=1;
+    fetch(PAY_SOUND_URL).then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>decodeClip(new OCTX(1,1,48000),b)).then(buf=>{
+      const d=buf.getChannelData(0),sr=buf.sampleRate,n=d.length,win=Math.max(1,Math.round(sr*0.01)),env=[];
+      let peak=0;
+      for(let i=0;i<n;i+=win){let m=0;for(let j=i;j<Math.min(i+win,n);j++){const v=Math.abs(d[j]);if(v>m)m=v;}env.push(m);if(m>peak)peak=m;}
+      const thr=Math.max(0.02,peak*0.06),first=env.findIndex(v=>v>thr);
+      let last=-1;
+      for(let i=env.length-1;i>=0;i--){if(env[i]>thr){last=i;break;}}
+      // The source clip has dead air before and after the chime; trim it so playback is instant.
+      if(first>1)payStart=first*0.01;
+      payEnd=last>=first?(last+1)*0.01:buf.duration;
+      payBuf=buf;
+    }).catch(()=>{}).then(()=>{payLoading=0;});
+  }catch(_){/* Audio may be unavailable; payments must still work. */}
+}
+function playPaymentConfirmation(){
+  if(navigator.vibrate){try{navigator.vibrate([12,32,18])}catch(_){}}
+  if(!sndOn())return;
+  try{
+    primePaymentSound();
+    if(!payBuf)return;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    payCtx=payCtx||new AC();
+    if(payCtx.state==='suspended')payCtx.resume();
+    const src=payCtx.createBufferSource(),g=payCtx.createGain();
+    src.buffer=payBuf;g.gain.value=1;src.connect(g);g.connect(payCtx.destination);
+    src.start(payCtx.currentTime,payStart,Math.max(0.05,(payEnd||payBuf.duration)-payStart));
+  }catch(_){/* Payment must still complete if sound is blocked or unsupported. */}
 }
 document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))m.classList.remove('open')});
 
@@ -239,3 +268,4 @@ initCardAnimations();
 initTransactionNoSelection();
 initGlobalNoSelection();
 initPullToRefresh();
+primePaymentSound();

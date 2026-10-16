@@ -182,3 +182,22 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 @keyframes ckDraw{to{stroke-dashoffset:0}}
 .btn.paid-ok{transition:background-color .25s ease,transform .25s ease}
 @media(prefers-reduced-motion:reduce){.pg,.pg2{animation:none}.tk path,.ck2 path{animation:none}}
+
+/* view swaps inside the sheet (Edit bill ↔ Payment history ↔ Payment details) */
+#sheet.open>#sb.nav-in{animation:pgIn .22s cubic-bezier(.22,.61,.36,1)}
+.pcard{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards}
+@media (prefers-reduced-motion:reduce){#sheet.open>#sb.nav-in,.pcard{animation:none}}
+
+/* payment details + tappable payment rows */
+#sb .pd-hero{animation:pgIn .24s cubic-bezier(.22,.61,.36,1) backwards}
+.pd-r{animation:pgRe .2s cubic-bezier(.22,.61,.36,1) backwards}
+.pcard[role=button]{transition:transform .12s ease}
+.pcard[role=button]:active{transform:scale(.994)}
+#sb .ph-row{transition:transform .12s ease}
+#sb .ph-row:active{transform:scale(.995)}
+.ph-years .pill{transition:transform .12s ease,background-color .16s ease,border-color .16s ease}
+.ph-years .pill:active{transform:scale(.95)}
+@media (prefers-reduced-motion:reduce){
+  #sb .pd-hero,.pd-r{animation:none}
+  .pcard[role=button],#sb .ph-row,.ph-years .pill{transition:none}
+}

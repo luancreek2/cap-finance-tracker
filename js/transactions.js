@@ -26,6 +26,11 @@
           if (bOn(b, k))
             a.push({ c: "u", t: b.name + " Due (" + php(b.amt) + ")", kind: "bill", id: b.id });
         });
+        S.xfer
+          .filter((x) => x.d == k)
+          .forEach((x) =>
+            a.push({ c: "o", t: xName(acct(x.to), "Card") + " payment", kind: "xfer", id: x.id }),
+          );
         return a;
       }
       function rowH(k, e, j) {
@@ -34,6 +39,10 @@
           sub,
           am = "",
           actions = "";
+        if (e.kind == "xfer") {
+          const x = S.xfer.find((z) => z.id == e.id);
+          return x ? xRow(x) : "";
+        }
         if (e.kind == "tx") {
           o = S.tx.find((x) => x.id == e.id);
           ic = ti(o);
@@ -73,6 +82,7 @@
               .filter(
                 (x) =>
                   (x[0].kind != "tx" || k > today) &&
+                  x[0].kind != "xfer" &&
                   !(
                     x[0].kind == "bill" &&
                     bPaid(S.bills.find((b) => b.id == x[0].id), k)
@@ -107,9 +117,18 @@
         return o.slice(0, i2) + actGroups();
       }
       function actList() {
-        return [...S.tx]
+        const tx = [...S.tx],
+          xf = S.xfer.map(xfItem),
+          l =
+            filt == "Transfers"
+              ? xf
+              : filt == "Expenses"
+                ? tx.filter((t) => t.amt < 0)
+                : filt == "Income"
+                  ? tx.filter((t) => t.amt > 0)
+                  : [...tx, ...xf];
+        return l
           .sort((a, b) => b.d.localeCompare(a.d) || b.id - a.id)
-          .filter((t) => filt == "All" || (filt == "Expenses" ? t.amt < 0 : t.amt > 0))
           .filter(
             (t) => !q || (t.note + (t.desc||"")+t.cat + Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()),
           );
@@ -161,6 +180,7 @@
               .filter(
                 (x) =>
                   (x[0].kind != "tx" || k > today) &&
+                  x[0].kind != "xfer" &&
                   !(
                     x[0].kind == "bill" &&
                     bPaid(S.bills.find((b) => b.id == x[0].id), k)
@@ -180,6 +200,11 @@
       function evDetail(k, j) {
         const e = evs(k)[j];
         if (!e) return;
+        if (e.kind == "xfer") {
+          const x = S.xfer.find((z) => z.id == e.id);
+          if (x) cardPayDetail(x.id, x.to);
+          return;
+        }
         const tx = e.kind == "tx",
           o = tx
             ? S.tx.find((x) => x.id == e.id)
@@ -233,7 +258,7 @@ ${tx ? `<button class="btn s" style="width:100%;margin-bottom:8px" onclick="clos
         const m = mtx();
         return `<h1>Activity</h1><input id="activity-search" placeholder="Search title, description, category or amount" value="${esc(q)}" oninput="q=this.value;render();const i=$('#activity-search');i.focus();i.setSelectionRange(q.length,q.length)">
 <p><b>${new Date().toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</b> <span class="g">+${php(sum(m.filter((t) => t.amt > 0).map((t) => t.amt)))}</span> <span class="r">${php(-sum(m.filter((t) => t.amt < 0).map((t) => t.amt)))}</span> <span class="m">· ${m.length} entries</span></p>
-${calH()}<p>${["All", "Expenses", "Income", "Upcoming"].map((f) => `<button class="pill ${f == filt ? "on" : ""}" onclick="filt='${f}';sel='';render()">${f}</button>`).join(" ")}</p>
+${calH()}<p>${["All", "Expenses", "Income", "Transfers", "Upcoming"].map((f) => `<button class="pill ${f == filt ? "on" : ""}" onclick="filt='${f}';sel='';render()">${f}</button>`).join(" ")}</p>
 <div class="card">${l.map((t) => `<div class="row"><div class="ico">${ti(t)}</div><div class="f">${t.note || t.cat}<small>${t.cat} · ${acct(t.acct).name} · ${t.d}</small></div><b class="${t.amt > 0 ? "g" : "r"}">${t.amt > 0 ? "+" : ""}${php(t.amt)}</b><button class="pill dots" aria-label="Edit transaction" onclick="editTx(${t.id})">${DOTS}</button></div>`).join("") || '<p class="m">Nothing here yet.</p>'}</div>`;
       }
 
@@ -312,7 +337,7 @@ const f=txId?fTx(txId):null;if(txId&&!f)return;if(f&&!f.p)bApply(f.t,-1);
 const t=f?f.t:{id:uid()};S.tx=S.tx.filter(x=>x.id!=t.id);S.pend=S.pend.filter(x=>x.id!=t.id);
 Object.assign(t,{d:date,amt:s*a,cat:$('#ct').value,acct:id,note:$('#nt').value,desc:($('#ds')?$('#ds').value.trim():'')});if(pd)t.pd=pd;else delete t.pd;
 (pend?S.pend:S.tx).push(t);if(!pend)bApply(t,1);closeS();flash(t.id);render();toast(txId?'Transaction updated':pend?'Saved as pending':'Transaction added')}
-function delTx(id){const f=fTx(id);if(!f)return;const go=()=>{if(!f.p)bApply(f.t,-1);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast('Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
+function delTx(id){const f=fTx(id);if(!f)return;const go=()=>{if(!f.p)bApply(f.t,-1);const b=billForTx(f.t);if(b)billUnmark(b,f.t);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast(b?'Deleted — bill marked unpaid':'Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
 
 /* ---- delete confirmation dialog */
 function confirmBox(title,sub,ok){
@@ -385,11 +410,24 @@ function askDel(id){const f=fTx(id);if(!f)return;confirmBox('Are you sure you wa
 })();
 function postTx(id){const f=fTx(id);if(!f||!f.p)return;openS(`<h2>Mark as posted</h2><p class="m">${esc(f.t.note||f.t.cat)} · ${php(f.t.amt)}</p><label class="m">Posting date (decides the billing cycle)</label><input id="pdx" type="date" min="${f.t.d}" value="${today<f.t.d?f.t.d:today}"><button class="btn" onclick="postOk(${id})">Confirm posted</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
 function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);bApply(f.t,1);closeS();flash(id);render();toast('Posted · balance updated')}
-function rowT(t){const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
+/* Card payments are saved as transfers (S.xfer), not transactions: the money moves
+   onto a card without being new spending, so Activity lists them but they never add
+   to day, month or category totals. */
+function xName(a, dflt) { return a && a.name && a.name != "—" ? a.name : dflt; }
+function xfItem(x) {
+  const c = acct(x.to), f = acct(x.from);
+  return { id: x.id, d: x.d, transfer: true, x, amt: 0, to: x.to, from: x.from,
+    note: xName(c, "Card") + " payment", cat: "Transfer", desc: xName(f, "") };
+}
+function xRow(x) {
+  const c = acct(x.to), f = acct(x.from);
+  return `<div class="row" style="cursor:pointer" onclick="cardPayDetail(${x.id},${x.to})"><div class="ico">${cardLogo(c) || "💳"}</div><div class="f">${esc(xName(c, "Card") + " payment")}<span class="tag">Transfer</span><small>Transfer · from ${esc(xName(f, "Outside this app"))}</small></div><b class="m">${php(x.amt)}</b></div>`;
+}
+function rowT(t){if(t.transfer)return xRow(t.x);const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
 function actGroups(){const l=actList(),g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
-const pl=S.pend.filter(t=>(filt=='All'||(filt=='Expenses'?t.amt<0:t.amt>0))&&(!q||(t.note+(t.desc||"")+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>b.d.localeCompare(a.d)),
+const pl=S.pend.filter(t=>(filt=='All'||(filt=='Expenses'?t.amt<0:filt=='Income'?t.amt>0:false))&&(!q||(t.note+(t.desc||"")+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>b.d.localeCompare(a.d)),
 ph=pl.length?`<div style="display:flex;justify-content:space-between;margin:18px 4px 6px"><b>Pending · not posted</b><span class="m" style="font-size:13px">${pl.length} · not in balances</span></div><div class="card" style="padding:2px 14px">${pl.map(rowT).join('')}</div>`:'';
-return ph+(Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),k>today?'Planned':(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')||(ph?'':'<p class="m">Nothing here yet.</p>'))}
+return ph+(Object.keys(g).sort().reverse().map(k=>{const txs=g[k].filter(t=>!t.transfer),tot=sum(txs.map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),k>today?'Planned':txs.length?(tot<0?'−':'+')+php(Math.abs(tot)):'')}).join('')||(ph?'':'<p class="m">Nothing here yet.</p>'))}
 
 
 function initTransactionV2() {

@@ -382,7 +382,7 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
                 : "Bank account"),
           options = S.accts.map((a) => `<option value="${a.id}" ${a.id == b.acct ? "selected" : ""}>${method(a)}</option>`).join("");
         openS(
-          `<h2>Pay ${esc(b.name)}</h2><p class="m">Choose the account or card to pay from.</p>${S.accts.length ? `<select id="bill-account" onchange="billPayPreview(${id})">${options}</select>` : '<p class="r">Add an account or card before paying a bill.</p>'}<div class="card" id="bill-preview" style="margin:0 0 12px"><div class="eyebrow">Payment summary</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span id="bill-method">${esc(dflt(b) ? method(dflt(b)) : "No account selected")}</span><b>${php(b.amt)}</b></div></div><button class="btn" ${S.accts.length ? "" : "disabled"} onclick="confirmBillPay(${id},${k ? `'${k}'` : 'null'})">Confirm payment</button> <button class="btn s" onclick="closeS()">Cancel</button>`,
+          `<h2>Pay ${esc(b.name)}</h2><p class="m">Choose the account or card to pay from.</p>${S.accts.length ? `<select id="bill-account" onchange="billPayPreview(${id})">${options}</select>` : '<p class="r">Add an account or card before paying a bill.</p>'}<input id="bill-note" maxlength="80" placeholder="Note (optional)"><div class="card" id="bill-preview" style="margin:0 0 12px"><div class="eyebrow">Payment summary</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px"><span id="bill-method">${esc(dflt(b) ? method(dflt(b)) : "No account selected")}</span><b>${php(b.amt)}</b></div></div><button class="btn" ${S.accts.length ? "" : "disabled"} onclick="confirmBillPay(${id},${k ? `'${k}'` : 'null'})">Confirm payment</button> <button class="btn s" onclick="closeS()">Cancel</button>`,
         );
       }
       function billPayPreview(id) {
@@ -410,6 +410,10 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
           cat: "Bills",
           acct: a.id,
           note: b.name,
+          billId: b.id,
+          billDue: k,
+          acctName: a.name,
+          desc: (($("#bill-note") || {}).value || "").trim(),
         });
         a.bal += a.type == "credit" ? b.amt : -b.amt;
         save();
@@ -460,10 +464,80 @@ function billH(a){const i=BC[a.id]||0,s=cSum(a,i),c=s.c,pn=S.pend.filter(t=>t.ac
 L=e=>e.t?rowT(e.t):`<div class="row"><div class="ico">💸</div><div class="f">Payment${e.x.from?' from '+esc(acct(e.x.from).name):''}<small>${noteD(e.x.d)}</small></div><b class="g">+${php(e.x.amt)}</b><button class="pill" onclick="sure(this,()=>delPay(${e.x.id}))">✕</button></div>`,
 G=(t,l)=>l.length?`<div class="eyebrow" style="margin:12px 0 4px">${t} · ${l.length}</div><div class="card" style="padding:2px 14px">${l.map(L).join('')}</div>`:'';
 return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(a.name)}</div>${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',php(c.open?balAt(a,c.en):s.close))}${R('Opening balance',php(s.open))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',php(s.due),s.due?'r':'g')+(s.paid?R('Paid since closing',php(s.paid),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
-      function payCard(id,cycleIndex){const a=acct(id),i=cycleIndex==null?Math.max(1,BC[id]||0):cycleIndex,s=a.stmt?cSum(a,i):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${php(a.bal)}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${php(x.bal)}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
+      function payCard(id,cycleIndex){const a=acct(id),i=cycleIndex==null?Math.max(1,BC[id]||0):cycleIndex,s=a.stmt?cSum(a,i):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${php(a.bal)}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${php(x.bal)}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><input id="pc-note" maxlength="80" placeholder="Note (optional)"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
 function payOk(id){const a=acct(id),m=+$('#pa').value,f=S.accts.find(z=>z.id==+$('#pf').value);if(!(m>0))return toast('Enter a payment amount');if(m>a.bal+.005)return toast('Payment is more than the amount owed');
-      S.xfer.push({id:uid(),d:$('#pdd').value||today,amt:m,from:f?f.id:0,to:id});a.bal-=m;if(f)f.bal-=m;playPaymentConfirmation();render();acctMenu(id);toast('Payment recorded',true)}
+      S.xfer.push({id:uid(),d:$('#pdd').value||today,amt:m,from:f?f.id:0,to:id,due:(outstandingCardStatements().find(x=>x.a.id==id)||{}).due||"",note:(($('#pc-note')||{}).value||'').trim()});a.bal-=m;if(f)f.bal-=m;playPaymentConfirmation();render();acctMenu(id);toast('Payment recorded',true)}
 function delPay(id){const x=S.xfer.find(z=>z.id==id);if(!x)return;const c=S.accts.find(z=>z.id==x.to),f=S.accts.find(z=>z.id==x.from);if(c)c.bal+=x.amt;if(f)f.bal+=x.amt;S.xfer=S.xfer.filter(z=>z.id!=id);render();acctMenu(x.to);toast('Payment removed')}
+
+/* ---- bill payment history + undo ------------------------------------------
+   New payments carry billId/due, so they are matched exactly. Payments made before
+   this existed have no link, so they are matched by name, Bills category and a
+   due date close to the day the money left — good enough to undo an old one. */
+function billTxMatches(b,t){
+  if(!t)return false;
+  if(t.billId!=null)return t.billId==b.id;
+  if(t.cat!="Bills"||!t.note||t.note!=b.name)return false;
+  const td=bDt(t.d);
+  return (b.paidOn||[]).some(k=>Math.abs(bDt(k)-td)<=40*864e5);
+}
+function billForTx(t){
+  if(!t)return null;
+  if(t.billId!=null)return S.bills.find(x=>x.id==t.billId)||null;
+  return S.bills.filter(x=>billTxMatches(x,t))[0]||null;
+}
+/* Due date shown for a payment: the cycle stored at pay time, or a same-month entry
+   from the bill's paid history. A vague match is left blank rather than guessed. */
+function billDueShown(b,t){
+  if(t.billDue)return t.billDue;
+  const k=billDueKeyFor(b,t);
+  return k&&String(k).slice(0,7)==String(t.d).slice(0,7)?k:"";
+}
+function billPayments(b){
+  return S.tx.filter(t=>billTxMatches(b,t))
+    .map(t=>({tx:t,d:t.d,amt:Math.abs(t.amt),acct:t.acct,acctName:t.acctName,due:billDueShown(b,t),linked:t.billId!=null}))
+    .sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.tx.id-x.tx.id);
+}
+/* Which due-date entry on the bill a payment cleared. */
+function billDueKeyFor(b,t){
+  if(t.billDue)return t.billDue;
+  const on=(b.paidOn||[]).slice().sort();
+  if(!on.length)return null;
+  if(on.includes(t.d))return t.d;
+  const same=on.filter(k=>k.slice(0,7)==String(t.d).slice(0,7));
+  if(same.length)return same[same.length-1];
+  const before=on.filter(k=>k<=t.d);
+  return before.length?before[before.length-1]:on[on.length-1];
+}
+function billRecomputePaid(b){
+  const on=(b.paidOn||[]).slice().sort();
+  b.paid=on.length&&(b.freq||"monthly")=="monthly"?on[on.length-1].slice(0,7):"";
+}
+/* Clear a bill's paid mark for the period a payment covered (no balance change). */
+function billUnmark(b,t,dueKey){
+  if(!b||!t)return;
+  const k=dueKey||billDueKeyFor(b,t);
+  b.paidOn=(b.paidOn||[]).filter(x=>x!=k);
+  billRecomputePaid(b);
+}
+/* Undo a whole payment: reverse the balance, drop the transaction, unmark the bill. */
+function undoBillPayment(b,t,dueKey){
+  if(!b||!t)return;
+  const a=S.accts.find(x=>x.id==t.acct);
+  if(a)a.bal-=a.type=="credit"?-t.amt:t.amt;
+  S.tx=S.tx.filter(x=>x.id!=t.id);S.pend=S.pend.filter(x=>x.id!=t.id);
+  billUnmark(b,t,dueKey);
+}
+function unpayBillAsk(id){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  const pays=billPayments(b);
+  if(!pays.length){
+    const rest=(b.paidOn||[]).slice().sort();rest.pop();
+    confirmBox('Mark this bill as unpaid?',b.name+' · '+php(b.amt),()=>{b.paidOn=rest;billRecomputePaid(b);closeS();render();toast('Bill marked unpaid')});
+    return;
+  }
+  const last=pays[0];
+  confirmBox('Mark this payment as unpaid?',b.name+' · '+php(last.amt)+' · '+noteD(last.d),()=>{undoBillPayment(b,last.tx,last.due);closeS();render();toast('Bill marked unpaid')});
+}
 /* ---- card menu (rename / edit hidden behind ⋯) */
 function acctMenu(id){const a=acct(id),cr=a.type=='credit';openS(`<div style="display:flex;justify-content:flex-end;position:relative;margin-bottom:6px"><button class="pill" aria-label="Card options" aria-haspopup="menu" onclick="event.stopPropagation();kebab()">⋯</button><div id="km" class="menu" role="menu"><button role="menuitem" onclick="kebab(1);showEd()">✎ Rename / edit card</button></div></div>${cardH(a,1,1)}${acctTx(id)}<div id="edc" style="display:none"><h2 style="margin:22px 0 8px">Edit · ${esc(a.name)}</h2><label class="m">Card name</label><input id="cnm" maxlength="40" value="${esc(a.name)}"><label class="m">${cr?'Amount owed':'Balance'}</label><input id="nb" type="number" value="${a.bal}"><label class="m">Last 4 digits</label><input id="l4e" maxlength="4" value="${esc(a.l4||'')}" placeholder="Optional">${cr?`<label class="m">Credit limit</label><input id="cl" type="number" value="${a.lim||''}" placeholder="Not set">${dpick('sd','Statement closing date',a.stmt)}${dueBox(a)}`:''}<button class="btn" onclick="saveCard(${id})">Save</button> <button class="btn s" onclick="sure(this,()=>{S.accts=S.accts.filter(x=>x.id!=${id});closeS();render()})">Remove</button></div>`)}
 function kebab(c){const m=$('#km');if(m)m.classList.toggle('open',!c&&!m.classList.contains('open'))}
