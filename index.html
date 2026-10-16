@@ -1726,6 +1726,396 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
     </button>
     <div id="pop" onclick="if (event.target === this) popX();"><div id="pp"></div></div>
     <div id="sheet" onclick="if (event.target === this) closeS();"><div id="sb"></div></div>
+    <script id="cap-offline">
+/* ===== Cap offline layer: IndexedDB persistence, 3-way merge sync, status pill, PWA wiring ===== */
+(function () {
+  "use strict";
+  const J = JSON.stringify;
+  const eq = (a, b) => J(a) === J(b);
+  const clone = (o) => JSON.parse(J(o));
+  const now = () => Date.now();
+  const LIST_KEYS = ["accts", "tx", "pend", "xfer", "bills", "goals", "debts"];
+  const MAX_DOC = 235000; // existing cloud document size cap
+
+  /* ---------- IndexedDB (key/value) ---------- */
+  let dbp = null;
+  function idb() {
+    if (dbp) return dbp;
+    dbp = new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open("cap-finance", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+    dbp.catch(() => { dbp = null; });
+    return dbp;
+  }
+  const idbGet = (k) => idb().then((d) => new Promise((res, rej) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
+  const idbPut = (k, v) => idb().then((d) => new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
+
+  /* ---------- helpers ---------- */
+  const isList = (...vs) => vs.some(Array.isArray) && vs.every((v) => v === undefined || (Array.isArray(v) && v.every((x) => x && typeof x === "object" && "id" in x)));
+  const isMap = (v) => v && typeof v === "object" && !Array.isArray(v);
+  const r2 = (n) => Math.round(n * 100) / 100;
+
+  /* ---------- three-way merge ---------- */
+  // record-level: field by field; conflicting field -> record edited most recently (_u) wins
+  function mergeRec(b, l, r) {
+    const out = {}, lw = (l._u || 0) >= (r._u || 0);
+    const keys = new Set([...Object.keys(b || {}), ...Object.keys(l), ...Object.keys(r)]);
+    keys.delete("_u");
+    keys.forEach((k) => {
+      const bv = b ? b[k] : undefined, lv = l[k], rv = r[k];
+      let v;
+      if (eq(lv, rv)) v = lv; else if (eq(lv, bv)) v = rv; else if (eq(rv, bv)) v = lv; else v = lw ? lv : rv;
+      if (v !== undefined) out[k] = v;
+    });
+    const u = Math.max(l._u || 0, r._u || 0);
+    if (u) out._u = u;
+    return out;
+  }
+  function mergeList(b, l, r) {
+    const key = (x) => String(x.id);
+    const M = (a) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); return m; };
+    const bm = M(b), lm = M(l), rm = M(r);
+    const lOrderChanged = !eq(l.filter((x) => bm.has(key(x))).map(key), b.filter((x) => lm.has(key(x))).map(key));
+    const order = lOrderChanged ? [...l, ...r] : [...r, ...l];
+    const seen = new Set(), out = [];
+    order.forEach((it) => {
+      const k = key(it);
+      if (seen.has(k)) return;
+      seen.add(k);
+      const bi = bm.get(k), li = lm.get(k), ri = rm.get(k);
+      let v;
+      if (li && ri) v = eq(li, ri) ? li : bi && eq(li, bi) ? ri : bi && eq(ri, bi) ? li : mergeRec(bi, li, ri);
+      else if (li) v = bi && eq(li, bi) ? null /* deleted remotely, untouched locally */ : li; // edited-vs-deleted keeps the edit
+      else v = bi && eq(ri, bi) ? null : ri;
+      if (v) out.push(v);
+    });
+    return out;
+  }
+  function mergeNotes(bv, lv, rv, lw) {
+    if (eq(lv, rv)) return lv;
+    if (eq(lv, bv)) return rv;
+    if (eq(rv, bv)) return lv;
+    const a = String(lv || ""), c = String(rv || "");
+    if (a.includes(c)) return a;
+    if (c.includes(a)) return c;
+    const [win, lose] = lw ? [a, c] : [c, a];
+    return win + "\n\n— also edited on another device —\n" + lose; // never silently drop a note edit
+  }
+  function mergeDoc(b, l, r) {
+    b = b || {};
+    const out = {}, lw = (l._mt || 0) >= (r._mt || 0);
+    const keys = new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)]);
+    keys.delete("_mt");
+    keys.forEach((k) => {
+      const bv = b[k], lv = l[k], rv = r[k];
+      let v;
+      if (isList(bv, lv, rv)) v = mergeList(bv || [], lv || [], rv || []);
+      else if (k === "notes") v = mergeNotes(bv, lv, rv, lw);
+      else if (isMap(lv) || isMap(rv)) {
+        v = {};
+        const mk = new Set([...Object.keys(bv || {}), ...Object.keys(lv || {}), ...Object.keys(rv || {})]);
+        mk.forEach((q) => {
+          const x = (bv || {})[q], y = (lv || {})[q], z = (rv || {})[q];
+          const w = eq(y, z) ? y : eq(y, x) ? z : eq(z, x) ? y : lw ? y : z;
+          if (w !== undefined) v[q] = w;
+        });
+      } else v = eq(lv, rv) ? lv : eq(lv, bv) ? rv : eq(rv, bv) ? lv : lw ? lv : rv;
+      if (v !== undefined) out[k] = v;
+    });
+    reconcileBalances(b, l, r, out);
+    out._mt = Math.max(l._mt || 0, r._mt || 0, b._mt || 0);
+    return out;
+  }
+  // Balances are derived: base + effect of merged tx/payments + each side's manual (non-tx) adjustments.
+  // This keeps balances / owed amounts / available credit consistent whichever side "won" a conflict.
+  function eff(doc, a) {
+    let s = 0;
+    const sign = a.type === "credit" ? -1 : 1;
+    (doc.tx || []).forEach((t) => { if (t.acct == a.id) s += sign * (+t.amt || 0); });
+    (doc.xfer || []).forEach((x) => { if (x.to == a.id) s -= +x.amt || 0; if (x.from == a.id) s -= +x.amt || 0; });
+    return s;
+  }
+  function reconcileBalances(b, l, r, out) {
+    const idx = (d) => new Map((d.accts || []).map((a) => [String(a.id), a]));
+    const bi = idx(b), li = idx(l), ri = idx(r);
+    (out.accts || []).forEach((a) => {
+      const k = String(a.id), ba = bi.get(k), la = li.get(k), ra = ri.get(k);
+      if (!ba || !la || !ra) return; // added/removed on one side: its own balance stands
+      const eb = eff(b, a), el = eff(l, a), er = eff(r, a), em = eff(out, a);
+      const resL = (+la.bal || 0) - (+ba.bal || 0) - (el - eb);
+      const resR = (+ra.bal || 0) - (+ba.bal || 0) - (er - eb);
+      a.bal = r2((+ba.bal || 0) + (em - eb) + resL + resR);
+    });
+  }
+
+  /* ---------- change tracking (per-record timestamps, pending count) ---------- */
+  let recMap = new Map(), topJ = "", api = null;
+  const strip = (k, v) => (k === "_u" || k === "_mt" ? undefined : v);
+  function snapshotRecs(S) {
+    const m = new Map();
+    LIST_KEYS.forEach((k) => (S[k] || []).forEach((x) => m.set(k + ":" + x.id, J(x, strip))));
+    return m;
+  }
+  const topOnly = (S) => { const o = {}; Object.keys(S).forEach((k) => { if (!Array.isArray(S[k]) || !isList(S[k])) o[k] = S[k]; }); return J(o, strip); };
+  function stamp() {
+    const S = api.get(), t = now();
+    let changed = false;
+    const m = new Map();
+    Object.keys(S).forEach((k) => {
+      if (!Array.isArray(S[k]) || !isList(S[k])) return;
+      S[k].forEach((x) => {
+        const key = k + ":" + x.id, s = J(x, strip);
+        if (recMap.get(key) !== s) { x._u = t; changed = true; }
+        m.set(key, s);
+      });
+    });
+    if (m.size !== recMap.size) changed = true;
+    const tj = topOnly(S);
+    if (tj !== topJ) changed = true;
+    recMap = m; topJ = tj;
+    if (changed) S._mt = t;
+  }
+  function resetTracking() { const S = api.get(); recMap = snapshotRecs(S); topJ = topOnly(S); }
+  function pendingCount() {
+    if (!base) return 0;
+    const S = api.get();
+    const a = snapshotRecs(S), b = snapshotRecs(base);
+    let n = 0;
+    a.forEach((v, k) => { if (b.get(k) !== v) n++; });
+    b.forEach((v, k) => { if (!a.has(k)) n++; });
+    if (topOnly(S) !== topOnly(base)) n++;
+    return n;
+  }
+
+  /* ---------- persistence ---------- */
+  let base = null, pt = null, lsBase = null;
+  function persist() {
+    try { lsBase = J(api.get()); } catch (e) {}
+    clearTimeout(pt);
+    pt = setTimeout(flush, 120);
+  }
+  function flush() {
+    clearTimeout(pt);
+    if (!api) return Promise.resolve();
+    const S = api.get();
+    return idbPut("state", { json: J(S), mt: S._mt || 0 }).catch(() => {});
+  }
+  const saveBase = () => idbPut("base", base ? J(base) : null).catch(() => {});
+  function lsWrite() { try { localStorage.setItem("pera", J(api.get())); } catch (e) {} }
+  function normalize(r) {
+    LIST_KEYS.forEach((k) => (r[k] = Array.isArray(r[k]) ? r[k] : []));
+    r.budgets = r.budgets || {};
+    r.cur = r.cur || "PHP";
+    return r;
+  }
+
+  /* ---------- status pill ---------- */
+  let pill = null, fadeT = null, status = "idle", cloud = false, lastErr = "";
+  function mkPill() {
+    const st = document.createElement("style");
+    st.textContent =
+      "#capnet{position:fixed;left:14px;bottom:calc(78px + env(safe-area-inset-bottom,0px));z-index:7;display:flex;align-items:center;gap:6px;max-width:calc(100vw - 24px);padding:4px 9px;border-radius:99px;font:600 11px/1.2 -apple-system,'Segoe UI',Inter,Roboto,sans-serif;color:var(--mut);background:color-mix(in srgb,var(--card) 88%,transparent);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;opacity:0;transform:translateY(4px);transition:opacity .35s,transform .35s;-webkit-tap-highlight-color:transparent;pointer-events:none}" +
+      "#capnet.on{opacity:.95;transform:none;pointer-events:auto}#capnet.dim{opacity:.55}" +
+      "#capnet i{width:7px;height:7px;border-radius:50%;flex:none;background:var(--g)}" +
+      "#capnet[data-s=offline] i{background:#f59e0b}#capnet[data-s=error] i{background:var(--r)}" +
+      "#capnet[data-s=syncing] i{background:#3b82f6;animation:capPulse 1s ease-in-out infinite}" +
+      "@keyframes capPulse{50%{opacity:.25;transform:scale(.7)}}@media (prefers-reduced-motion:reduce){#capnet[data-s=syncing] i{animation:none}}" +
+      "#capnet span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}";
+    document.head.appendChild(st);
+    pill = document.createElement("div");
+    pill.id = "capnet";
+    pill.setAttribute("role", "status");
+    pill.setAttribute("aria-live", "polite");
+    pill.innerHTML = "<i></i><span></span>";
+    pill.onclick = () => { if (typeof toast === "function") toast(explain()); sync(); };
+    document.body.appendChild(pill);
+  }
+  function explain() {
+    const n = pendingCount();
+    if (!cloud) return "Saved on this device (works offline). Cross-device cloud sync isn't connected here.";
+    if (!navigator.onLine) return "Offline — " + (n ? n + " change" + (n == 1 ? "" : "s") + " saved on this device, will sync automatically." : "everything is saved on this device.");
+    if (status === "error") return "Sync failed (" + (lastErr || "network") + "). " + n + " change" + (n == 1 ? "" : "s") + " kept safely and will retry.";
+    return n ? n + " change" + (n == 1 ? "" : "s") + " waiting to sync." : "All changes synced.";
+  }
+  function show(s, text, hold) {
+    status = s;
+    if (!pill) return;
+    pill.dataset.s = s;
+    pill.querySelector("span").textContent = text;
+    pill.title = explain();
+    pill.classList.add("on");
+    pill.classList.remove("dim");
+    clearTimeout(fadeT);
+    if (hold) return;
+    fadeT = setTimeout(() => pill.classList.add("dim"), 2600);
+  }
+  function refreshStatus() {
+    const n = pendingCount(), p = n ? " · " + n + " pending" : "";
+    if (!navigator.onLine) return show("offline", cloud ? "Offline · saved on device" + p : "Offline · saved on device", true);
+    if (!cloud) return show("local", "Saved on this device");
+    if (status === "error") return show("error", "Sync paused" + p + " · retrying", true);
+    show("online", n ? "Online" + p : "Online · synced");
+  }
+
+  /* ---------- cloud sync ---------- */
+  let DBD = null, syncing = false, again = false, retryT = null, fails = 0;
+  const withTO = (p, ms = 10000) => Promise.race([Promise.resolve(p), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+  async function connect() {
+    if (DBD) return true;
+    if (typeof claude === "undefined") return false;
+    const u = await withTO(claude.use("user")), db = await withTO(claude.use("db"));
+    if (!u || !db) return false;
+    const id = await withTO(u.id());
+    if (!id) return false;
+    DBD = db.collection("data/users/" + id).doc("app");
+    return true;
+  }
+  function scheduleRetry() {
+    clearTimeout(retryT);
+    const wait = Math.min(300000, 4000 * Math.pow(2, Math.min(fails, 7)));
+    retryT = setTimeout(() => sync(), wait);
+  }
+  function applyLocal(next, rerender) {
+    api.set(next);
+    resetTracking();
+    lsBase = J(next);
+    lsWrite();
+    flush();
+    if (rerender && typeof render === "function") { try { render(); } catch (e) {} }
+  }
+  async function sync() {
+    if (!api) return;
+    if (syncing) { again = true; return; }
+    if (!navigator.onLine) { refreshStatus(); return; }
+    syncing = true;
+    clearTimeout(retryT);
+    try {
+      cloud = await connect();
+      if (!cloud) { refreshStatus(); return; }
+      show("syncing", "Syncing…", true);
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const sj = J(api.get());
+        const snap = JSON.parse(sj);
+        const rs = await withTO(DBD.get());
+        let remote = null, rj = null;
+        if (rs && rs.exists) { const d = rs.data(); if (d && d.json) { rj = d.json; try { remote = JSON.parse(rj); } catch (e) {} } }
+        if (remote && !Array.isArray(remote.accts)) remote = null;
+        let merged;
+        if (!remote) merged = snap;
+        else if (!base) { // first contact with existing cloud data: adopt it, but keep the local copy as a backup
+          await idbPut("backup", { json: sj, t: now() }).catch(() => {});
+          merged = normalize(remote);
+        } else merged = normalize(mergeDoc(base, snap, normalize(remote)));
+        const mj = J(merged);
+        if (mj.length > MAX_DOC) { show("error", "Too large to sync · saved on device", true); return; }
+        if (mj !== rj) await withTO(DBD.set({ json: mj, t: now() }));
+        const chk = await withTO(DBD.get());
+        const cj = chk && chk.exists ? (chk.data() || {}).json : null;
+        if (cj !== mj) { continue; } // another device wrote in between: merge again, nothing is lost
+        const cur = J(api.get());
+        base = clone(merged);
+        await saveBase();
+        if (cur !== sj) {
+          // user edited while we were syncing: fold those edits on top of the merged result
+          applyLocal(mergeDoc(snap, api.get(), merged), true);
+          again = true;
+        } else if (mj !== sj) applyLocal(clone(merged), true);
+        break;
+      }
+      fails = 0;
+      status = "online";
+      const left = pendingCount();
+      show(left ? "online" : "online", left ? "Online · " + left + " pending" : "Synced ✓");
+    } catch (e) {
+      fails++;
+      lastErr = (e && e.message) || "network";
+      status = "error";
+      refreshStatus();
+      scheduleRetry();
+      registerBgSync();
+    } finally {
+      syncing = false;
+      if (again) { again = false; setTimeout(sync, 300); }
+    }
+  }
+  function registerBgSync() {
+    try { navigator.serviceWorker.ready.then((r) => r.sync && r.sync.register("cap-sync")).catch(() => {}); } catch (e) {}
+  }
+
+  /* ---------- public API ---------- */
+  let syncDeb = null;
+  const CapOff = {
+    init(a) { api = a; },
+    stamp() { try { stamp(); } catch (e) {} },
+    persist() { persist(); },
+    requestSync() { clearTimeout(syncDeb); syncDeb = setTimeout(() => { refreshStatus(); if (navigator.onLine) sync(); else registerBgSync(); }, 600); },
+    sync,
+    status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
+    mergeDoc,
+    async boot() {
+      mkPill();
+      let hadLS = false;
+      try { hadLS = !!localStorage.getItem("pera"); } catch (e) {}
+      const startMt = (api.get() || {})._mt || 0;
+      resetTracking();
+      if (hadLS && typeof render === "function") render(); // normal launch: paint immediately from localStorage
+      const rec = await idbGet("state").catch(() => null);
+      if (!hadLS && rec && rec.json) { try { const r = JSON.parse(rec.json); if (r && Array.isArray(r.accts)) api.set(normalize(r)); } catch (e) {} }
+      resetTracking();
+      if (!hadLS && rec) lsWrite();
+      if (!hadLS && typeof render === "function") render();
+      if (hadLS && rec && rec.json && (rec.mt || 0) > startMt) { // IndexedDB copy is newer (e.g. localStorage write was lost)
+        try { const r = JSON.parse(rec.json); if (r && Array.isArray(r.accts)) { applyLocal(normalize(r), true); } } catch (e) {}
+      }
+      try { const b = await idbGet("base"); if (b) base = JSON.parse(b); } catch (e) {}
+      if (!hadLS && !rec) { /* brand-new install: nothing stored yet */ }
+      flush();
+      try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+      cloud = typeof claude !== "undefined";
+      refreshStatus();
+      sync();
+    },
+  };
+  window.CapOff = CapOff;
+
+  /* ---------- events ---------- */
+  addEventListener("online", () => { show("online", "Back online", true); sync(); });
+  addEventListener("offline", () => { refreshStatus(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { flush(); } else if (navigator.onLine) sync();
+  });
+  addEventListener("pagehide", () => { flush(); });
+  setInterval(() => { if (document.visibilityState === "visible" && navigator.onLine && (pendingCount() || status === "error")) sync(); }, 60000);
+  // another tab/window changed the data: fold its changes into this one (3-way, so neither side loses edits)
+  addEventListener("storage", (e) => {
+    if (e.key !== "pera" || !e.newValue || !api) return;
+    try {
+      const other = normalize(JSON.parse(e.newValue)), mine = api.get();
+      if (eq(other, mine)) return;
+      const common = lsBase ? JSON.parse(lsBase) : null;
+      applyLocal(common ? normalize(mergeDoc(common, clone(mine), other)) : other, true);
+    } catch (err) {}
+  });
+  if ("serviceWorker" in navigator)
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "cap-sync") sync(); });
+
+  /* ---------- PWA: service worker + real manifest when served over http(s) ---------- */
+  if (/^https?:$/.test(location.protocol) && "serviceWorker" in navigator) {
+    addEventListener("load", () => {
+      fetch("manifest.webmanifest", { method: "HEAD" }).then((r) => {
+        if (r.ok) { const l = document.querySelector('link[rel="manifest"]'); if (l) l.href = "manifest.webmanifest"; }
+      }).catch(() => {});
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+})();
+
+    </script>
     <script>
       /* ========================================================================== */
       /* FINANCE TRACKER — CODE MAP                                                 */
@@ -2024,7 +2414,13 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
       ];
       const save = () => {
         try {
+          if (window.CapOff) CapOff.stamp();
+        } catch (e) {}
+        try {
           localStorage.setItem("pera", JSON.stringify(S));
+        } catch (e) {}
+        try {
+          if (window.CapOff) CapOff.persist();
         } catch (e) {}
         clearTimeout(window._dt);
         window._dt = setTimeout(() => {
@@ -3087,67 +3483,12 @@ ${calH()}<p>${["All", "Expenses", "Income", "Upcoming"].map((f) => `<button clas
                   : Debts();
         return `<h1>Plan</h1><p style="display:flex;gap:6px;overflow:auto">${["Budgets", "Upcoming", "Goals", "Debts", "Notes"].map((t) => `<button class="pill ${t == pt ? "on" : ""}" style="flex:1" onclick="pt='${t}';render()">${t}</button>`).join("")}</p>${body}`;
       }
-      let DBD = null,
-        dbBusy = false,
-        dbDirty = false,
-        SYNC = "local",
-        lastJ = "";
+      /* Cloud sync + offline persistence live in the #cap-offline module (CapOff). */
       async function dbInit() {
-        try {
-          const u = await claude.use("user"),
-            db = await claude.use("db");
-          if (!u || !db) return;
-          const id = await u.id();
-          if (!id) return;
-          DBD = db.collection("data/users/" + id).doc("app");
-          const s = await DBD.get();
-          if (s.exists) {
-            const d = s.data();
-            if (d && d.json) {
-              const r = JSON.parse(d.json);
-              if (r && Array.isArray(r.accts)) {
-                r.goals = r.goals || [];
-                r.debts = r.debts || [];
-                r.bills = r.bills || [];
-                r.tx = r.tx || [];
-                r.budgets = r.budgets || {};
-                S = r;
-                lastJ = JSON.stringify(S);
-                SYNC = "cloud";
-                render();
-                return;
-              }
-            }
-          }
-          SYNC = "cloud";
-          dbPush();
-        } catch (e) {}
+        if (window.CapOff) CapOff.sync();
       }
       async function dbPush() {
-        if (!DBD) return;
-        const j = JSON.stringify(S);
-        if (j === lastJ) return;
-        if (j.length > 235000) {
-          SYNC = 'big';
-          return;
-        }
-        if (dbBusy) {
-          dbDirty = true;
-          return;
-        }
-        dbBusy = true;
-        try {
-          await DBD.set({ json: j, t: Date.now() });
-          lastJ = j;
-          SYNC = "cloud";
-        } catch (e) {
-          SYNC = "error";
-        }
-        dbBusy = false;
-        if (dbDirty) {
-          dbDirty = false;
-          dbPush();
-        }
+        if (window.CapOff) CapOff.requestSync();
       }
       function addEntry(e) {
         const a = Math.abs(+e.amount);
@@ -3934,8 +4275,8 @@ else{const d=I.d,have=new Set([...S.tx,...S.pend].map(t=>t.id)),sg=new Set([...S
 ['bills','goals','debts'].forEach(k=>{S[k]=S[k]||[];d[k].forEach(x=>{if(!S[k].some(y=>y.id==x.id))S[k].push(x)})});d.xfer.forEach(x=>{if(!old.has(x.to)&&!S.xfer.some(y=>y.id==x.id))S.xfer.push(x)});Object.keys(d.budgets).forEach(k=>{if(S.budgets[k]==null)S.budgets[k]=d.budgets[k]})}
 try{localStorage.setItem('pera_pre',snap)}catch(e){}IMP=null;closeS();render();toast(n+' record'+(n==1?'':'s')+' imported')}catch(e){S=JSON.parse(snap);IMP=null;save();render();toast('Import failed — your data was not changed')}}
 function impUndo(){try{S=JSON.parse(localStorage.getItem('pera_pre'));localStorage.removeItem('pera_pre');render();openSettings();toast('Restored the data from before the last import')}catch(e){toast('Nothing to restore')}}
-      render();
-      if (typeof claude != "undefined") dbInit();
+      CapOff.init({ get: () => S, set: (v) => (S = v) });
+      CapOff.boot();
     </script>
     <style id="cap-ui-css">
 /* ===== Floating sheet, date field fix, picker dropdowns ===== */
@@ -4293,6 +4634,275 @@ window.localLog=function(q){
   const id=addEntry({type:inc?'income':'expense',amount:amt,category:cat,note:note||cat,account_id:acct?acct.id:null,date:pd.d});
   return{reply:`Logged ${inc?'income':'expense'} ${php(amt)}\n${note||cat} · ${cat}\n${acct?acct.name:'No account'} · ${dlab(pd.d)}${ac?'':'\n(Add a card name to pick another account, e.g. "'+(note||'Spotify')+' '+amt+' '+(S.accts[1]||S.accts[0]||{name:'BDO'}).name+'".)'}`,ids:id?[id]:[]};
 };
+})();
+</script>
+<style id="cap-cardfx-css">
+/* ===== Card zoom: tap a card -> it expands into the detail view, closes back to its slot ===== */
+#sheet.cardfx.open>#sb,#sheet.cardfx.closing>#sb{animation:none!important}
+#sheet.cardfx.open{animation:capBgIn .4s ease both}
+#sheet.cardfx.closing{animation:capBgOut .34s ease forwards}
+/* the flying card is really resized (not scaled), so its text/padding match the tile at both ends */
+.cardfx-fly{position:fixed;margin:0;z-index:60;pointer-events:none;contain:layout style}
+.cardfx-tilt{position:relative;width:100%;height:100%;will-change:transform;transform-origin:50% 50%}
+.cardfx-fly .cc{position:absolute;inset:0;width:100%;height:100%;margin:0;aspect-ratio:auto;cursor:default;
+  overflow:hidden;isolation:isolate;contain:paint;transform:translateZ(0);
+  -webkit-mask-image:-webkit-radial-gradient(white,black);will-change:box-shadow}
+.cardfx-fly .cc *{max-width:100%}
+/* credit card detail: tappable to flip balance <-> available credit */
+#sb .cc.detail.cfx-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#sb .cc.detail .at small,#sb .cc.detail .at .v{will-change:transform,opacity}
+</style>
+<script id="cap-cardfx">
+/* Card zoom animation + credit balance flip.
+   - The tapped card is hidden in the background by a stylesheet rule while its detail view is open.
+   - A single floating copy of the card is RESIZED and moved between its slot and the detail view
+     (not scaled), so the bank name, type label, balance and padding keep their real sizes and land
+     on exactly the same pixels as the real card - nothing shifts after the animation ends.
+   - Credit cards with a limit flip between available credit and balance when tapped. */
+(function(){
+  if(window.__cardfx||typeof window.acctMenu!=='function'||typeof window.closeS!=='function')return;
+  window.__cardfx=1;
+  const origOpen=window.acctMenu,origClose=window.closeS;
+  const OPEN_MS=480,CLOSE_MS=360,OUT='cubic-bezier(.2,.8,.2,1)',IN='cubic-bezier(.32,.72,0,1)';
+  const reduce=()=>window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $1=s=>document.querySelector(s);
+  let fx=null,busy=false,phase='',pend=false,hid=null,cur=null,tg=null;const mode={};
+
+  const hs=document.createElement('style');hs.id='cardfx-hide';document.head.appendChild(hs);
+  const setHide=id=>{hid=id;hs.textContent='#app .cc[onclick="acctMenu('+id+')"]{visibility:hidden!important}';};
+  const clearHide=()=>{hid=null;hs.textContent='';};
+  const slot=id=>document.querySelector('#app .cc[onclick="acctMenu('+id+')"]');
+  const center=r=>[r.left+r.width/2,r.top+r.height/2];
+  const px=r=>({left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+
+  /* ---------- flying card ---------- */
+  function flyer(card,rect){
+    const root=document.createElement('div');root.className='cardfx-fly';
+    Object.assign(root.style,px(rect));
+    const tilt=document.createElement('div');tilt.className='cardfx-tilt';
+    const body=card.cloneNode(true);body.removeAttribute('onclick');body.classList.remove('cfx-tap');body.style.visibility='visible';
+    tilt.appendChild(body);root.appendChild(tilt);document.body.appendChild(root);
+    return{root,tilt,body};
+  }
+  function pairs(f,src){
+    const q='.at small,.at .v,.at .pr span',a=[].slice.call(f.body.querySelectorAll(q)),b=[].slice.call(src.querySelectorAll(q));
+    if(a.length!==b.length)return[];
+    return a.map(function(el,i){return{el:el,det:el.textContent,src:b[i].textContent}});
+  }
+  function fly(f,src,small,big,opening,shSmall,shBig){
+    const [sx]=center(small),[bx]=center(big),dir=sx>=bx?1:-1;
+    const dur=opening?OPEN_MS:CLOSE_MS,o={duration:dur,easing:opening?OUT:IN,fill:'forwards'};
+    const move=f.root.animate(opening?[px(small),px(big)]:[px(big),px(small)],o);
+    const t=(rx,ry)=>({transform:'perspective(1100px) rotateX('+rx+'deg) rotateY('+ry+'deg)'});
+    f.tilt.animate([t(0,0),Object.assign(t(opening?6:4,dir*(opening?3:2)),{offset:.4}),t(0,0)],{duration:dur,easing:'ease-in-out',fill:'forwards'});
+    const mid='0 38px 72px rgba(0,0,0,.42)';
+    f.body.animate(opening?[{boxShadow:shSmall},{boxShadow:mid,offset:.45},{boxShadow:shBig}]:[{boxShadow:shBig},{boxShadow:mid,offset:.35},{boxShadow:shSmall}],{duration:dur,easing:'ease-in-out',fill:'forwards'});
+    const v=f.body.querySelector('.at .v'),sv=src.querySelector('.at .v');
+    if(v&&sv){const cv=getComputedStyle(v),cs=getComputedStyle(sv);
+      const D={fontSize:cv.fontSize,lineHeight:cv.lineHeight},T={fontSize:cs.fontSize,lineHeight:cs.lineHeight};
+      v.animate(opening?[T,D]:[D,T],o);}
+    const pr=pairs(f,src);
+    if(pr.length&&pr.some(function(p){return p.det!==p.src})){
+      const at=f.body.querySelector('.at');
+      pr.forEach(function(p){p.el.textContent=opening?p.src:p.det});
+      at.animate([{opacity:1},{opacity:1,offset:.3},{opacity:0,offset:.45},{opacity:0,offset:.5},{opacity:1,offset:.65},{opacity:1}],{duration:dur,easing:'linear',fill:'forwards'});
+      setTimeout(function(){pr.forEach(function(p){p.el.textContent=opening?p.det:p.src})},dur*.47);
+    }
+    return move.finished;
+  }
+
+  /* ---------- credit balance flip ---------- */
+  const credit=card=>!!(card&&card.querySelector('.at .pb'));
+  function parts(card){const at=card&&card.querySelector('.at');return at?{at:at,lab:at.querySelector('small'),v:at.querySelector('.v')}:null;}
+  function figures(){
+    const a=typeof acct==='function'&&acct(cur);if(!a||a.type!=='credit')return null;
+    const lim=+a.lim||0,owed=+a.bal||0;if(!lim)return null;
+    return{avail:Math.max(0,lim-owed),bal:owed};
+  }
+  const LABEL={avail:'AVAILABLE CREDIT',bal:'BALANCE'};
+  function settle(){            /* finish any running flip: remove ghosts, show the exact final text */
+    if(!tg)return;const t=tg;tg=null;cancelAnimationFrame(t.raf);
+    t.anims.forEach(function(a){try{a.cancel()}catch(_){}});t.ghosts.forEach(function(g){g.remove()});
+    t.fin();
+  }
+  function applyMode(card){
+    const p=parts(card),fg=figures();if(!p||!p.lab||!p.v||!fg||!credit(card))return;
+    card.classList.add('cfx-tap');
+    if(mode[cur]==='bal'){p.lab.textContent=LABEL.bal;p.v.textContent=php(fg.bal);}
+  }
+  function flip(card){
+    const p=parts(card),fg=figures();if(!p||!p.lab||!p.v||!fg)return;
+    const from=mode[cur]||'avail',next=from==='bal'?'avail':'bal';mode[cur]=next;
+    const finalLab=LABEL[next],finalVal=fg[next];
+    if(reduce()){settle();p.lab.textContent=finalLab;p.v.textContent=php(finalVal);return;}
+    /* snapshot what is on screen right now (so rapid taps continue from the current visual state) */
+    const snap=function(el){const cs=getComputedStyle(el);return{text:el.textContent,op:cs.opacity,tf:cs.transform==='none'?'translateY(0px)':cs.transform};};
+    const sl=snap(p.lab),sv=snap(p.v),startVal=tg?tg.val:fg[from];
+    if(tg){const t=tg;tg=null;cancelAnimationFrame(t.raf);t.anims.forEach(function(a){try{a.cancel()}catch(_){}});t.ghosts.forEach(function(g){g.remove()});}
+    const T={ghosts:[],anims:[],raf:0,val:startVal,fin:function(){p.lab.textContent=finalLab;p.v.textContent=php(finalVal);}};
+    tg=T;
+    const ghost=function(el,s){
+      const g=el.cloneNode(true);g.textContent=s.text;g.setAttribute('aria-hidden','true');
+      g.style.cssText+=';position:absolute;left:'+el.offsetLeft+'px;top:'+el.offsetTop+'px;width:'+el.offsetWidth+'px;margin:0;pointer-events:none';
+      p.at.appendChild(g);T.ghosts.push(g);return g;};
+    const gl=ghost(p.lab,sl),gv=ghost(p.v,sv);
+    const OUTK=function(s){return[{opacity:s.op,transform:s.tf},{opacity:0,transform:'translateY(-9px)'}];};
+    const oo={duration:300,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'};
+    T.anims.push(gl.animate(OUTK(sl),oo),gv.animate(OUTK(sv),Object.assign({delay:30},oo)));
+    /* new label + value are in place immediately (no layout change) and rise into position */
+    p.lab.textContent=finalLab;p.v.textContent=php(startVal);
+    const INK=[{opacity:0,transform:'translateY(13px)'},{opacity:1,transform:'translateY(0)'}];
+    const io={duration:560,easing:'cubic-bezier(.22,1,.36,1)',fill:'backwards'};
+    T.anims.push(p.lab.animate(INK,io),p.v.animate(INK,Object.assign({delay:50},io)));
+    /* the number counts to its new value while it settles */
+    if(startVal!==finalVal){
+      const t0=performance.now()+50,D=620;
+      const step=function(now){
+        if(tg!==T)return;
+        const k=Math.min(1,Math.max(0,(now-t0)/D)),e=1-Math.pow(1-k,3);
+        T.val=k>=1?finalVal:startVal+(finalVal-startVal)*e;
+        p.v.textContent=php(k>=1?finalVal:Math.round(T.val));
+        if(k<1)T.raf=requestAnimationFrame(step);
+      };
+      T.raf=requestAnimationFrame(step);
+    }else T.val=finalVal;
+    Promise.all(T.anims.map(function(a){return a.finished})).then(function(){if(tg===T){T.val=finalVal;
+      if(T.raf)return;settle();}},function(){});
+    setTimeout(function(){if(tg===T)settle();},760);   // hard stop: always end on the exact values
+  }
+  document.addEventListener('click',function(e){
+    const card=e.target.closest&&e.target.closest('#sb .cc.detail');
+    if(!card||busy||cur==null||!credit(card))return;
+    flip(card);
+  });
+
+  /* ---------- open / close ---------- */
+  window.acctMenu=function(id){
+    settle();
+    const sheet=$1('#sheet'),src=slot(id);
+    const live=sheet.classList.contains('open')&&!sheet.classList.contains('closing');
+    cur=id;if(!live)mode[id]='avail';
+    if(live||busy||reduce()||!src||src.getBoundingClientRect().width<8){
+      const r=origOpen.apply(this,arguments);setHide(id);applyMode($1('#sb .cc.detail'));return r;}
+    const from=src.getBoundingClientRect(),shSmall=getComputedStyle(src).boxShadow;
+    sheet.classList.add('cardfx');
+    origOpen.apply(this,arguments);
+    const sb=$1('#sb'),card=sb.querySelector('.cc.detail');
+    if(!card){sheet.classList.remove('cardfx');setHide(id);return;}
+    const to=card.getBoundingClientRect(),shBig=getComputedStyle(card).boxShadow;
+    if(to.width<8){sheet.classList.remove('cardfx');setHide(id);return;}
+    fx={id:id};busy=true;phase='open';pend=false;applyMode(card);
+    const f=flyer(card,to);
+    card.style.visibility='hidden';setHide(id);
+    sb.animate([{opacity:0},{opacity:1}],{duration:300,delay:40,easing:'ease-out',fill:'backwards'});
+    [].slice.call(sb.children).forEach(function(ch,i){
+      if(ch===card)return;
+      ch.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:340,delay:180+Math.min(i,6)*40,easing:OUT,fill:'backwards'});
+    });
+    const done=function(){card.style.visibility='';f.root.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
+    fly(f,src,from,to,true,shSmall,shBig).then(done,done);
+  };
+  function plain(){$1('#sheet').classList.remove('cardfx');fx=null;}
+  window.closeS=function(){
+    const sheet=$1('#sheet');
+    if(!sheet.classList.contains('open')||sheet.classList.contains('closing'))return;
+    if(busy){if(phase==='open')pend=true;return;}      // closing while it is still opening: close right after it lands
+    settle();
+    const card=fx&&$1('#sb .cc.detail'),src=fx&&slot(fx.id);
+    if(!card||!src||reduce()){plain();return origClose.apply(this,arguments);}
+    const from=card.getBoundingClientRect(),to=src.getBoundingClientRect();
+    if(to.bottom<0||to.top>innerHeight||from.bottom<0||from.top>innerHeight||from.width<8||to.width<8){plain();return origClose.apply(this,arguments);}
+    const shBig=getComputedStyle(card).boxShadow,shSmall=getComputedStyle(src).boxShadow;
+    busy=true;phase='close';
+    const f=flyer(card,from);
+    card.style.visibility='hidden';
+    sheet.classList.add('closing');
+    $1('#sb').animate([{opacity:1},{opacity:0}],{duration:240,easing:'ease-in',fill:'forwards'});
+    const done=function(){
+      f.root.remove();clearHide();
+      sheet.classList.remove('open','closing','cardfx');document.body.classList.remove('sheet-open');
+      $1('#sb').getAnimations().forEach(function(a){a.cancel()});
+      fx=null;busy=false;phase='';};
+    fly(f,src,to,from,false,shSmall,shBig).then(done,done);
+  };
+  new MutationObserver(function(){const s=$1('#sheet');if(hid!=null&&!busy&&!s.classList.contains('open')){settle();clearHide();}})
+    .observe($1('#sheet'),{attributes:true,attributeFilter:['class']});
+})();
+</script>
+<style id="cap-nosel-css">
+/* ===== No text selection / copy callout on transactions (rows + their detail sheet only) ===== */
+.row[data-tx],.row[data-tx] *,#sb.nosel,#sb.nosel *:not(input):not(textarea):not(select){
+  -webkit-user-select:none!important;user-select:none!important;
+  -webkit-touch-callout:none!important;
+}
+.row[data-tx]{-webkit-tap-highlight-color:transparent}
+.row[data-tx] img{-webkit-user-drag:none;user-drag:none}
+</style>
+<script id="cap-nosel">
+/* Blocks selection start, the context menu and image/link drag on transaction rows and the
+   transaction detail sheet. Everything else in the app keeps normal text selection. */
+(function(){
+  if(window.__nosel)return;window.__nosel=1;
+  const SEL='.row[data-tx],#sb.nosel';
+  const hit=n=>{const el=n&&(n.nodeType===1?n:n.parentElement);
+    return !!(el&&el.closest&&el.closest(SEL)&&!el.closest('input,textarea,select'));};
+  const stop=e=>{if(hit(e.target)){e.preventDefault();}};
+  document.addEventListener('selectstart',stop,true);
+  document.addEventListener('contextmenu',stop,true);
+  document.addEventListener('dragstart',stop,true);
+  /* drop any highlight that slipped in (e.g. from a long press that began before the handlers ran) */
+  document.addEventListener('selectionchange',function(){
+    const s=window.getSelection&&getSelection();
+    if(s&&!s.isCollapsed&&(hit(s.anchorNode)||hit(s.focusNode)))s.removeAllRanges();
+  });
+  /* the transaction detail sheet reuses #sb: mark it while it shows a transaction */
+  const openS=window.openS,evDetail=window.evDetail;
+  if(typeof openS==='function')window.openS=function(){const sb=document.getElementById('sb');if(sb)sb.classList.remove('nosel');return openS.apply(this,arguments);};
+  if(typeof evDetail==='function')window.evDetail=function(k,j){
+    const r=evDetail.apply(this,arguments);
+    try{const e=window.evs&&evs(k)[j];if(e&&e.kind==='tx'){const sb=document.getElementById('sb');if(sb)sb.classList.add('nosel');}}catch(_){}
+    return r;};
+})();
+</script>
+<style id="cap-nosel-all-css">
+/* ===== App-wide: no text highlighting / copy callout on interface text. Inputs stay selectable. ===== */
+html,body,body *,body *::before,body *::after{
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+}
+input,textarea,[contenteditable],[contenteditable=""],[contenteditable="true"],
+[contenteditable] *,input::placeholder{
+  -webkit-user-select:text!important;user-select:text!important;
+  -webkit-touch-callout:default!important;
+}
+/* keep dropdowns and file pickers usable */
+select,input[type=file],input[type=range],input[type=checkbox],input[type=radio],input[type=date]{
+  -webkit-touch-callout:none;
+}
+img,svg{-webkit-user-drag:none;user-drag:none}
+</style>
+<script id="cap-nosel-all">
+/* Blocks selection start, long-press menus and drags on all non-editable UI.
+   Typing, selecting and copying inside inputs / textareas / editable content is untouched. */
+(function(){
+  if(window.__noselAll)return;window.__noselAll=1;
+  const EDIT='input,textarea,select,[contenteditable]:not([contenteditable="false"])';
+  const el=n=>n&&(n.nodeType===1?n:n.parentElement);
+  const ui=n=>{const e=el(n);return !!(e&&!(e.closest&&e.closest(EDIT)));};
+  const block=e=>{if(ui(e.target))e.preventDefault();};
+  document.addEventListener('selectstart',block,true);
+  document.addEventListener('contextmenu',block,true);
+  document.addEventListener('dragstart',block,true);
+  /* iOS: a long press can start a selection before selectstart is cancelled - drop it right away */
+  document.addEventListener('selectionchange',function(){
+    const s=window.getSelection&&getSelection();
+    if(!s||s.isCollapsed||!s.rangeCount)return;
+    const a=el(s.anchorNode),f=el(s.focusNode),ae=document.activeElement;
+    if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName))return;        // selection inside a field
+    if((a&&a.closest&&a.closest(EDIT))||(f&&f.closest&&f.closest(EDIT)))return;
+    if(a&&a.closest&&a.closest('[contenteditable]:not([contenteditable="false"])'))return;
+    s.removeAllRanges();
+  });
 })();
 </script>
 </body>
