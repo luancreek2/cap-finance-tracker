@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v23";
+const VERSION = "cap-shell-v31";
 const CORE = [
   "./index.html",
   "./manifest.json",
@@ -127,4 +127,17 @@ self.addEventListener("sync", (e) => {
 
 self.addEventListener("message", (e) => {
   if (e.data === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Reminder taps: focus an open Cap window instead of opening a duplicate tab.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "./";
+  e.waitUntil(
+    self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then((cs) => {
+      const open = cs.find((c) => c.url.indexOf(self.location.origin) === 0);
+      if (open) return open.focus();
+      return self.clients.openWindow(url);
+    }),
+  );
 });

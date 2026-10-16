@@ -567,7 +567,46 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       function bPaid(b, k) {
         return (b.paidOn || []).includes(k) || ((b.freq || "monthly") == "monthly" && b.paid == k.slice(0, 7));
       }
+      /* ---- free trials ------------------------------------------------------
+         A subscription that starts free keeps its window on the record:
+         isFreeTrial, trialStartDate, trialEndDate, firstBillingDate, priceAfterTrial and
+         subscriptionStatus. Price / frequency / payment method stay on the normal fields
+         (amt, freq, acct), and the FIRST BILLING DATE - never the trial start - anchors the
+         repeat schedule (start/due). The trial itself never bills: nothing is charged, no
+         ₱0 transaction is written, and the trial window is never a payment record. */
+      const isTrial = (b) => !!(b && b.isFreeTrial);
+      const subFirstBill = (b) => (isTrial(b) ? b.firstBillingDate || b.trialEndDate || b.start || "" : "");
+      const bAdd = (k, n) => { const d = bDt(k); d.setDate(d.getDate() + n); return bIso(d); };
+      /* 'trial' until the first billing date (that day still reads "Ends today"), then 'active'.
+         Cancelling keeps the record and its history instead of deleting it. */
+      function subStatus(b) {
+        if (!isTrial(b)) return "active";
+        if (b.subscriptionStatus == "Cancelled") return "cancelled";
+        if (b.subscriptionStatus == "Expired") return "expired";
+        const f = subFirstBill(b);
+        return f && bDt(today) <= bDt(f) ? "trial" : "active";
+      }
+      const inTrial = (b) => subStatus(b) == "trial";
+      const subGone = (b) => subStatus(b) == "cancelled" || subStatus(b) == "expired";
+      /* the first charge is only billable once its date arrives */
+      const subDue = (b) => inTrial(b) && bDt(today) >= bDt(subFirstBill(b));
+      const trialLeft = (b) => Math.round((bDt(subFirstBill(b)) - bDt(today)) / 864e5);
+      const trialTxt = (n) => n < 0 ? "Free Trial" : n === 0 ? "Free Trial · Ends today" : n === 1 ? "Free Trial · Ends tomorrow" : "Free Trial · " + n + " days left";
+      const trialLabel = (b) => trialTxt(trialLeft(b));
+      const FREQT = { once: "", weekly: "/week", biweekly: "/2 weeks", monthly: "/month", quarterly: "/3 months", yearly: "/year" };
+      const subFreqTail = (b) => FREQT[(b && b.freq) || "monthly"] || "";
+      const subFreqWord = (b) => (BF[(b && b.freq) || "monthly"] || "Every month").toLowerCase();
+      /* the edit-sheet chip: an active trial outranks the due / paid states */
+      function subChip(b) {
+        const s = subStatus(b);
+        if (s == "trial") return `<span class="chip tr">${trialLabel(b)}</span>`;
+        if (s == "cancelled") return '<span class="chip">Cancelled</span>';
+        if (s == "expired") return '<span class="chip">Ended</span>';
+        return billStatusChip(b);
+      }
       function live(b) {
+        if (subGone(b)) return false;                /* cancelled or ended: no future renewals */
+        if (inTrial(b)) return true;                 /* still listed: the first charge is coming */
         return !(b.freq == "once" && b.start && bPaid(b, b.start));
       }
       function paidNow(b) {
@@ -581,6 +620,8 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       }
       function nextDue(b) {
         if (b.nd) return b.nd;
+        /* a live trial's next event is simply its first billing date */
+        if (inTrial(b)) { const f = subFirstBill(b); if (!bPaid(b, f)) return bDt(f); }
         const f = b.freq || "monthly", t0 = bDt(today);
         let lo = f == "weekly" || f == "biweekly" ? t0 : new Date(t0.getFullYear(), t0.getMonth(), 1);
         if (f == "once" && b.start) lo = bDt(b.start);
@@ -622,18 +663,20 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           oc = full && !det ? `onclick="acctMenu(${a.id})"` : "";
         const bar =
           full && cr && lim
-            ? `<div class="pb"><b style="width:${Math.max(used, 2)}%"></b></div><div class="pr"><span>${used}% used</span><span>Limit ${php(lim)}</span></div>`
+            ? `<div class="pb"><b style="width:${Math.max(used, 2)}%"></b></div><div class="pr"><span>${used}% used</span><span>Limit ${bv(php(lim))}</span></div>`
             : "";
         if (art)
-          return `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v">${amt}</div>${bar}</div>` : ""}</div>`;
+          return `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}</div>`;
         const n =
           a.net == "mc"
             ? '<span class="mc"><i></i><i></i></span>'
             : '<img class="visa" alt="Visa" src="' + VISAI + '">';
-        return `<div class="cc${det ? " detail" : ""}" style="background:linear-gradient(135deg,${a.g[0]},${a.g[1]})" ${oc}><div style="display:flex;justify-content:space-between">${logoH(a)}<small>${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</small></div><div class="chip"></div>${full ? `<div class="at"><small>${label}</small><div class="v">${amt}</div>${bar}</div>` : ""}<div class="bt" style="justify-content:flex-end">${n}</div></div>`;
+        return `<div class="cc${det ? " detail" : ""}" style="background:linear-gradient(135deg,${a.g[0]},${a.g[1]})" ${oc}><div style="display:flex;justify-content:space-between">${logoH(a)}<small>${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</small></div><div class="chip"></div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}<div class="bt" style="justify-content:flex-end">${n}</div></div>`;
       }
       function render() {
         applyTheme();
+        applyMotion();
+        applyHide();
         ensureCats();
         $("#tabs").innerHTML = ["Home", "Activity", "Plan", "Accounts"]
           .map(
@@ -690,12 +733,12 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
             ? under >= 0
               ? {
                   title: `You’re ${Math.round((under / budget) * 100)}% under budget`,
-                  body: `${php(under)} of your ${php(budget)} monthly budget remains.`,
+                  body: `${bv(php(under))} of your ${bv(php(budget))} monthly budget remains.`,
                   icon: "🌱",
                 }
               : {
                   title: `You’re ${Math.round((Math.abs(under) / budget) * 100)}% over budget`,
-                  body: `You’ve spent ${php(Math.abs(under))} beyond your ${php(budget)} monthly budget.`,
+                  body: `You’ve spent ${bv(php(Math.abs(under)))} beyond your ${bv(php(budget))} monthly budget.`,
                   icon: "📈",
                 }
             : {
@@ -732,11 +775,11 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           over = Object.keys(S.budgets).filter((c) => spent(c) > S.budgets[c]);
         const up = [...S.bills.filter(live), ...cb].sort((a, b) => days(a) - days(b));
         return `<div class="eyebrow">${T.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}</div><div class="m">${greet()},</div><h1>${esc(S.name || "Your money")}</h1>
-<p class="m">You spent <b style="color:var(--tx)">${php(td)}</b> today.${due.length ? ` <b style="color:var(--tx)">${due.length} bill${due.length > 1 ? "s" : ""}</b> coming up soon.` : ""}</p>
+<p class="m">You spent <b class="bv" style="color:var(--tx)">${php(td)}</b> today.${due.length ? ` <b style="color:var(--tx)">${due.length} bill${due.length > 1 ? "s" : ""}</b> coming up soon.` : ""}</p>
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
-<div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"}">${php(inc - out)}</b></div></div>
+<div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g bv">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r bv">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"} bv">${php(inc - out)}</b></div></div>
   <div class="grid" style="margin-top:14px"><div>${spendingChart()}</div>
-<div><div class="card"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${php(spent(c) - S.budgets[c])}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
+<div><div class="card"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${bv(php(spent(c) - S.budgets[c]))}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
 <div class="card"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map(upRow).join("")}</div></div></div>`;
       }
       let CH = null;
@@ -808,15 +851,15 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         $("#chd").style.cssText = `display:block;left:${x}%;top:${yy}%`;
         const n = $("#chn");
         n.style.cssText = `display:block;left:${Math.min(88, Math.max(12, x))}%;top:${yy}%`;
-        n.textContent = php(v);
+        n.innerHTML = bv(php(v));
         const t = $("#cht");
         t.style.display = "block";
         t.textContent = CH.labs[i];
         $("#chv").textContent = php(v);
         const c = $("#chc");
         c.className = !dy ? "m" : dy > 0 ? "g" : "r";
-        c.textContent = dy
-          ? `${dy > 0 ? "\u2197 +" : "\u2198 "}${php(dy)}${CH.nm[i] ? " · " + CH.nm[i] : ""}`
+        c.innerHTML = dy
+          ? `${dy > 0 ? "\u2197 +" : "\u2198 "}${bv(php(dy))}${CH.nm[i] ? " · " + esc(CH.nm[i]) : ""}`
           : i
             ? "No change"
             : "Start of range";
@@ -834,7 +877,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         if (v) v.textContent = CH.top;
         if (c) {
           c.className = CH.cls;
-          c.textContent = CH.sub;
+          c.innerHTML = CH.sub;
         }
       }
       function netChart(cash, owed) {
@@ -900,7 +943,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
             YTD: "this year",
             "1Y": "in 1 year",
           }[r],
-          sub = `${dl >= 0 ? "\u2197 +" : "\u2198 "}${php(dl)} ${ph}`,
+          sub = `${dl >= 0 ? "\u2197 +" : "\u2198 "}${bv(php(dl))} ${ph}`,
           cls = dl >= 0 ? "g" : "r";
         CH = { N: N2, pts, labs, nm, Y, top: php(nn), sub, cls };
         const dots = false
@@ -937,13 +980,13 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           yl = [24, 72, 120, 168]
             .map(
               (y) =>
-                `<span class="ylb" style="top:${(y / 180) * 100}%">${php(Math.round(mn + ((168 - y) / 144) * (mx - mn)))}</span>`,
+                `<span class="ylb" style="top:${(y / 180) * 100}%">${bv(php(Math.round(mn + ((168 - y) / 144) * (mx - mn))))}</span>`,
             )
             .join("");
-        return `<div><div class="eyebrow">Net balance</div><div class="big" id="chv">${php(nn)}</div><div class="${cls}" id="chc" style="font-size:13px">${sub}</div></div>
+        return `<div><div class="eyebrow">Net balance</div><div style="display:flex;align-items:center;gap:2px"><div class="big bv" id="chv">${php(nn)}</div>${bvEye()}</div><div class="${cls}" id="chc" style="font-size:13px">${sub}</div></div>
 <div class="rts">${R.map((x) => `<button class="rt ${x == r ? "on" : ""}" onclick="rg='${x}';render()">${x}</button>`).join("")}</div>
 <div id="chw" class="ch" style="position:relative;height:180px;touch-action:pan-y;cursor:crosshair;user-select:none;-webkit-user-select:none;border-bottom:1px solid var(--mut)" onpointermove="chMove(event)" onpointerdown="chMove(event)" onpointerup="chUp()" onpointerleave="chUp()" onpointercancel="chUp()"><svg viewBox="0 0 600 180" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".35"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>${hl}${vl}<path d="${ln} L600 180 L0 180Z" fill="url(#ag)"/><path d="${ln}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>${yl}${dots}<i id="chl" class="cl"></i><i id="chd" class="cd s"></i><span id="chn" class="cv"></span><span id="cht" class="cdt"></span></div>
-<div class="xl" style="position:relative;height:18px;margin-top:4px">${xl}</div><div class="m" style="margin-top:8px;font-size:12px">Cash & e-wallets ${php(cash)} · Credit owed ${php(owed)}</div>`;
+<div class="xl" style="position:relative;height:18px;margin-top:4px">${xl}</div><div class="m" style="margin-top:8px;font-size:12px">Cash & e-wallets ${bv(php(cash))} · Credit owed ${bv(php(owed))}</div>`;
       }
       function netChartOld3(cash, owed) {
         const nn = cash - owed,
@@ -998,7 +1041,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           .join("");
         return `<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="eyebrow">Net balance</div><div class="big" id="chv">${php(nn)}</div><div class="${cls}" id="chc" style="font-size:13px">${sub}</div></div><select onchange="rg=this.value=='M'?'M':+this.value;render()" style="width:auto;margin:0;border-radius:99px;padding:6px 10px">${ops.map((r) => `<option value="${r[0]}" ${String(rg) == r[0] ? "selected" : ""}>${r[1]}</option>`).join("")}</select></div>
 <div id="chw" style="position:relative;height:160px;margin-top:8px;touch-action:pan-y;cursor:crosshair;user-select:none;-webkit-user-select:none" onpointermove="chMove(event)" onpointerdown="chMove(event)" onpointerup="chUp()" onpointerleave="chUp()" onpointercancel="chUp()"><svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width:100%;height:100%;display:block;color:var(--g)"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".3"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="${ln} L600 160 L0 160Z" fill="url(#ag)"/><path d="${ln}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>${dots}<i id="che" class="cd e" style="left:100%;top:${ty}%"></i><span id="chb" class="cb" style="right:0;top:${ty}%">${php(nn)}</span><i id="chl" class="cl"></i><i id="chd" class="cd s"></i><span id="cht" class="cb t"></span></div>
-<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${php(cash)} · Credit owed ${php(owed)}</div>`;
+<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${bv(php(cash))} · Credit owed ${bv(php(owed))}</div>`;
       }
       function netChartOld2(cash, owed) {
         const nn = cash - owed,
@@ -1033,7 +1076,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           ];
         return `<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="eyebrow">Net balance</div><div class="big">${php(nn)}</div><div class="${dl >= 0 ? "g" : "r"}" style="font-size:13px">${dl >= 0 ? "↗ +" : "↘ "}${php(dl)} ${mo ? "this month" : "in " + N + " days"}</div></div><select onchange="rg=this.value=='M'?'M':+this.value;render()" style="width:auto;margin:0;border-radius:99px;padding:6px 10px">${ops.map((r) => `<option value="${r[0]}" ${String(rg) == r[0] ? "selected" : ""}>${r[1]}</option>`).join("")}</select></div>
 <div style="position:relative;height:160px;margin-top:8px"><svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width:100%;height:100%;display:block;color:var(--g)"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".3"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="${ln} L600 160 L0 160Z" fill="url(#ag)"/><path d="${ln}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><i style="position:absolute;right:-4px;top:${ty}%;width:9px;height:9px;border-radius:50%;background:var(--g);transform:translateY(-50%)"></i><span style="position:absolute;right:0;top:${ty}%;transform:translateY(-170%);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:11px;font-weight:600">${php(nn)}</span></div>
-<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${php(cash)} · Credit owed ${php(owed)}</div>`;
+<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${bv(php(cash))} · Credit owed ${bv(php(owed))}</div>`;
       }
       function netChartOld(cash, owed) {
         const nn = cash - owed,
@@ -1060,7 +1103,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           ty = (y(pts[N - 1]) / 160) * 100;
         return `<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="eyebrow">Net balance</div><div class="big">${php(nn)}</div><div class="${dl >= 0 ? "g" : "r"}" style="font-size:13px">${dl >= 0 ? "↗ +" : "↘ "}${php(dl)} in ${N} days</div></div><select onchange="rg=+this.value;render()" style="width:auto;margin:0;border-radius:99px;padding:6px 10px">${[7, 30, 90].map((r) => `<option value="${r}" ${r == rg ? "selected" : ""}>${r}D</option>`).join("")}</select></div>
 <div style="position:relative;height:160px;margin-top:8px"><svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width:100%;height:100%;display:block;color:var(--g)"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".3"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="${ln} L600 160 L0 160Z" fill="url(#ag)"/><path d="${ln}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><i style="position:absolute;right:-4px;top:${ty}%;width:9px;height:9px;border-radius:50%;background:var(--g);transform:translateY(-50%)"></i><span style="position:absolute;right:0;top:${ty}%;transform:translateY(-170%);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:11px;font-weight:600">${php(nn)}</span></div>
-<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${php(cash)} · Credit owed ${php(owed)}</div>`;
+<div class="m" style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">${lb.map((x) => `<span>${x}</span>`).join("")}</div><div class="m" style="margin-top:6px;font-size:12px">Cash & e-wallets ${bv(php(cash))} · Credit owed ${bv(php(owed))}</div>`;
       }
       function monthSum(owed) {
         const m = mtx(),
@@ -1227,24 +1270,10 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       function setTheme(t) {
         S.theme = t;
         render();
-        openSettings();
+        stGo('appearance');            /* stay on the page the change was made on */
       }
       function openSettings() {
-        const t = S.theme || "auto";
-        openS(
-          `<h2>Settings</h2><div class="eyebrow" style="margin-bottom:6px">Your name</div><input placeholder="Enter your name" value="${esc(S.name || "")}" oninput="S.name=this.value;render()"><div class="eyebrow" style="margin-bottom:8px">Appearance</div><p style="display:flex;gap:6px">${[
-            ["light", "☀️ Light"],
-            ["dark", "🌙 Dark"],
-            ["auto", "⚙️ Auto"],
-          ]
-            .map(
-              (x) =>
-                `<button class="pill ${t == x[0] ? "on" : ""}" style="flex:1" onclick="setTheme('${x[0]}')">${x[1]}</button>`,
-            )
-            .join(
-              "",
-            )}</p><p class="m" style="font-size:12px">Auto follows your device's light or dark setting.</p>${prefHtml()}<div class="eyebrow" style="margin:14px 0 6px">Categories</div><button class="btn s" onclick="catMgr()">Edit categories</button>${dataHtml()}<div class="eyebrow" style="margin:14px 0 8px">Privacy &amp; sync</div>${window.CapOff ? CapOff.settingsHtml() : ""}<button class="btn s" onclick="closeS()">Done</button> <button class="btn s" style="color:#ff453a" onclick="sure(this,()=>{S={accts:[],tx:[],bills:[],budgets:{},notes:[],goals:[],debts:[]};closeS();render()})">Reset all data</button>`,
-        );
+        stHome();
       }
       function calH() {
         const f = new Date(T.getFullYear(), T.getMonth() + cm, 1),
@@ -1552,11 +1581,16 @@ const bIc=(b,fb)=>{if(b&&b.logo)return `<img class="ci lg" src="${b.logo}" alt="
 
 /* ===== Home: bill rows (red urgency) + long-press / right-click editing ===== */
 const billAttr=b=>b.cardId?`data-bcard="${b.cardId}"`:`data-bill="${b.id}"`;
-const billAria=(b,t)=>`tabindex="0" role="button" aria-label="${esc(b.name)}, ${t}, ${php(b.amt)}. Press and hold, right-click or press Enter to edit."`;
+const billAria=(b,t,amt)=>`tabindex="0" role="button" aria-label="${esc(b.name)}, ${t}, ${amt||php(b.amt)}. Press and hold, right-click or press Enter to edit."`;
 /* urgency tiers by whole days left: overdue (<0) deep red · 0-3 red · 4-7 yellow · later neutral */
 const urgOf=n=>n<0?'o':n<=3?'r':n<=7?'y':'n';
 const urgTxt=n=>n<0?'<span class="odb">Overdue</span>'+Math.abs(n)+'d':n==0?'Due today':'Due in '+n+'d';
 function attnRow(b){
+  /* a free trial is a heads-up, never an "overdue" charge, so it keeps a neutral tier */
+  if(inTrial(b)){
+    const en=noteD(subFirstBill(b)),plain=trialLabel(b)+', '+php(b.amt)+' starting '+en;
+    return `<div class="row trial urg-t" data-due="${bIso(nextDue(b))}" data-trial="1" ${billAttr(b)} ${billAria(b,trialLabel(b),php(b.amt)+' starting '+en)}><div class="ico">${bIc(b,'⏰')}</div><div class="f">${esc(b.name)}<small class="du">${trialLabel(b)}</small><small class="tr-b">${php(b.amt)} starting ${en}</small></div><b class="du">${php(b.amt)}</b></div>`;
+  }
   const nd=nextDue(b),n=days(b),u=urgOf(n),plain=n<0?'Overdue by '+Math.abs(n)+'d':n==0?'Due today':'Due in '+n+'d';
   return `<div class="row urg-${u}" data-due="${bIso(nd)}" ${billAttr(b)} ${billAria(b,plain)}><div class="ico">${bIc(b,'⏰')}</div><div class="f">${esc(b.name)}<small class="du">${urgTxt(n)}</small></div><b class="du">${php(b.amt)}</b></div>`;
 }
@@ -1564,9 +1598,9 @@ function attnRow(b){
 function refreshUrgency(){
   const t0=bDt(today);
   document.querySelectorAll('#app .row[data-due]').forEach(function(row){
-    const n=Math.round((bDt(row.getAttribute('data-due'))-t0)/864e5),u=urgOf(n);
-    ['o','r','y','n'].forEach(function(x){row.classList.toggle('urg-'+x,x===u)});
-    const sm=row.querySelector('.du-status')||row.querySelector('small.du'),h=urgTxt(n);
+    const n=Math.round((bDt(row.getAttribute('data-due'))-t0)/864e5),u=urgOf(n),trial=row.hasAttribute('data-trial');
+    ['o','r','y','n','t'].forEach(function(x){row.classList.toggle('urg-'+x,trial?x==='t':x===u)});
+    const sm=row.querySelector('.du-status')||row.querySelector('small.du'),h=trial?trialTxt(n):urgTxt(n);
     if(sm&&sm.innerHTML!==h)sm.innerHTML=h;
   });
 }
@@ -1585,6 +1619,10 @@ document.addEventListener('visibilitychange',function(){if(!document.hidden)roll
 window.addEventListener('focus',rollDay);window.addEventListener('pageshow',rollDay);
 setInterval(rollDay,60000);schedRoll();
 function upRow(b){
+  if(inTrial(b)){
+    const en=noteD(subFirstBill(b)),ac=b.acct&&acct(b.acct).id?" · "+esc(acct(b.acct).name):"";
+    return `<div class="row trial" ${billAttr(b)} ${billAria(b,'Free trial ends '+en,php(b.amt)+' starting '+en)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">Free trial ends ${en}</small><small>${php(b.amt)} starting ${en}${ac}</small></div><b class="m">${php(b.amt)}</b></div>`;
+  }
   const d=nextDue(b).toLocaleDateString("en-PH",{month:"short",day:"numeric"}),ac=b.acct&&acct(b.acct).id?" · "+esc(acct(b.acct).name):"";
   return `<div class="row" ${billAttr(b)} ${billAria(b,d)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small>${d}${ac}</small></div><b>−${php(b.amt)}</b></div>`;
 }
@@ -1662,7 +1700,24 @@ function navS(html,key,opts){
 function editBillSheet(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   const nd=bIso(nextDue(b)),fq=b.freq||'monthly',pays=billPayments(b),last=pays[0];
-  navS(`<div class="sh-h"><h2>Edit bill</h2>${billStatusChip(b)}</div><label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">Amount (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}"><label class="m">Due date</label><input id="eb-d" type="date" value="${nd}" data-o="${nd}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">Next due ${bDt(nd).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id},this)">Save changes</button></div>`,'bill'+id);
+  /* a subscription that started with a free trial keeps that record; the trial's first
+     billing date is what anchors the schedule, so it stays editable until the first charge */
+  const T=isTrial(b),st=subStatus(b),trial=st=='trial',gone=st=='cancelled'||st=='expired',pre=T&&st!='active';
+  const fb=T?(b.firstBillingDate||b.trialEndDate||b.start||nd):nd;
+  const fbY=bDt(fb).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});
+  const acctName=b.acct&&acct(b.acct).id?esc(acct(b.acct).name):'No account yet';
+  const dsh=pre?fb:nd;
+  const trialCard=T?`<div class="card" style="margin:0 0 12px"><div class="eyebrow" style="margin:0 0 6px">${trial?'Free trial':'Free trial ended'}</div>`
+    +`<div class="pd-r"><span class="m">Status</span><b>${trial?trialLabel(b):gone?(st=='cancelled'?'Cancelled':'Ended'):'Active'}</b></div>`
+    +`<div class="pd-r"><span class="m">${st=='active'?'Free trial':'Trial ends'}</span><b>${st=='active'?noteD(b.trialStartDate||fb)+' – '+fbY:fbY}</b></div>`
+    +`<div class="pd-r"><span class="m">${trial?'Then':gone?'Price':'Renews'}</span><b>${php(b.amt)}${subFreqTail(b)} · ${acctName}</b></div></div>`:'';
+  const trialStart=pre?`<label class="m">Trial start</label><input id="eb-ts" type="date" value="${b.trialStartDate||today}" data-o="${b.trialStartDate||today}">`:'';
+  const trialActions=gone?`<button class="btn s" style="margin-top:10px;width:100%" onclick="resumeSubAsk(${id})">Resume subscription</button>`
+    :trial?`<button class="btn s" style="margin-top:10px;width:100%" onclick="cancelSubAsk(${id})">Cancel subscription</button><p class="hint">Stops before the first charge and keeps its history.</p>`:'';
+  const hint=trial?`No charge until ${fbY} — then ${php(b.amt)}${subFreqTail(b)}, ${subFreqWord(b)}`
+    :gone?`Nothing is scheduled and no further renewals will be made.`
+    :`Next due ${bDt(nd).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}`;
+  navS(`<div class="sh-h"><h2>Edit bill</h2>${subChip(b)}</div>${trialCard}<label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">${T&&pre?'Price after trial':'Amount'} (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}">${trialStart}<label class="m">${pre?'First billing date':'Due date'}</label><input id="eb-d" type="date" value="${dsh}" data-o="${dsh}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">${hint}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):`<div class="empty"><div class="e-ic">🧾</div><p class="m">${trial?'No charge yet — the free trial ends '+noteD(subFirstBill(b))+'.':'No payments recorded yet.'}</p></div>`}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}${trialActions}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id},this)">Save changes</button></div>`,'bill'+id);
 }
 /* ---- payment history: year filter + month groups (shared by bills and cards) ---- */
 const PH={},PHC={};
@@ -1729,10 +1784,22 @@ function saveBillEdit(id,btn){
   if(!n)return toast('Enter a name');
   if(!(a>=0))return toast('Enter a valid amount');
   const dateChanged=dEl.value&&dEl.value!==dEl.dataset.o,freqChanged=f!==(b.freq||'monthly');
+  const before=subStatus(b);
   b.name=n;b.amt=a;b.acct=+$('#eb-p').value||0;
-  /* only re-anchor the schedule when the date or frequency was actually changed */
-  if(dateChanged||freqChanged){const st=dEl.value||dEl.dataset.o;b.start=st;b.due=+st.slice(8,10);b.freq=f}
-  const done=()=>{closeS();render();toast('Bill updated',true)};
+  if(isTrial(b)){
+    b.priceAfterTrial=a;                                   /* the trial always quotes the post-trial price */
+    if(before!='active'){
+      /* still inside the trial (or cancelled): the first billing date is editable and is the anchor */
+      if($('#eb-ts')&&$('#eb-ts').value)b.trialStartDate=$('#eb-ts').value;
+      const nf=(dEl.value||b.firstBillingDate||b.start||'').slice(0,10);
+      if(!nf)return toast('Set the first billing date');
+      b.firstBillingDate=nf;b.trialEndDate=nf;b.start=nf;b.due=+nf.slice(8,10);b.freq=f;
+    } else if(dateChanged||freqChanged){
+      /* it already bills like a normal subscription, so the trial dates are only history */
+      const s=dEl.value||dEl.dataset.o;b.start=s;b.due=+s.slice(8,10);b.freq=f;
+    }
+  } else if(dateChanged||freqChanged){const s=dEl.value||dEl.dataset.o;b.start=s;b.due=+s.slice(8,10);b.freq=f}
+  const done=()=>{vib(8);closeS();render();toast('Bill updated',true)};
   /* acknowledge the save on the button itself, then let the sheet go */
   if(btn&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
     btn.style.minWidth=btn.offsetWidth+'px';btn.disabled=true;btn.classList.add('paid-ok');
@@ -1744,13 +1811,30 @@ function delBillAsk(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   confirmBox('Are you sure you want to delete?',b.name+' · '+php(b.amt),()=>{S.bills=S.bills.filter(x=>x.id!=id);closeS();render();toast('Bill deleted')});
 }
+/* cancel a subscription without deleting it: the record and any history stay, no charge is made
+   and nothing is scheduled again. Cancelling inside the trial keeps the "started free" story. */
+function cancelSubAsk(id){
+  const b=S.bills.find(x=>x.id==id);if(!b||!isTrial(b))return;
+  const before=inTrial(b);
+  confirmBox('Cancel this subscription?',
+    before?`${b.name} · free trial ends ${noteD(subFirstBill(b))}. No charge will be made and no future renewals scheduled — its history is kept.`
+          :`${b.name} · the free trial already ended at ${noteD(subFirstBill(b))}. Future renewals stop — its history is kept.`,
+    ()=>{b.subscriptionStatus=before?'Cancelled':'Expired';b.cancelledOn=today;save();closeS();render();
+      toast(before?'Cancelled during free trial — no charge':'Subscription ended',true)});
+}
+function resumeSubAsk(id){
+  const b=S.bills.find(x=>x.id==id);if(!b||!isTrial(b))return;
+  confirmBox('Resume this subscription?',b.name+' · it goes back into Upcoming from '+noteD(subFirstBill(b))+
+    (b.acct&&acct(b.acct).id?' · pays from '+acct(b.acct).name:''),
+    ()=>{delete b.subscriptionStatus;delete b.cancelledOn;save();closeS();render();toast('Subscription resumed',true)});
+}
 function billLogo(id,inp){const b=S.bills.find(x=>x.id==id);if(!b)return;imgPick(inp,64,'png',u=>{b.logo=u;save();render();editBillSheet(id);toast('Logo updated')})}
 function billNoLogo(id){const b=S.bills.find(x=>x.id==id);if(!b)return;delete b.logo;save();render();editBillSheet(id);toast('Logo removed')}
 function cardPayInfo(cid){
   const a=S.accts.find(x=>x.id==cid);if(!a)return;
   const open=outstandingCardStatements().find(x=>x.a.id==cid),nd=open?bDt(open.due):nextCardDue(a),amount=open?open.amount:dueAmt(a),R=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0"><span class="m">${l}</span><b style="text-align:right">${v}</b></div>`;
   const pays=S.xfer.filter(x=>x.to==cid);
-  navS(`<div class="sh-h"><h2>${esc(a.name)} Payment</h2></div><p class="m" style="font-size:13px">This payment comes from the card itself, so its name, amount and due date follow the card's settings.</p><div class="card" style="margin:0 0 12px">${R('Card',esc(a.name))}${open?R('Statement period',noteD(open.statement.c.st)+' – '+noteD(open.statement.c.en)):''}${R('Amount due',php(amount))}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}</div>${open?`<button class="btn" onclick="payCard(${a.id},1)">Pay statement</button> `:''}${pays.length?`<div id="ph-body">${cardHistBody(a)}</div>`:'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'}<button class="btn s" onclick="acctMenu(${a.id})">Edit card &amp; due date</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
+  navS(`<div class="sh-h"><h2>${esc(a.name)} Payment</h2></div><p class="m" style="font-size:13px">This payment comes from the card itself, so its name, amount and due date follow the card's settings.</p><div class="card" style="margin:0 0 12px">${R('Card',esc(a.name))}${open?R('Statement period',noteD(open.statement.c.st)+' – '+noteD(open.statement.c.en)):''}${R('Amount due',bv(php(amount)))}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}</div>${open?`<button class="btn" onclick="payCard(${a.id},1)">Pay statement</button> `:''}${pays.length?`<div id="ph-body">${cardHistBody(a)}</div>`:'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'}<button class="btn s" onclick="acctMenu(${a.id})">Edit card &amp; due date</button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
 }
 function cardPayDetail(xid,cid){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;
@@ -1769,6 +1853,10 @@ function undoCardPay(xid,cid){
 }
 
 function ensureCats(){migrate();if(!Array.isArray(S.cats)||!S.cats.length)S.cats=CAT0.map(c=>({n:c.n,i:c.i}));for(const k of Object.keys(CATS))delete CATS[k];S.cats.forEach(c=>{CATS[c.n]=c.i||'📦'})}
+/* Pickers and suggestions offer live categories only — an archived category still keeps
+   its icon on the transactions that already use it, but is no longer offered. */
+function catNames(){const l=(S.cats||[]).filter(c=>!c.a).map(c=>c.n);return l.length?l:Object.keys(CATS)}
+function catArch(n){const o=(S.cats||[]).find(x=>x.n==n);return !!(o&&o.a)}
 function imgPick(inp,mw,fmt,cb){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,mw/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*k)),hh=Math.max(1,Math.round(im.height*k)),c=document.createElement('canvas');c.width=w;c.height=hh;c.getContext('2d').drawImage(im,0,0,w,hh);cb(fmt=='png'?c.toDataURL('image/png'):c.toDataURL('image/jpeg',.78))};im.src=r.result};r.readAsDataURL(f)}
 function catMgr(){openS(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2 style="margin:0">Categories</h2><button class="pill" onclick="closeS();render()">Done</button></div><p class="m" style="font-size:12px;margin:0 0 8px">Rename a category, change its emoji, or upload a logo (a logo replaces the emoji everywhere). If a note contains a category's name, like Meralco, that logo shows on the entry too.</p>${S.cats.map((c,i)=>`<div class="row"><div class="ico">${ci(c.n)}</div><div class="f"><input value="${esc(c.n)}" onchange="catRen(${i},this.value)" style="margin:0 0 6px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input value="${esc(c.i||'')}" maxlength="2" onchange="catEmo(${i},this.value)" style="width:56px;margin:0" placeholder="😀"><label class="pill" style="cursor:pointer">Upload logo<input type="file" accept="image/*" hidden onchange="catLogo(${i},this)"></label>${c.l?`<button class="pill" onclick="catNoLogo(${i})">Remove logo</button>`:''}</div></div><button class="pill" onclick="sure(this,()=>catDel(${i}))">✕</button></div>`).join('')}<div class="eyebrow" style="margin:16px 0 6px">Add category</div><div style="display:flex;gap:6px"><input id="ncn" placeholder="Name" style="margin:0;flex:1"><input id="nce" placeholder="😀" maxlength="2" style="margin:0;width:56px"><button class="btn" onclick="catAdd()">Add</button></div>`)}
 function catRen(i,v){v=v.trim();const c=S.cats[i];if(!v||v==c.n||S.cats.some(x=>x.n==v)){catMgr();return}S.tx.forEach(t=>{if(t.cat==c.n)t.cat=v});if(S.budgets[c.n]!=null){S.budgets[v]=S.budgets[c.n];delete S.budgets[c.n]}c.n=v;ensureCats();render();catMgr()}
@@ -1966,8 +2054,14 @@ ${D.length ? `<div class="card"><div class="eyebrow">Done</div>${D.map((g) => `<
 /* ===================== v1.01 additions ===================== */
 const CURS={PHP:['₱','en-PH'],USD:['$','en-US'],EUR:['€','de-DE'],GBP:['£','en-GB'],JPY:['¥','ja-JP',0],KRW:['₩','ko-KR',0],SGD:['S$','en-SG'],AUD:['A$','en-AU'],CAD:['C$','en-CA'],HKD:['HK$','en-HK'],INR:['₹','en-IN'],CNY:['CN¥','zh-CN']};
 const CS=()=>(CURS[S&&S.cur]||CURS.PHP)[0];
-function fmt(n){n=+n||0;const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0,v=Math.abs(n),r=d?Math.round(v*100)/100:Math.round(v);return(n<0&&r?'−':'')+c[0]+r.toLocaleString(c[1],{minimumFractionDigits:d,maximumFractionDigits:d})}
+/* Display formatting only — nothing here ever touches a stored amount. */
+const NF={us:['.',','],eu:[',','.'],sp:[',','\u00a0']};  /* [decimal, grouping] */
+const NEG=[['sign','−₱1,250'],['acct','(₱1,250)']];
+function fmt(n){n=+n||0;const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0,v=Math.abs(n),r=d?Math.round(v*100)/100:Math.round(v),sym=c[0],nf=NF[(S&&S.nf)||'us']||NF.us,st=(S&&S.neg)||'sign';let s=d?r.toFixed(2):String(Math.round(r)),ip=s,fp='';const dt=s.indexOf('.');if(dt>=0){ip=s.slice(0,dt);fp=s.slice(dt+1)}const body=ip.replace(/\B(?=(\d{3})+(?!\d))/g,nf[1])+(fp?nf[0]+fp:'');if(n<0&&r)return st=='acct'?'('+sym+body+')':'−'+sym+body;return sym+body}
 function migrate(){S.pend=S.pend||[];S.xfer=S.xfer||[];S.cur=S.cur||'PHP';(S.accts||[]).forEach(a=>{if(a&&a.bank=='GCash'&&!a.photo&&(a.img=='gcashg'||/^GCash (Mastercard|Visa Debit|Visa Card)$/.test(a.name))){a.name='GCash Visa Card';a.type='ewallet';a.net='visa';a.img='gcashg';a.g=['#0b2a7a','#2f6fe0']}})}
+/* Readable previews for the Settings choices (display only). */
+function nfSample(nf){const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0;let s=d?'1234.56':'1234';const dt=s.indexOf('.');const ip=dt>=0?s.slice(0,dt):s,fp=dt>=0?s.slice(dt+1):'';return ip.replace(/\B(?=(\d{3})+(?!\d))/g,NF[nf][1])+(fp?NF[nf][0]+fp:'')}
+function negSample(k){const K=CS(),f=()=>{const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0;let s=d?'1250.00':'1250';const dt=s.indexOf('.');const ip=dt>=0?s.slice(0,dt):s,fp=dt>=0?s.slice(dt+1):'';const n=NF[(S&&S.nf)||'us']||NF.us;return ip.replace(/\B(?=(\d{3})+(?!\d))/g,n[1])+(fp?n[0]+fp:'')};const b=f();return k=='acct'?'('+K+b+')':'−'+K+b}
 let _u=0;const uid=()=>Date.now()*1000+(++_u),dflt=b=>S.accts.find(a=>a.id==b.acct)||S.accts[0];
 
 
@@ -1990,7 +2084,7 @@ const total=sum(Object.values(gr)),items=Object.entries(gr).sort((a,b)=>b[1]-a[1
 const arcs=items.map(([c,v])=>{const len=total?circ*v/total:0,dash=Math.max(0,len-3),r=`<circle cx="100" cy="100" r="74" fill="none" stroke="${spendCol(c)}" stroke-width="19" stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${-off}"/>`;off+=len;return r}).join(''),
 lg=items.length?items.map(([c,v])=>`<div class="spend-legend-row"><i class="spend-dot" style="background:${spendCol(c)}"></i><span class="spend-legend-name">${esc(c)}</span><b class="spend-legend-pct">${total?Math.round(v/total*100):0}%</b><span class="spend-legend-amt">${php(v)}</span></div>`).join(''):`<p class="m" style="font-size:13px">No expenses recorded in ${mName(key)}.</p>`,
 bu=Object.values(S.budgets||{}).reduce((a,v)=>a+(+v||0),0),un=bu-total,
-ins=bu?un>=0?{t:`You’re ${Math.round(un/bu*100)}% under budget`,b:`${php(un)} of your ${php(bu)} monthly budget remains.`,i:'🌱'}:{t:`You’re ${Math.round(Math.abs(un)/bu*100)}% over budget`,b:`You spent ${php(Math.abs(un))} beyond your ${php(bu)} monthly budget.`,i:'📈'}:{t:'Set a monthly budget',b:'Add category budgets in Plan to see how you’re tracking.',i:'🌱'};
+ins=bu?un>=0?{t:`You’re ${Math.round(un/bu*100)}% under budget`,b:`${bv(php(un))} of your ${bv(php(bu))} monthly budget remains.`,i:'🌱'}:{t:`You’re ${Math.round(Math.abs(un)/bu*100)}% over budget`,b:`You spent ${bv(php(Math.abs(un)))} beyond your ${bv(php(bu))} monthly budget.`,i:'📈'}:{t:'Set a monthly budget',b:'Add category budgets in Plan to see how you’re tracking.',i:'🌱'};
 return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h2 style="margin:2px 0 0">Your Spending — ${mName(key)}</h2><span class="m" style="font-size:13px;white-space:nowrap">${key.slice(0,4)} · ${tx.length} ${tx.length==1?'expense':'expenses'}</span></div><div class="spend-overview"><div class="spend-donut-wrap"><svg class="spend-donut" viewBox="0 0 200 200" role="img" aria-label="Spending by category donut chart"><circle cx="100" cy="100" r="74" fill="none" stroke="var(--line)" stroke-width="19"/>${arcs}</svg><div class="spend-center"><b>${php(total)}</b><span>Total spent</span></div></div><div class="spend-legend" aria-label="Spending categories">${lg}</div></div></div><div class="spend-insight"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:25px" aria-hidden="true">${ins.i}</span><div><b>${ins.t}</b><div class="m" style="font-size:13px;margin-top:3px">${ins.b}</div></div>${bu?'':`<button class="pill" style="margin-left:auto;flex:none" onclick="tab='Plan';pt='Budgets';render()" aria-label="Set a budget">›</button>`}</div></div>`}
 function spendingChart(){const key=trendM||ym,tr=Array.from({length:6},(_,i)=>{const d=new Date(T.getFullYear(),T.getMonth()-5+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return{k,label:d.toLocaleDateString('en-PH',{month:'short'}),value:-sum(S.tx.filter(t=>t.d.startsWith(k)&&t.amt<0).map(t=>t.amt)),now:i==5}}),mx=Math.max(...tr.map(x=>x.value),1);
 return`<div id="sp-top">${spendTop(key)}</div><div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Spending trend</h2><span class="m" style="font-size:12px">Last 6 months</span></div><div class="spend-bars" role="group" aria-label="Monthly spending trend">${tr.map((x,i)=>`<div class="spend-bar-col ${x.k==key?'sel':''}" data-k="${x.k}" role="button" tabindex="0" aria-pressed="${x.k==key}" aria-label="${mName(x.k)} ${php(x.value)}" onclick="pickTrend('${x.k}')" onkeydown="if(event.key=='Enter'||event.key==' '){event.preventDefault();pickTrend('${x.k}')}"><span class="spend-total-label">${php(x.value)}</span><i class="spend-bar ${x.now?'now':''}" style="height:${Math.max(3,x.value/mx*76)}%;--delay:${i*55}ms"></i><span class="spend-month">${x.label}</span></div>`).join('')}</div></div>`}
@@ -2004,11 +2098,552 @@ function calMove(e){if(!calS||calBusy)return;const dx=e.clientX-calS.x,dy=e.clie
 function calUp(e){if(!calS)return;const s=calS;calS=null;const w=$('#calwrap');if(!s.h)return;const dx=e.clientX-s.x,stop=ev=>{ev.stopPropagation();ev.preventDefault()};w.addEventListener('click',stop,{capture:true,once:true});setTimeout(()=>w.removeEventListener('click',stop,true),80);
 if(Math.abs(dx)>60)calGo(dx<0?1:-1);else{w.style.transition='transform .2s ease';w.style.transform=''}}
 function calWheel(e){if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.2||Math.abs(e.deltaX)<3)return;e.preventDefault();calAcc+=e.deltaX;if(Math.abs(calAcc)>70&&!calBusy&&Date.now()-calT>550){calGo(calAcc>0?1:-1);calAcc=0;calT=Date.now()}clearTimeout(calWt);calWt=setTimeout(()=>calAcc=0,200)}
-/* ---- settings: currency + data import / export */
-function prefHtml(){return`<div class="eyebrow" style="margin:14px 0 6px">Currency</div><select onchange="setCur(this.value)">${Object.keys(CURS).map(k=>`<option value="${k}" ${(S.cur||'PHP')==k?'selected':''}>${k} (${CURS[k][0]})</option>`).join('')}</select><label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0"><span>Show decimals (${CS()}2.00)</span><input type="checkbox" style="width:auto;margin:0" ${S.dec?'checked':''} onchange="S.dec=this.checked?1:0;render();openSettings()"></label><p class="m" style="font-size:12px">Display only — your saved amounts are never converted.</p><div class="eyebrow" style="margin:14px 0 6px">Feedback</div><label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0"><span>Payment confirmation sound</span><input type="checkbox" style="width:auto;margin:0" ${S.snd!=0?'checked':''} onchange="S.snd=this.checked?1:0;render();openSettings()"></label><p class="m" style="font-size:12px">Plays a chime when you record a bill or card payment. Vibration is unaffected.</p>`}
-function setCur(v){S.cur=v;render();openSettings()}
+/* ==========================================================================
+   SETTINGS — one sheet, many pages.
+   Every page renders through stSheet() -> navS(), so the modal, its backdrop
+   and its scroll position stay stable while pages slide/fade in and out.
+   ========================================================================== */
+const APP_VER='1.0.1';
+const LOCK_KEY='cap_lock',BIO_KEY='cap_bio',NOTIF_SEEN='cap_notif_seen',BK_KEY='cap_lastbackup';
+const ST_IC={
+  user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.4"/><path d="M4.9 20c.7-3.5 3.6-5.6 7.1-5.6s6.4 2.1 7.1 5.6"/></svg>',
+  theme:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M18.5 5.5 17 7M7 17l-1.5 1.5"/></svg>',
+  cash:'<svg viewBox="0 0 24 24"><rect x="2.7" y="6" width="18.6" height="12" rx="2.6"/><circle cx="12" cy="12" r="2.5"/><path d="M6.2 12h.02M17.8 12h.02"/></svg>',
+  tag:'<svg viewBox="0 0 24 24"><path d="M3.6 11.6V4.7c0-.6.5-1.1 1.1-1.1h6.9c.3 0 .6.1.8.3l7.9 7.9c.4.5.4 1.2 0 1.6l-6.3 6.3c-.5.4-1.2.4-1.6 0l-7.9-7.9a1.1 1.1 0 0 1-.3-.8Z"/><circle cx="7.6" cy="7.6" r="1.3"/></svg>',
+  bell:'<svg viewBox="0 0 24 24"><path d="M18 15.6V10a6 6 0 1 0-12 0v5.6L4.6 18h14.8L18 15.6Z"/><path d="M9.9 20.9a2.4 2.4 0 0 0 4.2 0"/></svg>',
+  sound:'<svg viewBox="0 0 24 24"><path d="M4.2 9.6h3L12 5.7v12.6L7.2 14.4h-3z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6M18.1 6.7a7.5 7.5 0 0 1 0 10.6"/></svg>',
+  box:'<svg viewBox="0 0 24 24"><path d="M3.7 7.5 12 3.4l8.3 4.1v9L12 20.6l-8.3-4.1z"/><path d="M3.7 7.5 12 11.6l8.3-4.1M12 11.6v9"/></svg>',
+  swap:'<svg viewBox="0 0 24 24"><path d="M7.6 3.9v14.2M7.6 18.1l-2.8-2.8M7.6 18.1l2.8-2.8M16.4 20.1V5.9M16.4 5.9l2.8 2.8M16.4 5.9l-2.8 2.8"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M12 3.2 5.1 6v5.6c0 4.2 2.9 7.7 6.9 9.2 4-1.5 6.9-5 6.9-9.2V6z"/><path d="m9.2 11.9 2 2 3.6-3.8"/></svg>',
+  lock:'<svg viewBox="0 0 24 24"><rect x="4.7" y="10.2" width="14.6" height="9.6" rx="2.6"/><path d="M8.4 10.2V7.9a3.6 3.6 0 1 1 7.2 0v2.3M12 14.2v2"/></svg>',
+  info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11.1v5.1M12 8.1h.02"/></svg>',
+  ver:'<svg viewBox="0 0 24 24"><rect x="4.4" y="4.4" width="15.2" height="15.2" rx="3.4"/><path d="M8.7 12h6.6M8.7 15.5h4.2"/></svg>',
+  chev:'<svg viewBox="0 0 24 24"><path d="m9.6 6 6 6-6 6"/></svg>',
+  up:'<svg viewBox="0 0 24 24"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/></svg>',
+  down:'<svg viewBox="0 0 24 24"><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"/></svg>',
+};
+let stCur='home',stKeep=0,stIx=0;
+function stStart(){stIx=0}
+function stSheet(html,key,keep){const sh=$('#sheet');navS(html,key,keep?{keep:1}:null);if(sh)sh.classList.add('st')}
+function stHead(t,back,done){return `<div class="st-hd">${back?`<button class="pill st-bk" aria-label="Back" onclick="${back}">‹</button>`:''}<h2>${t}</h2>${done===false?'':`<button class="pill" onclick="closeS()">Done</button>`}</div>`}
+function stGrp(name,rows){return `<div class="st-grp eyebrow">${name}</div><div class="st-g">${rows.join('')}</div>`}
+function stRow(icon,title,val,go){
+  const body=`<span class="st-i">${icon}</span><span class="st-t">${title}</span>${val?`<span class="st-v">${esc(val)}</span>`:''}${go?`<span class="st-c">${ST_IC.chev}</span>`:''}`,i=stIx++;
+  return go?`<button class="st-row" style="--i:${i}" onclick="${go}">${body}</button>`:`<div class="st-row st-ro" style="--i:${i}">${body}</div>`;
+}
+function stSw(label,sub,on,fn){return `<label class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><span class="swx"><input type="checkbox" ${on?'checked':''} onchange="${fn}"><i></i></span></label>`}
+function stSel(label,sel,sub){return `<div class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span>${sel}</div>`}
+function stBtn(label,go,cls,sub){return `<div class="st-r st-bt"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><button class="pill" onclick="${go}">${cls||'Open'}</button></div>`}
+const ST_PAGES={};
+function stGo(k,keep){stCur=k;stKeep=keep?1:0;
+  if(/^cat-\d+$/.test(k))return stCatEdit(+k.slice(4));
+  (ST_PAGES[k]||stHome)()}
+/* ---- shared bits ---- */
 const hasPre=()=>{try{return!!localStorage.getItem('pera_pre')}catch(e){return false}};
-function dataHtml(){return`<div class="eyebrow" style="margin:14px 0 6px">Data backup</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn s" onclick="expJSON()">Export backup (JSON)</button><button class="btn s" onclick="expCSV()">Export transactions (CSV)</button></div><input id="imf" type="file" accept=".json,.csv,application/json,text/csv" style="margin-top:8px" onchange="impRead(this)"><p class="m" style="font-size:12px">Import a JSON backup or a transactions CSV. You’ll see a preview and confirm before anything changes.</p>${hasPre()?'<button class="btn s" onclick="sure(this,impUndo)">Undo last import</button>':''}`}
+function stWhen(iso){try{const d=new Date(iso);if(isNaN(d))return'';return d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})+' · '+d.toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'})}catch(e){return''}}
+const lastBk=()=>{try{return localStorage.getItem(BK_KEY)||''}catch(e){return''}};
+function applyMotion(){const de=document.documentElement;de.classList.toggle('noanim',S.anim===0);de.classList.toggle('rm',S.rm===1)}
+/* ==========================================================================
+   Balance visibility — one global state for the whole app.
+   Nothing is blurred: the real amount stays in the layout (so a row can never
+   move) and a clean dot mask fades over it while the digits fade out. The eye
+   is a real button — small icon, full-size tap target, no chrome around it.
+   ========================================================================== */
+const BV_DOTS='••••••';
+const BV_IC={
+  on:'<svg class="i1" viewBox="0 0 24 24"><path d="M2.4 12S6.1 5.5 12 5.5 21.6 12 21.6 12 17.9 18.5 12 18.5 2.4 12 2.4 12Z"/><circle cx="12" cy="12" r="3.1"/></svg>',
+  off:'<svg class="i2" viewBox="0 0 24 24"><path d="M2.4 12S6.1 5.5 12 5.5 21.6 12 21.6 12 17.9 18.5 12 18.5 2.4 12 2.4 12Z"/><circle cx="12" cy="12" r="3.1"/><path d="M4.4 4.4 19.6 19.6"/></svg>'};
+function bv(x){return `<span class="bv">${x}</span>`}
+function bvTxt(x){return S.hide==1?BV_DOTS:x}
+const bvLbl=()=>S.hide==1?'Show balances':'Hide balances';
+function bvEye(){const h=S.hide==1;return `<button type="button" class="bve" data-bve aria-label="${bvLbl()}" aria-pressed="${h}" title="${bvLbl()}" onclick="event.stopPropagation();bvToggle()"><span class="bvi" aria-hidden="true">${BV_IC.on}${BV_IC.off}</span></button>`}
+function bvSync(){document.querySelectorAll('[data-bve]').forEach(b=>{b.setAttribute('aria-label',bvLbl());b.setAttribute('title',bvLbl());b.setAttribute('aria-pressed',S.hide==1?'true':'false')})}
+function bvSub(){return S.hide==1?'Balances are hidden across Cap':'Account balances are shown'}
+function bvToggle(){
+  S.hide=S.hide==1?0:1;
+  save();applyHide();bvSync();
+  const s=document.getElementById('st-bvsub');if(s)s.textContent=bvSub();
+}
+function applyHide(){try{document.documentElement.classList.toggle('bvhide',S.hide==1)}catch(e){}}
+function themeLbl(){const t=S.theme||'auto';return t=='light'?'Light':t=='dark'?'Dark':'Auto'}
+function catCountLbl(){const n=(S.cats||[]).filter(c=>!c.a).length;return n+' categor'+(n==1?'y':'ies')}
+function notifLbl(){const n=notifCfg();if(!n.on)return 'Off';return notifState()=='granted'?'On':'Blocked'}
+function soundLbl(){return S.snd!=0?'On':'Muted'}
+function secLbl(){try{return JSON.parse(localStorage.getItem(LOCK_KEY)||'{}').pin?'On':(S.hide==1?'Balances hidden':'Off')}catch(e){return S.hide==1?'Balances hidden':'Off'}}
+function cloudOn(){try{return !!(window.CapOff&&CapOff.status().cloud)}catch(e){return false}}
+function stHome(){
+  stStart();
+  const nm=(S.name||'').trim();
+  const h=stHead('Settings')
+    +stGrp('Profile',[stRow(ST_IC.user,'Your Profile',nm||'Add your name',"stGo('profile')")])
+    +stGrp('Preferences',[
+      stRow(ST_IC.theme,'Appearance',themeLbl(),"stGo('appearance')"),
+      stRow(ST_IC.cash,'Currency &amp; Numbers',(S.cur||'PHP')+' '+CS(),"stGo('numbers')"),
+      stRow(ST_IC.tag,'Categories',catCountLbl(),"stGo('categories')")])
+    +stGrp('Notifications &amp; Feedback',[
+      stRow(ST_IC.bell,'Notifications',notifLbl(),"stGo('notif')"),
+      stRow(ST_IC.sound,'Sounds &amp; Haptics',soundLbl(),"stGo('sounds')")])
+    +stGrp('Data',[
+      stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
+      stRow(ST_IC.swap,'Import &amp; Export',hasPre()?'Undo available':null,"stGo('files')")])
+    +stGrp('Privacy',[
+      stRow(ST_IC.shield,'Privacy &amp; Sync',cloudOn()?'Synced':'On this device',"stGo('privacy')"),
+      stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")])
+    +stGrp('About',[
+      stRow(ST_IC.info,'About Cap',null,"stGo('about')"),
+      stRow(ST_IC.ver,'App Version',APP_VER,null)]);
+  stSheet(h,'set-home',1);
+}
+/* ---- Profile ---- */
+function stProfile(){
+  stStart();
+  const nm=(S.name||'').trim(),ini=nm.charAt(0).toUpperCase()||'?';
+  const h=stHead('Your Profile','openSettings()')
+    +`<div class="st-prof"><span class="st-av">${S.photo?`<img src="${S.photo}" alt="">`:esc(ini)}</span><span class="f"><b>${esc(nm||'Your name')}</b><small>Shown in greetings across Cap</small></span></div>`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px"><label class="pill" style="cursor:pointer">${S.photo?'Change photo':'Add photo'}<input type="file" accept="image/*" hidden onchange="stPhoto(this)"></label>${S.photo?'<button class="pill" onclick="stNoPhoto()">Remove photo</button>':''}</div>`
+    +`<label class="m">Your Name</label><input id="st-name" maxlength="40" placeholder="Enter your name" value="${esc(S.name||'')}" oninput="stName(this.value)">`
+    +`<p class="st-note">Used for greetings only. Nothing here is uploaded anywhere — it stays with your data on this device.</p>`;
+  stSheet(h,'set-profile',stKeep);
+}
+function stName(v){S.name=v;save()}
+function stPhoto(inp){imgPick(inp,128,'png',u=>{S.photo=u;save();stGo('profile',1);toast('Photo updated',true)})}
+function stNoPhoto(){delete S.photo;save();stGo('profile',1)}
+/* ---- Appearance ---- */
+function stAppearance(){
+  stStart();
+  const t=S.theme||'auto';
+  const h=stHead('Appearance','openSettings()')
+    +`<div class="st-grp eyebrow">Theme</div><p style="display:flex;gap:6px;margin:4px 0 0">${[['light','Light'],['dark','Dark'],['auto','Auto']].map(x=>`<button class="pill ${t==x[0]?'on':''}" style="flex:1" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('')}</p>`
+    +`<p class="st-note">Auto follows your device's light or dark setting.</p>`
+    +`<div class="st-grp eyebrow">App Icon</div><div class="st-box"><div class="st-r"><span class="f"><b>Default Cap icon</b><small>Cap ships a single icon</small></span><img class="st-icon" src="assets/icons/icon-192.png" alt=""></div></div>`
+    +`<div class="st-grp eyebrow">Motion</div><div class="st-box">`
+      +stSw('Animations','Screen and list transitions',S.anim!==0,"stMotion('anim',this.checked)")
+      +stSw('Reduce Motion','Keep large transitions to a minimum',S.rm===1,"stMotion('rm',this.checked)")
+    +`</div><p class="st-note">Your device's own reduced-motion setting is always respected.</p>`;
+  stSheet(h,'set-appearance',stKeep);
+}
+function stMotion(k,v){S[k]=v?1:0;applyMotion();save();render();stGo('appearance',1)}
+/* ---- Currency & Numbers ---- */
+function stNumbers(){
+  stStart();
+  const cur=S.cur||'PHP',c=CURS[cur]||CURS.PHP;
+  const h=stHead('Currency &amp; Numbers','openSettings()')
+    +`<div class="st-grp eyebrow">Currency</div><div class="st-box">`
+      +stSel('Primary Currency',`<select class="st-sel" onchange="stCurSet(this.value)">${Object.keys(CURS).map(k=>`<option value="${k}" ${cur==k?'selected':''}>${k} (${CURS[k][0]})</option>`).join('')}</select>`,'Used for every amount in Cap')
+    +`</div><p class="st-note">Display only — your saved amounts are never converted.</p>`
+    +`<div class="st-grp eyebrow">Numbers</div><div class="st-box">`
+      +stSw('Show Decimals','Show cents, e.g. '+c[0]+'1,250.00',!!S.dec,"stNum('dec',this.checked)")
+      +stSel('Number Format',`<select class="st-sel" onchange="stNum('nf',this.value)">${Object.keys(NF).map(k=>`<option value="${k}" ${((S.nf)||'us')==k?'selected':''}>${nfSample(k)}</option>`).join('')}</select>`)
+      +stSel('Negative Amount Style',`<select class="st-sel" onchange="stNum('neg',this.value)">${NEG.map(x=>`<option value="${x[0]}" ${((S.neg)||'sign')==x[0]?'selected':''}>${negSample(x[0])}</option>`).join('')}</select>`)
+    +`</div><p class="st-note">These change how amounts are shown, never what is stored.</p>`;
+  stSheet(h,'set-numbers',stKeep);
+}
+function stNum(k,v){S[k]=(k=='dec')?(v?1:0):v;save();render();stGo('numbers',1)}
+function stCurSet(v){S.cur=v;save();render();stGo('numbers',1)}
+/* ---- Categories ---- */
+function stCats(){
+  stStart();
+  const L=S.cats||[],live=[],arch=[];
+  L.forEach((c,i)=>(c.a?arch:live).push([c,i]));
+  const cnt=n=>S.tx.filter(t=>t.cat==n).length;
+  const crow=([c,i],first,last)=>{const n=cnt(c.n);
+    return `<div class="st-row" style="--i:${stIx++}"><button class="st-hit" onclick="stCatEdit(${i})"><span class="st-i">${ci(c.n)}</span><span class="st-tt"><b>${esc(c.n)}</b>${n?`<small>${n} transaction${n==1?'':'s'}</small>`:''}</span></button>`
+      +`<button class="pill st-mv" aria-label="Move ${esc(c.n)} up" ${first?'disabled':''} onclick="stCatMove(${i},-1)">${ST_IC.up}</button>`
+      +`<button class="pill st-mv" aria-label="Move ${esc(c.n)} down" ${last?'disabled':''} onclick="stCatMove(${i},1)">${ST_IC.down}</button></div>`};
+  const h=stHead('Categories','openSettings()')
+    +`<p class="st-note" style="margin:2px 4px 0">Categories name every transaction and drive your budgets. Archived categories stay on the entries that already use them.</p>`
+    +stGrp('All categories',live.map((x,k)=>crow(x,k===0,k===live.length-1)))
+    +(arch.length?stGrp('Archived',arch.map(([c,i])=>stRow(ci(c.n),`${esc(c.n)}`,`${cnt(c.n)} transactions`+` · Archived`,`stCatEdit(${i})`))):'')
+    +`<div class="st-grp eyebrow">Add category</div><div class="st-box st-col"><input id="st-cn" class="st-in" maxlength="24" placeholder="Category name" autocomplete="off"><div style="display:flex;gap:8px"><input id="st-ce" class="st-in" maxlength="2" placeholder="🙂" style="width:66px;flex:none" autocomplete="off"><button class="btn" style="flex:1;margin:0" onclick="stCatAdd()">Add Category</button></div></div>`;
+  stSheet(h,'set-categories',stKeep);
+}
+function stCatAdd(){const n=($('#st-cn')||{}).value,e=($('#st-ce')||{}).value;const nm=(n||'').trim();
+  if(!nm)return toast('Enter a category name');
+  if((S.cats||[]).some(c=>c.n.toLowerCase()==nm.toLowerCase()))return toast('That category already exists');
+  S.cats.push({n:nm,i:(e||'').trim()||'📦'});ensureCats();save();render();stGo('categories',1);toast('Category added',true)}
+function stCatEdit(i){
+  stStart();
+  const c=(S.cats||[])[i];if(!c)return stGo('categories');
+  const used=S.tx.filter(t=>t.cat==c.n).length;
+  const h=stHead(esc(c.n),"stGo('categories')")
+    +`<div class="st-prof"><span class="st-i" style="width:48px;height:48px;border-radius:14px">${ci(c.n)}</span><span class="f"><b>${esc(c.n)}</b><small>${used} transaction${used==1?'':'s'}${c.a?' · archived':''}</small></span></div>`
+    +`<label class="m">Name</label><input id="st-cen" class="st-in" maxlength="24" value="${esc(c.n)}" onchange="stCatRen(${i},this.value)">`
+    +`<label class="m">Icon</label><input id="st-cee" class="st-in" maxlength="4" value="${esc(c.i||'')}" onchange="stCatIco(${i},this.value)">`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0"><label class="pill" style="cursor:pointer">${c.l?'Replace logo':'Upload logo'}<input type="file" accept="image/*" hidden onchange="stCatLogo(${i},this)"></label>${c.l?`<button class="pill" onclick="stCatNoLogo(${i})">Remove logo</button>`:'<span class="m" style="font-size:12.5px;align-self:center">A logo replaces the icon</span>'}</div>`
+    +`<div class="st-grp eyebrow">Order</div><div class="st-box"><div class="st-r"><span class="f"><b>Position</b><small>Order shown in pickers</small></span><span style="display:flex;gap:6px"><button class="pill" aria-label="Move up" onclick="stCatMove(${i},-1)">${ST_IC.up}</button><button class="pill" aria-label="Move down" onclick="stCatMove(${i},1)">${ST_IC.down}</button></span></div></div>`
+    +(c.a
+      ?`<div class="st-grp eyebrow">Archived</div><div class="st-box st-col"><p class="st-note" style="margin:0">Hidden from pickers. Its name, icon and history are intact.</p><button class="btn" style="margin:0" onclick="stCatRestore(${i})">Restore category</button></div>`
+      :`<div class="st-grp eyebrow">Manage</div><div class="st-box st-col">${used?`<p class="st-note" style="margin:0">${used} transaction${used==1?'':'s'} use this category, so deleting it would leave them without one.</p>`:''}<button class="btn s" style="margin:0" onclick="stCatArch(${i})">Archive category</button>${used?'':`<button class="btn s danger-t" style="margin:0" onclick="stCatDelAsk(${i})">Delete category</button>`}</div>`);
+  stSheet(h,'set-cat-'+i,stKeep);
+}
+function stCatRen(i,v){const c=(S.cats||[])[i];if(!c)return;const nm=(v||'').trim();
+  if(!nm||nm==c.n)return;
+  if(S.cats.some((x,k)=>k!=i&&x.n.toLowerCase()==nm.toLowerCase()))return toast('That name is already used');
+  S.tx.forEach(t=>{if(t.cat==c.n)t.cat=nm});
+  if(S.budgets[c.n]!=null){S.budgets[nm]=S.budgets[c.n];delete S.budgets[c.n]}
+  c.n=nm;ensureCats();save();render();stGo('cat-'+i,1);toast('Category renamed',true)}
+function stCatIco(i,v){const c=(S.cats||[])[i];if(!c)return;delete c.l;c.i=(v||'').trim()||'📦';ensureCats();save();render();stGo('cat-'+i,1)}
+function stCatLogo(i,inp){const c=(S.cats||[])[i];if(!c)return;imgPick(inp,64,'png',u=>{c.l=u;save();render();stGo('cat-'+i,1);toast('Logo updated',true)})}
+function stCatNoLogo(i){const c=(S.cats||[])[i];if(!c)return;delete c.l;save();render();stGo('cat-'+i,1)}
+function stCatMove(i,d){const l=S.cats||[],j=i+d;if(j<0||j>=l.length)return;const a=l[i],b=l[j];if(!!a.a!=!!b.a)return;
+  l[i]=b;l[j]=a;ensureCats();save();render();stGo('cat-'+j,1)}
+function stCatArch(i){const c=(S.cats||[])[i];if(!c)return;c.a=1;ensureCats();save();render();stGo('categories',1);toast('Category archived',true)}
+function stCatRestore(i){const c=(S.cats||[])[i];if(!c)return;delete c.a;ensureCats();save();render();stGo('cat-'+i,1);toast('Category restored',true)}
+function stCatDelAsk(i){const c=(S.cats||[])[i];if(!c)return;
+  confirmBox('Delete “'+c.n+'”?','The category is removed from Cap. Any transaction that used it keeps its name in history. This cannot be undone.',()=>{S.cats.splice(i,1);ensureCats();save();render();stGo('categories',1);toast('Category deleted',true)},'Delete')}
+/* ==========================================================================
+   Notifications — real reminders. Cap can only wake the browser while it is
+   open (and catch up the next time it opens), so the copy says exactly that.
+   ========================================================================== */
+/* A read-only view of the reminder settings: absent keys fall back to the defaults
+   without writing anything into the saved document until the user actually changes one. */
+function notifDef(){return {on:0,bills:1,billsD:3,renew:1,renewD:3,trial:1,trialD:3,card:1,cardD:5,budget:1,low:0,lowAmt:500}}
+function notifCfg(){const d=notifDef(),n=(S.notif&&typeof S.notif=='object')?S.notif:{},o={};Object.keys(d).forEach(k=>{o[k]=n[k]==null?d[k]:n[k]});return o}
+function notifPut(k,v){if(!S.notif||typeof S.notif!='object')S.notif={};S.notif[k]=v}
+function notifState(){try{if(!('Notification' in window))return 'unsupported';return Notification.permission}catch(e){return 'unsupported'}}
+function notifPermText(){
+  const s=notifState();
+  return s=='granted'?'Allowed by your browser. Reminders appear while Cap is open, and catch up the next time you open it.'
+    :s=='denied'?'Blocked in your browser. Allow notifications for this site to use reminders.'
+    :s=='unsupported'?'This browser cannot show notifications, so reminders are not available here.'
+    :'Turning this on asks your browser for permission.';
+}
+async function notifFire(title,body,tag){
+  try{
+    if(notifState()!='granted')return false;
+    let reg=null;
+    try{reg=navigator.serviceWorker&&(navigator.serviceWorker.controller?await navigator.serviceWorker.ready:await navigator.serviceWorker.getRegistration())}catch(e){}
+    if(reg&&reg.showNotification){await reg.showNotification(title,{body,tag,icon:'assets/icons/icon-192.png',badge:'assets/icons/icon-192.png',data:{url:'./'}});return true}
+    new Notification(title,{body,tag,icon:'assets/icons/icon-192.png'});return true;
+  }catch(e){
+    try{new Notification(title,{body});return true}catch(_){return false}
+  }
+}
+function notifOnce(k){try{const o=JSON.parse(localStorage.getItem(NOTIF_SEEN)||'{}'),d=o[today]||(o[today]={});if(d[k])return false;d[k]=1;localStorage.setItem(NOTIF_SEEN,JSON.stringify(o));return true}catch(e){return true}}
+function dueWord(d){d=+d;if(d<0)return Math.abs(d)+' day'+(d<-1?'s':'')+' overdue';if(d==0)return 'today';if(d==1)return 'tomorrow';return 'in '+d+' days'}
+function notifScan(){
+  const n=notifCfg();if(!n.on||notifState()!='granted')return;
+  const out=[],d0=bDt(today);
+  const push=(k,t,b)=>{if(notifOnce(k))out.push({k,t,b})};
+  const B=S.bills||[],fq=b=>b.freq&&b.freq!='once';
+  if(+n.bills!==0)B.forEach(b=>{
+    if(isTrial(b)||fq(b))return;
+    const nd=bIso(nextDue(b)),d=Math.round((bDt(nd)-d0)/864e5);
+    if(d<=+n.billsD)push('bill'+b.id+nd,'Bill due '+php(b.amt),b.name+' is due '+dueWord(d));
+  });
+  if(+n.renew!==0)B.forEach(b=>{
+    if(isTrial(b)||!fq(b))return;
+    const nd=bIso(nextDue(b)),d=Math.round((bDt(nd)-d0)/864e5);
+    if(d<=+n.renewD)push('renew'+b.id+nd,'Renewal '+php(b.amt),b.name+' renews '+dueWord(d));
+  });
+  if(+n.trial!==0)B.forEach(b=>{
+    if(!inTrial(b))return;
+    const fb=bIso(subFirstBill(b)),d=Math.round((bDt(fb)-d0)/864e5);
+    if(d<=+n.trialD)push('trial'+b.id+fb,'Free trial ending',b.name+' starts billing '+dueWord(d)+' · '+php(b.amt));
+  });
+  if(+n.card!==0)try{
+    outstandingCardStatements().forEach(s=>{
+      const d=Math.round((bDt(s.due)-d0)/864e5);
+      if(d<=+n.cardD)push('card'+(s.a?s.a.id:'')+s.due,'Card payment due '+php(s.amount),(s.a?s.a.name:'Credit card')+' is due '+dueWord(d));
+    });
+  }catch(e){}
+  if(+n.budget!==0)Object.keys(S.budgets||{}).forEach(c=>{
+    const lim=+S.budgets[c]||0;if(lim<=0)return;
+    let sp=0;try{sp=spent(c)}catch(e){return}
+    if(sp>lim)push('budget'+c+'-'+ym+'v2','Over budget: '+c,php(sp)+' of '+php(lim)+' used this month');
+  });
+  if(+n.low===1)(S.accts||[]).forEach(a=>{
+    if(a.type=='credit')return;
+    if(+a.bal<+n.lowAmt)push('low'+a.id+today,'Low balance',a.name+' is down to '+php(a.bal));
+  });
+  out.slice(0,5).forEach((x,i)=>setTimeout(()=>notifFire(x.t,x.b,x.k),i*400));
+}
+function stNotif(){ stStart();
+  const n=notifCfg(),perm=notifState();
+  const daySel=(k,v,lbl)=>`<select class="st-sel" aria-label="${lbl}" onchange="stNotifSet('${k}',this.value)">${[[0,'On the day'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[5,'5 days before'],[7,'1 week before'],[14,'2 weeks before']].map(o=>`<option value="${o[0]}" ${+v==o[0]?'selected':''}>${o[1]}</option>`).join('')}</select>`;
+  const h=stHead('Notifications','openSettings()')
+    +`<div class="st-box">${stSw('Notifications','Bill, renewal and budget reminders',!!n.on,'stNotifMaster(this.checked)')}</div>`
+    +`<p class="st-note">${notifPermText()}</p>`
+    +`<div class="st-grp eyebrow">Reminders</div><div class="st-box">`
+      +stSw('Bill Reminders','One-off bills',+n.bills!==0,"stNotifSet('bills',this.checked)")
+      +stSel('Bill reminder',daySel('billsD',n.billsD,'Bill reminder'))
+      +stSw('Subscription Renewals','Recurring subscriptions',+n.renew!==0,"stNotifSet('renew',this.checked)")
+      +stSel('Subscription reminder',daySel('renewD',n.renewD,'Subscription reminder'))
+      +stSw('Free Trial Ending','Before the first charge',+n.trial!==0,"stNotifSet('trial',this.checked)")
+      +stSel('Free trial ending',daySel('trialD',n.trialD,'Free trial ending'))
+      +stSw('Credit Card Due Dates','Card statements due soon',+n.card!==0,"stNotifSet('card',this.checked)")
+      +stSel('Credit card payment',daySel('cardD',n.cardD,'Credit card payment'))
+      +stSw('Budget Alerts','When a category reaches its budget',+n.budget!==0,"stNotifSet('budget',this.checked)")
+      +stSw('Low Balance Alerts','When an account falls below your limit',+n.low===1,"stNotifSet('low',this.checked)")
+      +stSel('Low balance limit',`<input class="st-in" type="number" inputmode="decimal" min="0" step="50" style="max-width:130px;text-align:right" value="${+n.lowAmt||0}" onchange="stNotifSet('lowAmt',this.value)">`)
+    +`</div><p class="st-note">Cap cannot run while it is closed, so reminders arrive while the app is open and any you missed appear when you next open it.</p>`
+    +`<div class="st-grp eyebrow">Check it works</div><div class="st-box"><div class="st-r"><span class="f"><b>Send a test reminder</b><small>${perm=='granted'?'Uses your browser notification':'Turn notifications on first'}</small></span><button class="pill" onclick="stNotifTest()">Send</button></div></div>`;
+  stSheet(h,'set-notif',stKeep);
+}
+function stNotifSet(k,v){
+  const val=(k=='billsD'||k=='renewD'||k=='trialD'||k=='cardD'||k=='lowAmt')?Math.max(0,+v||0):((v===true||v==='true')?1:0);
+  notifPut(k,val);
+  save();render();stGo('notif',1)
+}
+function stNotifMaster(on){
+  if(!on){notifPut('on',0);save();render();stGo('notif',1);return}
+  const s=notifState();
+  if(s=='unsupported'){toast('This browser cannot show notifications');stGo('notif',1);return}
+  if(s=='denied'){toast('Notifications are blocked for this site');stGo('notif',1);return}
+  const go=()=>{notifPut('on',1);save();render();stGo('notif',1);notifScan()};
+  if(s=='granted')return go();
+  try{Notification.requestPermission().then(p=>{if(p=='granted')go();else stGo('notif',1)}).catch(()=>stGo('notif',1))}catch(e){stGo('notif',1)}
+}
+function stNotifTest(){
+  if(notifState()!='granted')return toast('Turn notifications on first');
+  notifFire('Cap test reminder','If you can see this, reminders are working.','cap-test').then(ok=>toast(ok?'Test reminder sent':'Could not send a reminder',ok));
+}
+/* ---- Sounds & Haptics ---- */
+function stSounds(){ stStart();
+  const canVib=hapOk();
+  const h=stHead('Sounds &amp; Haptics','openSettings()')
+    +`<div class="st-box">`
+      +stSw('Payment Confirmation Sound','A short chime when a payment is recorded',S.snd!=0,"stSnd('snd',this.checked)")
+      +stSw('Haptic Feedback','A light tap on payments and important saves',S.hap!=0,"stSnd('hap',this.checked)")
+    +`</div>`
+    +`<div class="st-grp eyebrow">Try it</div><div class="st-box"><div class="st-r"><span class="f"><b>Test feedback</b><small>${canVib?'Vibration is supported here':'This device has no vibration — the chime still plays'}</small></span><button class="pill" onclick="stSndTest()">Play</button></div></div>`
+    +`<p class="st-note">Feedback stays subtle, and a device that cannot vibrate is simply ignored.</p>`;
+  stSheet(h,'set-sounds',stKeep);
+}
+function stSnd(k,v){S[k]=v?1:0;save();if(k=='snd')render();stGo('sounds',1)}
+function stSndTest(){try{playPaymentConfirmation()}catch(e){}}
+function hapOk(){try{return !!navigator.vibrate}catch(e){return false}}
+/* ---- Data: backup, restore, import / export, danger zone ---- */
+function stMakeBackup(){
+  try{expJSON()}catch(e){return toast('Could not create the backup')}
+  try{localStorage.setItem(BK_KEY,new Date().toISOString())}catch(e){}
+  stGo('backup',1);
+}
+function dzHtml(){return `<div class="st-dz"><div class="eyebrow">Danger zone</div><p>Reset everything and start over. You will be asked to confirm twice.</p><button class="btn" onclick="stReset()">Reset All Data</button></div>`}
+function stBackup(){ stStart();
+  const lb=lastBk(),n=S.tx.length+(S.pend||[]).length;
+  const h=stHead('Backup &amp; Restore','openSettings()')
+    +`<div class="st-grp eyebrow">Storage</div><div class="st-box"><div class="st-r"><span class="f"><b>Saved on this device</b><small>${n} transaction${n==1?'':'s'} · ${(S.accts||[]).length} account${(S.accts||[]).length==1?'':'s'}</small></span><span class="st-pill" data-s="on"><i></i>Local</span></div></div>`
+    +`<div class="st-grp eyebrow">Your data</div><div class="st-box st-col">`
+      +`<button class="btn" style="margin:0" onclick="stMakeBackup()">Create Backup</button>`
+      +`<p class="st-note" style="margin:0">Backups contain your Cap financial data and can be used to restore it on another device.</p>`
+      +`<label class="btn s" style="margin:0;display:block;text-align:center;cursor:pointer">Restore Backup<input type="file" accept=".json,application/json" hidden onchange="impRead(this)"></label>`
+    +`</div>`
+    +`<div class="st-grp eyebrow">Last backup</div><div class="st-box"><div class="st-r"><span class="f"><b>${lb?stWhen(lb):'Never backed up'}</b><small>${lb?'Recorded on this device':'Create one to keep your data safe'}</small></span></div></div>`
+    +dzHtml();
+  stSheet(h,'set-backup',stKeep);
+}
+function stFiles(){ stStart();
+  const h=stHead('Import &amp; Export','openSettings()')
+    +`<div class="st-grp eyebrow">Export</div><div class="st-box st-col">`
+      +`<button class="btn" style="margin:0" onclick="stMakeBackup()">Export Cap Backup · JSON</button>`
+      +`<button class="btn s" style="margin:0" onclick="expCSV()">Export Transactions · CSV</button>`
+    +`</div>`
+    +`<div class="st-grp eyebrow">Import</div><div class="st-box st-col">`
+      +`<label class="btn" style="margin:0;display:block;text-align:center;cursor:pointer">Import Backup · JSON<input type="file" accept=".json,application/json" hidden onchange="impRead(this)"></label>`
+      +`<label class="btn s" style="margin:0;display:block;text-align:center;cursor:pointer">Import Transactions · CSV<input type="file" accept=".csv,text/csv" hidden onchange="impRead(this)"></label>`
+      +(hasPre()?'<button class="btn s" style="margin:0" onclick="sure(this,impUndo)">Undo last import</button>':'')
+    +`</div><p class="st-note">Every import shows a preview and asks you to confirm. Nothing is overwritten silently.</p>`;
+  stSheet(h,'set-files',stKeep);
+}
+/* ---- Privacy & Sync ---- */
+function stPrivacy(){ stStart();
+  const c=window.CapOff?CapOff.status():null,cloud=!!(c&&c.cloud);
+  const st=cloud?(c.status=='error'?'warn':'on'):'off';
+  const h=stHead('Privacy &amp; Sync','openSettings()')
+    +`<div class="st-grp eyebrow">Data storage</div><div class="st-box"><div class="st-r"><span class="f"><b>${cloud?'Synced with your account':'Saved on this device'}</b><small>${cloud?'Cloud sync is connected for this device.':'Your financial data is stored locally on this device.'}</small></span><span class="st-pill" data-s="${st}"><i></i>${cloud?(navigator.onLine?'Online':'Offline'):'Local only'}</span></div></div>`
+    +`<p class="st-note">Cap works fully offline. Nothing is uploaded unless you connect cloud sync.</p>`
+    +`<div class="st-grp eyebrow">Cloud Sync</div>`
+    +(cloud?`<div class="st-box">${window.CapOff?CapOff.settingsHtml():''}</div>`
+      :`<div class="st-box"><div class="st-r"><span class="f"><b>Not connected</b><small>No account is linked, so your data is never uploaded anywhere.</small></span></div></div>`)
+    +stGrp('On this device',[
+      stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
+      stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
+      stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")]);
+  stSheet(h,'set-privacy',stKeep);
+}
+/* ---- About ---- */
+function stAbout(){ stStart();
+  const h=stHead('About Cap','openSettings()')
+    +`<div class="st-prof" style="margin:4px 0 14px"><img class="st-icon" src="assets/icons/icon-192.png" alt="" style="width:56px;height:56px;border-radius:15px"><span class="f"><b style="font-size:17px">Cap</b><small>Finance Tracker · Version ${APP_VER}</small></span></div>`
+    +`<div class="st-grp eyebrow">What's new</div><div class="st-box st-col">`
+      +`<p class="st-note" style="margin:0">· Settings rebuilt into grouped pages</p>`
+      +`<p class="st-note" style="margin:0">· Free trials for subscriptions</p>`
+      +`<p class="st-note" style="margin:0">· Reminders, backup and privacy controls</p>`
+    +`</div>`
+    +`<div class="st-grp eyebrow">Privacy</div><p class="st-note" style="margin:6px 4px 0">Cap keeps your financial data on this device. There is no advertising and no tracking.</p>`
+    +`<div class="st-grp eyebrow">Data storage</div><p class="st-note" style="margin:6px 4px 0">Your data lives in this browser's storage and, where available, a local database. Export a backup before clearing your browser data.</p>`
+    +`<button class="btn s" style="width:100%;margin:18px 0 0" onclick="stGo('privacy')">Privacy &amp; Sync</button>`;
+  stSheet(h,'set-about',stKeep);
+}
+/* ---- Reset (double confirmation, never immediate) ---- */
+function stReset(){ stStart();
+  const h=stHead('Reset All Data',"stGo('backup')")
+    +`<div class="st-dz"><div class="eyebrow">Danger zone</div><p>This permanently deletes your accounts, transactions, bills, subscriptions, budgets, payment history and settings stored on this device. This action cannot be undone.</p></div>`
+    +`<label class="m" style="margin-top:18px">Type RESET to confirm</label><input id="st-rst" class="st-in" maxlength="8" autocapitalize="characters" autocomplete="off" placeholder="RESET" oninput="stResetArm(this.value)">`
+    +`<button class="btn dng-f" id="st-rstb" style="width:100%;margin:10px 0 0" disabled onclick="stResetGo()">Reset All Data</button>`
+    +`<button class="btn s" style="width:100%;margin:8px 0 0" onclick="stGo('backup')">Cancel</button>`;
+  stSheet(h,'set-reset',stKeep);
+}
+function stResetArm(v){const b=$('#st-rstb');if(b)b.disabled=(String(v||'').trim().toUpperCase()!='RESET')}
+function stResetGo(){
+  confirmBox('Reset all Cap data?','Your accounts, transactions, bills, subscriptions, budgets, payment history and settings stored on this device will be permanently deleted. This action cannot be undone.',resetAllFinal,'Reset All Data');
+}
+function resetAllFinal(){
+  S={accts:[],tx:[],pend:[],xfer:[],bills:[],budgets:{},notes:'',goals:[],debts:[],cats:CAT0.map(c=>({n:c.n,i:c.i})),cur:'PHP',name:''};
+  try{['pera','pera_pre',LOCK_KEY,BIO_KEY,NOTIF_SEEN,BK_KEY].forEach(k=>localStorage.removeItem(k))}catch(e){}
+  try{document.documentElement.classList.remove('noanim','rm')}catch(e){}
+  try{document.body.classList.remove('hidebal','reveal')}catch(e){}
+  window._unlocked=1;
+  save();render();closeS();
+  toast('All Cap data was reset',true);
+}
+/* ==========================================================================
+   Security — hide balances, a locally hashed passcode lock, and device
+   authentication only when the platform genuinely offers it.
+   ========================================================================== */
+let stBio=null;
+try{
+  if(window.PublicKeyCredential&&PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable){
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(v=>{stBio=!!v;if(stCur=='security')stGo('security',1)}).catch(()=>{stBio=false});
+  }else stBio=false;
+}catch(e){stBio=false}
+function stCryptoOk(){try{return !!(window.crypto&&crypto.subtle&&window.TextEncoder)}catch(e){return false}}
+function stLockGet(){try{return JSON.parse(localStorage.getItem(LOCK_KEY)||'{}')||{}}catch(e){return{}}}
+function stLockSet(o){try{localStorage.setItem(LOCK_KEY,JSON.stringify(o||{}))}catch(e){}}
+async function stHash(s){
+  try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('cap|'+s));
+    return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')}
+  catch(e){return 'weak|'+s}
+}
+const b64u=u=>btoa(String.fromCharCode.apply(null,u));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function bioEnroll(){
+  if(!stBio)return false;
+  try{
+    const ch=new Uint8Array(32);crypto.getRandomValues(ch);
+    const id=new Uint8Array(16);crypto.getRandomValues(id);
+    const nm=(S.name||'cap user').slice(0,32);
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:ch,rp:{name:'Cap'},
+      user:{id,name:(S.name||'cap-user').replace(/\s+/g,'-').toLowerCase().slice(0,32)||'cap-user',displayName:nm},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'preferred'},
+      timeout:60000,attestation:'none'}});
+    if(!cred)return false;
+    try{localStorage.setItem(BIO_KEY,b64u(new Uint8Array(cred.rawId)))}catch(e){}
+    return true;
+  }catch(e){return false}
+}
+async function bioCheck(){
+  try{
+    const raw=localStorage.getItem(BIO_KEY);if(!raw)return false;
+    const ch=new Uint8Array(32);crypto.getRandomValues(ch);
+    const a=await navigator.credentials.get({publicKey:{challenge:ch,
+      allowCredentials:[{type:'public-key',id:unb64(raw)}],userVerification:'required',timeout:60000}});
+    return !!a;
+  }catch(e){return false}
+}
+function lockShow(){
+  const el=$('#lock');if(!el)return;
+  const L=stLockGet(),box=el.querySelector('.lk');
+  box.innerHTML=`<div class="lk-ic">${ST_IC.lock}</div><h2>Cap is locked</h2><p>Enter your passcode to continue.</p>`
+    +`<input id="lk-in" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="Passcode">`
+    +`<div class="lk-err" id="lk-err"></div>`
+    +`<button class="btn" style="width:100%;margin:0" onclick="lockTry()">Unlock</button>`
+    +((L.bio&&stBio)?`<button class="btn s" style="width:100%;margin:8px 0 0" onclick="lockBio()">Use device authentication</button>`:'')
+    +`<button class="lk-fg" onclick="lockForgot()">Forgot your passcode?</button>`;
+  el.classList.add('open');
+  window._unlocked=0;
+  const i=box.querySelector('#lk-in');
+  setTimeout(()=>{try{i&&i.focus()}catch(e){}},120);
+  if(L.bio&&stBio)lockBio(1);
+}
+function lockHide(){const el=$('#lock');if(el)el.classList.remove('open');window._unlocked=1;stLockTouch()}
+function lockTry(){
+  const i=$('#lk-in'),v=i?i.value:'';if(!v)return;
+  const L=stLockGet();
+  stHash(v).then(h=>{
+    if(h&&h===L.pin){lockHide()}
+    else{const e=$('#lk-err');if(e)e.textContent='That passcode is not correct.';if(i){i.value='';try{i.focus()}catch(_){}}}
+  });
+}
+function lockBio(auto){
+  if(!stBio)return;
+  bioCheck().then(ok=>{if(ok)lockHide();else if(!auto){const e=$('#lk-err');if(e)e.textContent='Device authentication was not completed.'}});
+}
+function lockForgot(){confirmBox('Forgot your passcode?','Cap cannot recover a passcode. The only way in is to reset Cap on this device, which erases everything stored here.',resetAllFinal,'Reset Cap')}
+function stLockTouch(){
+  clearTimeout(window._lkT);
+  const L=stLockGet(),m=+L.auto;
+  if(!L.pin||!(m>0))return;
+  window._lkT=setTimeout(()=>{if(!document.hidden)lockShow()},m*60000);
+}
+function stLockCheck(){const L=stLockGet();if(L.pin&&!window._unlocked)lockShow()}
+function stSecurity(){ stStart();
+  const L=stLockGet(),pin=!!L.pin,bio=!!stBio,cryptoOk=stCryptoOk();
+  const h=stHead('Security','openSettings()')
+    +`<div class="st-grp eyebrow">Privacy</div><div class="st-box">`
+      +`<div class="st-r"><span class="f"><b>Balance Visibility</b><small id="st-bvsub">${bvSub()}</small></span>${bvEye()}</div>`
+    +`</div><p class="st-note">Account balances stay hidden everywhere in Cap until you show them again. The eye beside a balance does the same thing.</p>`
+    +`<div class="st-grp eyebrow">App Lock</div><div class="st-box">`
+      +stSw('App Lock','Ask for a passcode when Cap opens',pin,"stLockToggle(this.checked)")
+      +(pin?stSel('Auto Lock',`<select class="st-sel" onchange="stLockAuto(this.value)">${[[0,'Immediately'],[1,'After 1 minute'],[5,'After 5 minutes'],[30,'After 30 minutes'],[-1,'Never']].map(x=>`<option value="${x[0]}" ${+L.auto==x[0]?'selected':''}>${x[1]}</option>`).join('')}</select>`):'')
+      +(pin?`<div class="st-r"><span class="f"><b>Passcode</b><small>Change the digits Cap asks for</small></span><button class="pill" onclick="stPin()">Change</button></div>`:'')
+      +(pin?(bio?stSw('Use Device Authentication','Unlock with your device instead of typing',L.bio==1,"stBioToggle(this.checked)"):`<div class="st-r"><span class="f"><b>Use Device Authentication</b><small>Not available on this device</small></span></div>`):`<div class="st-r"><span class="f"><b>Use Device Authentication</b><small>Set a passcode first</small></span></div>`)
+    +`</div>`
+    +(!cryptoOk?`<p class="st-note">App Lock is unavailable in this browser because it cannot hash a passcode safely.</p>`:'')
+    +`<p class="st-note">Cap stores only a one-way hash of the passcode on this device. A forgotten passcode cannot be recovered — the only way in is to reset Cap.</p>`;
+  stSheet(h,'set-security',stKeep);
+}
+function stPin(){ stStart();
+  const has=!!stLockGet().pin;
+  const h=stHead(has?'Change Passcode':'Set a Passcode',"stGo('security')")
+    +`<p class="st-note" style="margin:2px 4px 10px">${has?'Choose a new 4–6 digit passcode.':'Choose a 4–6 digit passcode. Cap will ask for it when the app opens.'}</p>`
+    +`<label class="m">New passcode</label><input id="st-p1" class="st-in" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">`
+    +`<label class="m">Confirm passcode</label><input id="st-p2" class="st-in" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">`
+    +`<button class="btn" style="width:100%;margin:14px 0 0" onclick="stPinSave()">${has?'Save passcode':'Turn on App Lock'}</button>`
+    +`<p class="st-note">Only a one-way hash is stored, and only on this device.</p>`;
+  stSheet(h,'set-pin',stKeep);
+}
+function stPinSave(){
+  const a=($('#st-p1')||{}).value||'',b=($('#st-p2')||{}).value||'';
+  if(!/^\d{4,6}$/.test(a))return toast('Use 4 to 6 digits');
+  if(a!==b)return toast('The passcodes do not match');
+  stHash(a).then(h=>{const L=stLockGet();L.pin=h;if(L.auto==null)L.auto=0;if(L.bio==null)L.bio=0;stLockSet(L);
+    window._unlocked=1;stLockTouch();stGo('security',1);toast('App Lock is on',true)});
+}
+function stLockToggle(on){
+  if(on){
+    if(!stCryptoOk()){toast('App Lock is unavailable in this browser');stGo('security',1);return}
+    return stPin();
+  }
+  stLockSet({});try{localStorage.removeItem(BIO_KEY)}catch(e){}
+  window._unlocked=1;clearTimeout(window._lkT);
+  stGo('security',1);toast('App Lock is off');
+}
+function stLockAuto(v){const L=stLockGet();L.auto=+v;stLockSet(L);window._unlocked=1;stLockTouch();stGo('security',1)}
+function stBioToggle(on){
+  const L=stLockGet();
+  if(!on){L.bio=0;stLockSet(L);try{localStorage.removeItem(BIO_KEY)}catch(e){}stGo('security',1);return}
+  toast('Follow your device prompt…');
+  bioEnroll().then(ok=>{L.bio=ok?1:0;stLockSet(L);stGo('security',1);toast(ok?'Device authentication is on':'Could not set up device authentication',ok)});
+}
+/* ---- page registry + boot ---- */
+ST_PAGES.home=stHome;ST_PAGES.profile=stProfile;ST_PAGES.appearance=stAppearance;ST_PAGES.numbers=stNumbers;
+ST_PAGES.categories=stCats;ST_PAGES.notif=stNotif;ST_PAGES.sounds=stSounds;ST_PAGES.backup=stBackup;
+ST_PAGES.files=stFiles;ST_PAGES.privacy=stPrivacy;ST_PAGES.security=stSecurity;ST_PAGES.about=stAbout;ST_PAGES.reset=stReset;
+function stBoot(){
+  applyMotion();applyHide();bvSync();
+  if(stLockGet().pin)lockShow();else window._unlocked=1;
+  const tick=()=>{try{notifScan()}catch(e){}clearTimeout(window._notifT);window._notifT=setTimeout(tick,180000)};
+  window._notifT=setTimeout(tick,6000);
+  ['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{if(window._unlocked)stLockTouch()},{passive:true}));
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){const L=stLockGet();if(L.pin&&+L.auto>=0)window._unlocked=0}
+    else{stLockCheck();try{notifScan()}catch(e){}}
+  });
+}
 function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement('a');a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}
 function expJSON(){dl(`cap-financetracker-backup-${today}.json`,JSON.stringify({app:'cap-finance-tracker',version:'1.01',exported:new Date().toISOString(),data:S},null,1),'application/json');toast('Backup exported')}
 const q2=v=>{v=String(v==null?'':v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
@@ -2039,7 +2674,7 @@ else{const d=I.d,have=new Set([...S.tx,...S.pend].map(t=>t.id)),sg=new Set([...S
 [...d.tx.map(t=>[t,0]),...d.pend.map(t=>[t,1])].forEach(([t,p])=>{if(have.has(t.id)||sg.has(sig(t)))return;(p?S.pend:S.tx).push(t);if(!p&&old.has(t.acct))bApply(t,1);n++});
 ['bills','goals','debts'].forEach(k=>{S[k]=S[k]||[];d[k].forEach(x=>{if(!S[k].some(y=>y.id==x.id))S[k].push(x)})});d.xfer.forEach(x=>{if(!old.has(x.to)&&!S.xfer.some(y=>y.id==x.id))S.xfer.push(x)});Object.keys(d.budgets).forEach(k=>{if(S.budgets[k]==null)S.budgets[k]=d.budgets[k]})}
 try{localStorage.setItem('pera_pre',snap)}catch(e){}IMP=null;closeS();render();toast(n+' record'+(n==1?'':'s')+' imported')}catch(e){S=JSON.parse(snap);IMP=null;save();render();toast('Import failed — your data was not changed')}}
-function impUndo(){try{S=JSON.parse(localStorage.getItem('pera_pre'));localStorage.removeItem('pera_pre');render();openSettings();toast('Restored the data from before the last import')}catch(e){toast('Nothing to restore')}}
+function impUndo(){try{S=JSON.parse(localStorage.getItem('pera_pre'));localStorage.removeItem('pera_pre');render();stGo('files',1);toast('Restored the data from before the last import')}catch(e){toast('Nothing to restore')}}
 
 
 

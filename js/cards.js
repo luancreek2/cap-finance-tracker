@@ -162,6 +162,18 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
 
       /* Account and card management */
       function upcomingBillRow(b) {
+        /* a free trial shows what is coming, never a charge that already happened */
+        if (inTrial(b)) {
+          const en = noteD(subFirstBill(b)),
+            paid = paidNow(b),
+            due = subDue(b),
+            plain = `${trialLabel(b)} · ${php(b.amt)}${subFreqTail(b)} after trial · first charge ${en}`;
+          return `<div class="row trial" ${billAttr(b)} ${billAria(b, trialLabel(b), php(b.amt) + " after trial, first charge " + en)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${trialLabel(b)}</small><small>${php(b.amt)}${subFreqTail(b)} after trial</small><small>Renews ${en} · ${b.acct && acct(b.acct).id ? esc(acct(b.acct).name) : "＋ Choose payment account"}</small></div><b class="m">${php(b.amt)}</b>${due ? (paid ? '<span class="chip ok">✓ Paid</span>' : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`) : ""}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+        }
+        if (subGone(b)) {
+          const why = b.subscriptionStatus == "Cancelled" ? "Cancelled during free trial" : "Subscription ended";
+          return `<div class="row trial done" ${billAttr(b)} ${billAria(b, why, "no charge")}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${why}</small><small>No charge</small></div><button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+        }
         const status = paidNow(b) ? (b.freq == "once" ? "Paid ✓" : "Paid ✓ · next " + bWhen(b)) : bWhen(b),
           plain = `${bLbl(b)} · ${status}`;
         return `<div class="row" ${billAttr(b)} ${billAria(b, plain)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small>${plain}<br><span class="pf" onclick="event.stopPropagation();billAcct(${b.id})">${b.acct && acct(b.acct).id ? "💳 " + esc(acct(b.acct).name) : "＋ Choose payment account"}</span></small></div><b>${php(b.amt)}</b>${paidNow(b) ? "" : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
@@ -184,19 +196,19 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
           urgency = urgOf(n),
           status = n < 0 ? `Overdue by ${Math.abs(n)}d` : n == 0 ? "Due today" : `Due in ${n}d`,
           aria = `${a.name} statement, ${status}, ${php(x.amount)}. Press and hold, right-click or press Enter for details.`;
-        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${urgTxt(n)}</span></small></div><b class="du">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
+        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${urgTxt(n)}</span></small></div><b class="du bv">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
       }
       function planOld() {
         const cardStatements = outstandingCardStatements();
         return `<h1>Plan</h1><div class="grid"><div class="card"><h2>Monthly budgets</h2>${Object.keys(
           CATS,
         )
-          .filter((c) => c != "Salary")
+          .filter((c) => c != "Salary" && (!catArch(c) || +S.budgets[c] > 0))
           .map((c) => {
             const b = S.budgets[c] || 0,
               s = spent(c),
               p = b ? Math.min(100, (s / b) * 100) : 0;
-            return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span>${ci(c)} ${c}</span><span class="${s > b && b ? "r" : "m"}">${php(s)} / <input style="width:90px;display:inline;padding:3px 6px;margin:0" type="number" value="${b}" onchange="S.budgets['${c}']=+this.value;render()"></span></div><div class="bar ${s > b && b ? "o" : ""}"><b style="width:${p}%"></b></div></div>`;
+            return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span>${ci(c)} ${c}</span><span class="${s > b && b ? "r" : "m"}">${bv(php(s))} / <input style="width:90px;display:inline;padding:3px 6px;margin:0" type="number" value="${b}" onchange="S.budgets['${c}']=+this.value;render()"></span></div><div class="bar ${s > b && b ? "o" : ""}"><b style="width:${p}%"></b></div></div>`;
           })
           .join("")}</div>
 <div class="card"><h2>Bills &amp; Subscriptions</h2>${S.bills.map(upcomingBillRow).join("")}${cardStatements.length ? `<div class="eyebrow" style="margin:18px 0 4px">Credit Card Statements</div>${cardStatements.map(cardStatementRow).join("")}` : ""}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
@@ -210,7 +222,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             ? `<div class="eyebrow" style="margin:18px 0 8px">${ti}</div><div class="cards">${l.map((a) => cardH(a, 1)).join("")}</div>`
             : "";
         };
-        return `<h1>Accounts</h1><div class="card"><div class="eyebrow">Net worth</div><div class="big">${php(cash - owed)}</div><div class="m">Cash & bank ${php(cash)} · Owed <span class="r">${php(owed)}</span></div></div>
+        return `<h1>Accounts</h1><div class="card"><div class="eyebrow">Net worth</div><div style="display:flex;align-items:center;gap:2px"><div class="big bv">${php(cash - owed)}</div>${bvEye()}</div><div class="m">Cash & bank ${bv(php(cash))} · Owed <span class="r">${bv(php(owed))}</span></div></div>
 ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit")}<p><button class="btn" onclick="openAcct()">＋ Add card or account</button></p>`;
       }
       function Notes() {
@@ -350,24 +362,60 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
       }
       function openBill() {
         openS(
-          `<h2>New bill</h2><input id="bn" placeholder="Name (e.g. Rent, Netflix)"><input id="ba" type="number" placeholder="Amount (${CS()})"><label class="m">First due date</label><input id="bd" type="date" value="${today}"><label class="m">Repeats</label><select id="br"><option value="once">Never (one-time)</option><option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly" selected>Every month</option><option value="quarterly">Every 3 months</option><option value="yearly">Every year</option></select><select id="bp"><option value="0">Pay from… (choose later)</option>${S.accts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select><button class="btn" onclick="saveBill()">Save</button>`,
+          `<h2>New bill</h2><input id="bn" placeholder="Name (e.g. Rent, Netflix)"><input id="ba" type="number" placeholder="Amount (${CS()})" oninput="billTrialHint()"><label class="swx-row"><span class="f"><b>Free Trial</b><small>Charge nothing until the first billing date</small></span><span class="swx"><input id="bt" type="checkbox" role="switch" aria-label="Free trial" onchange="billTrialToggle(this)"><i></i></span></label><div id="bt-box" hidden><label class="m">Trial start</label><input id="bts" type="date" value="${today}" onchange="billTrialHint()"></div><label class="m" id="bd-lbl">First due date</label><input id="bd" type="date" value="${today}" onchange="billTrialHint()"><p class="hint" id="bt-hint" hidden></p><label class="m">Repeats</label><select id="br" onchange="billTrialHint()"><option value="once">Never (one-time)</option><option value="weekly">Every week</option><option value="biweekly">Every 2 weeks</option><option value="monthly" selected>Every month</option><option value="quarterly">Every 3 months</option><option value="yearly">Every year</option></select><select id="bp"><option value="0">Pay from… (choose later)</option>${S.accts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select><button class="btn" onclick="saveBill()">Save</button>`,
         );
       }
+      /* free trial: the same form, plus a trial start date and a first-billing-date label. The
+         first billing date (from the date field) is what anchors every future renewal. */
+      function billTrialToggle(el) {
+        const on = el.checked, d = $("#bd"), box = $("#bt-box"), lbl = $("#bd-lbl");
+        if (box) box.hidden = !on;
+        if (lbl) lbl.textContent = on ? "First billing date" : "First due date";
+        const plus30 = bAdd(today, 30);
+        if (d) { if (on && d.value === today) d.value = plus30; else if (!on && d.value === plus30) d.value = today; }
+        billTrialHint();
+      }
+      function billTrialHint() {
+        const h = $("#bt-hint"), on = $("#bt") && $("#bt").checked;
+        if (!h) return;
+        if (!on) { h.hidden = true; return; }
+        const g = (id) => ($(id) || {}).value,
+          f = g("#bd") || bAdd(today, 30);
+        h.hidden = false;
+        h.textContent = `No charge until ${noteD(f)}. Then ${php(+(g("#ba") || 0))}${subFreqTail({ freq: g("#br") })}, ${subFreqWord({ freq: g("#br") })}.`;
+      }
       function saveBill() {
-        const st = $("#bd").value || today;
-        S.bills.push({
-          id: Date.now(),
-          name: $("#bn").value || "Bill",
-          amt: +$("#ba").value || 0,
-          due: +st.slice(8, 10),
-          freq: $("#br").value || "monthly",
-          start: st,
-          acct: +($("#bp") || {}).value || 0,
-          paid: "",
-          paidOn: [],
-        });
+        const st = $("#bd").value || today,
+          trial = !!($("#bt") && $("#bt").checked),
+          b = {
+            id: Date.now(),
+            name: $("#bn").value || "Bill",
+            amt: +$("#ba").value || 0,
+            due: +st.slice(8, 10),
+            freq: $("#br").value || "monthly",
+            start: st,
+            acct: +($("#bp") || {}).value || 0,
+            paid: "",
+            paidOn: [],
+          };
+        if (trial) {
+          /* the trial bills nothing: only the record is stored. The first billing date - never the
+             trial start - becomes the anchor every future renewal repeats from. */
+          const ts = ($("#bts") || {}).value || today,
+            f = st > ts ? st : bAdd(ts, 30);
+          b.isFreeTrial = 1;
+          b.trialStartDate = ts;
+          b.trialEndDate = f;
+          b.firstBillingDate = f;
+          b.priceAfterTrial = b.amt;
+          b.subscriptionStatus = "Free Trial";
+          b.start = f;
+          b.due = +f.slice(8, 10);
+        }
+        S.bills.push(b);
         closeS();
         render();
+        if (trial) toast("Free trial added — first charge " + noteD(b.firstBillingDate), true);
       }
       function payBill(id, k) {
         const b = S.bills.find((x) => x.id == id);
@@ -456,15 +504,15 @@ out=-sum(l.filter(t=>t.amt<0).map(t=>t.amt)),inc=sum(l.filter(t=>t.amt>0).map(t=
 const R=(k,v,c)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${k}</span><b class="${c||''}">${v}</b></div>`;
 if(!l.length)return`<p class="m" style="margin-top:10px">No transactions in ${mLbl(m)}.</p>`;
 const g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
-return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(acct(id).name)}</div>${R('Money Out',php(out),out?'r':'')}${R('Money In',php(inc),inc?'g':'')}${R('Net',(inc-out<0?'−':'+')+php(Math.abs(inc-out)))}${R('Transactions',l.length)}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
+return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(acct(id).name)}</div>${R('Money Out',bv(php(out)),out?'r':'')}${R('Money In',bv(php(inc)),inc?'g':'')}${R('Net',bv((inc-out<0?'−':'+')+php(Math.abs(inc-out))))}${R('Transactions',l.length)}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
 function acctTx(id){const a=acct(id);if(a.type!='credit')return acctTxM(id);if(!a.stmt)return`<div class="eyebrow" style="margin:16px 0 6px">Billing cycles</div><p class="m" style="font-size:13px">Set this card’s statement closing date (⋯ › Rename / edit card) to view billing cycles.</p>${acctTx0(id)}`;
 return`<div class="eyebrow" style="margin:16px 0 6px">Transactions</div><select onchange="BC[${id}]=+this.value;billRef(${id})">${[0,1,2,3,4,5].map(i=>{const c=cyc(a,i);return`<option value="${i}" ${(BC[id]||0)==i?'selected':''}>${i?'Statement':'Current cycle'} · ${noteD(c.st)} – ${noteD(c.en)}</option>`}).join('')}</select><div id="bill-${id}">${billH(a)}</div>`}
 function billRef(id){const e=$('#bill-'+id);e.innerHTML=billH(acct(id));e.classList.remove('pg');void e.offsetWidth;e.classList.add('pg')}
 function billH(a){const i=BC[a.id]||0,s=cSum(a,i),c=s.c,pn=S.pend.filter(t=>t.acct==a.id),R=(l,v,k)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${l}</span><b class="${k||''}">${v}</b></div>`,
 L=e=>e.t?rowT(e.t):`<div class="row"><div class="ico">💸</div><div class="f">Payment${e.x.from?' from '+esc(acct(e.x.from).name):''}<small>${noteD(e.x.d)}</small></div><b class="g">+${php(e.x.amt)}</b><button class="pill" onclick="sure(this,()=>delPay(${e.x.id}))">✕</button></div>`,
 G=(t,l)=>l.length?`<div class="eyebrow" style="margin:12px 0 4px">${t} · ${l.length}</div><div class="card" style="padding:2px 14px">${l.map(L).join('')}</div>`:'';
-return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(a.name)}</div>${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',php(c.open?balAt(a,c.en):s.close))}${R('Opening balance',php(s.open))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',php(s.due),s.due?'r':'g')+(s.paid?R('Paid since closing',php(s.paid),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
-      function payCard(id,cycleIndex){const a=acct(id),i=cycleIndex==null?Math.max(1,BC[id]||0):cycleIndex,s=a.stmt?cSum(a,i):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${php(a.bal)}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${php(x.bal)}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><input id="pc-note" maxlength="80" placeholder="Note (optional)"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
+return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(a.name)}</div>${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',bv(php(c.open?balAt(a,c.en):s.close)))}${R('Opening balance',bv(php(s.open)))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',bv(php(s.due)),s.due?'r':'g')+(s.paid?R('Paid since closing',bv(php(s.paid)),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
+      function payCard(id,cycleIndex){const a=acct(id),i=cycleIndex==null?Math.max(1,BC[id]||0):cycleIndex,s=a.stmt?cSum(a,i):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${bv(php(a.bal))}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${bvTxt(php(x.bal))}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><input id="pc-note" maxlength="80" placeholder="Note (optional)"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
 function payOk(id){const a=acct(id),m=+$('#pa').value,f=S.accts.find(z=>z.id==+$('#pf').value);if(!(m>0))return toast('Enter a payment amount');if(m>a.bal+.005)return toast('Payment is more than the amount owed');
       S.xfer.push({id:uid(),d:$('#pdd').value||today,amt:m,from:f?f.id:0,to:id,due:(outstandingCardStatements().find(x=>x.a.id==id)||{}).due||"",note:(($('#pc-note')||{}).value||'').trim()});a.bal-=m;if(f)f.bal-=m;playPaymentConfirmation();render();acctMenu(id);toast('Payment recorded',true)}
 function delPay(id){const x=S.xfer.find(z=>z.id==id);if(!x)return;const c=S.accts.find(z=>z.id==x.to),f=S.accts.find(z=>z.id==x.from);if(c)c.bal+=x.amt;if(f)f.bal+=x.amt;S.xfer=S.xfer.filter(z=>z.id!=id);render();acctMenu(x.to);toast('Payment removed')}

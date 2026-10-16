@@ -207,3 +207,8 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
   #sb .pd-hero,.pd-r{animation:none}
   .pcard[role=button],#sb .ph-row,.ph-years .pill{transition:none}
 }
+
+/* Settings rows arrive with a small stagger, the way a native list settles in. */
+.st-row{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards;animation-delay:calc(var(--i,0)*16ms)}
+.st-grp{animation:pgIn .2s cubic-bezier(.22,.61,.36,1) backwards}
+@media (prefers-reduced-motion:reduce){.st-row,.st-grp{animation:none}}

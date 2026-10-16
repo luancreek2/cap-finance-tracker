@@ -64,7 +64,7 @@ function openS(h){
   svSettle(sb);
   SVKEY=window._svKey||'';window._svKey='';
   document.body.classList.add('sheet-open');
-  e.classList.remove('closing');
+  e.classList.remove('closing','st');
   sb.innerHTML='<div id="sv">'+h+'</div>';
   sb.scrollTop=0;
   e.classList.add('open');
@@ -80,6 +80,9 @@ function closeS(){
 const PAY_SOUND_URL='assets/media/payment-confirm.mp3';
 let payBuf=null,payCtx=null,payStart=0,payEnd=0,payLoading=0;
 function sndOn(){try{return S.snd!=0}catch(_){return true}}
+function hapOn(){try{return S.hap!=0}catch(_){return true}}
+/* Haptics are a nicety: unsupported devices and muted settings are simply ignored. */
+function vib(p){if(!hapOn())return;try{navigator.vibrate&&navigator.vibrate(p)}catch(_){}}
 function decodeClip(ctx,ab){return new Promise((res,rej)=>{const p=ctx.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej);});}
 function primePaymentSound(){
   try{
@@ -102,7 +105,7 @@ function primePaymentSound(){
   }catch(_){/* Audio may be unavailable; payments must still work. */}
 }
 function playPaymentConfirmation(){
-  if(navigator.vibrate){try{navigator.vibrate([12,32,18])}catch(_){}}
+  vib([12,32,18]);
   if(!sndOn())return;
   try{
     primePaymentSound();
@@ -340,3 +343,4 @@ initTransactionNoSelection();
 initGlobalNoSelection();
 initPullToRefresh();
 primePaymentSound();
+try{stBoot()}catch(e){}

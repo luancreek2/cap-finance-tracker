@@ -1798,6 +1798,30 @@ img,svg{-webkit-user-drag:none;user-drag:none}
 .chip.ok{color:var(--g);border-color:color-mix(in srgb,var(--g) 32%,var(--line))}
 .chip.warn{color:var(--ud);border-color:color-mix(in srgb,var(--ud) 32%,var(--line))}
 .chip.due{color:var(--mut)}
+.chip.tr{color:var(--tx);border-color:color-mix(in srgb,var(--mut) 34%,var(--line));background:color-mix(in srgb,var(--mut) 8%,var(--bg))}
+/* ===== Free trials: a quiet, distinct row + the trial switch ===== */
+.row.trial .tr-b{color:var(--tx);font-weight:600}
+.row.trial .f small{font-size:12.5px}
+.row.trial>.ico{background:color-mix(in srgb,var(--ac) 6%,var(--bg));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 14%,var(--line))}
+.row.trial>b.m{color:var(--mut);font-weight:600}
+.row.trial.done .tr-b{color:var(--mut);font-weight:500}
+.row.trial.done>.ico{background:var(--bg);box-shadow:none}
+.row.urg-t .f small.du{color:var(--mut);font-weight:600}
+.row.urg-t>.ico{background:color-mix(in srgb,var(--ac) 6%,var(--bg));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 14%,var(--line))}
+.swx-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 12px}
+.swx-row .f{flex:1;min-width:0}
+.swx-row .f b{display:block;font-size:14px}
+.swx-row .f small{display:block;font-size:12px;color:var(--mut)}
+.swx{position:relative;flex:none;width:48px;height:29px;border-radius:99px;background:var(--bg);
+  border:1px solid var(--line);transition:background .18s ease,border-color .18s ease}
+.swx input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;background:none;cursor:pointer;z-index:1}
+.swx i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--mut);
+  transition:transform .18s cubic-bezier(.32,.72,.28,1),background .18s ease}
+.swx input:checked~i{transform:translateX(19px);background:var(--ac-t)}
+.swx:has(input:checked){background:var(--ac);border-color:var(--ac)}
+@media(prefers-reduced-motion:reduce){.swx,.swx i{transition:none}}
 #sb .hint{font-size:12px;color:var(--mut);margin:-4px 0 12px}
 #sb .logo-row{display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--bg)}
 #sb .logo-row .f{flex:1;min-width:0}
@@ -1870,3 +1894,163 @@ img,svg{-webkit-user-drag:none;user-drag:none}
 .pd-r:first-child{border-top:0;padding-top:0}
 .pd-r>b{margin-left:auto;min-width:0;text-align:right;overflow-wrap:anywhere}
 .pd-r .psrc{display:inline-flex;justify-content:flex-end;vertical-align:middle}
+
+/* ==========================================================================
+   Settings — a native-style container built on the one shared sheet shell.
+   Pages swap through navS(): the backdrop and the container never move.
+   ========================================================================== */
+/* Inner padding is variable-driven so a Settings page can become a true
+   full-screen page on small displays without shifting any other sheet. */
+#sheet>#sb{--sbp:20px;--sbh:20px;padding:var(--sbp) var(--sbh)}
+@media (max-width:639px){
+  #sheet.st{padding:0;align-items:stretch}
+  #sheet.st>#sb{--sbp:0px;--sbh:18px;max-width:none;border-radius:0;height:100%;max-height:100%;
+    padding:0 var(--sbh) calc(16px + env(safe-area-inset-bottom,0px))}
+}
+
+/* sticky page header (title + optional back / done) */
+#sb .st-hd{position:sticky;top:calc(-1 * var(--sbp));z-index:4;display:flex;align-items:center;gap:10px;
+  margin:calc(-1 * var(--sbp)) calc(-1 * var(--sbh)) 4px;padding:calc(var(--sbp) + 11px) var(--sbh) 10px;
+  background:var(--card)}
+#sb .st-hd h2{margin:0;font-size:19px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb .st-hd .st-bk{flex:none;min-width:38px;padding:4px 10px;font-size:16px;line-height:1.15}
+@media (max-width:639px){
+  #sb .st-hd{padding-top:calc(12px + env(safe-area-inset-top,0px))}
+}
+
+/* grouped navigation list */
+#sb .st-grp{margin:18px 0 4px;padding:0 8px}
+#sb .st-grp:first-of-type{margin-top:4px}
+#sb .st-g{margin:0}
+#sb .st-row{position:relative;display:flex;align-items:center;gap:12px;width:calc(100% + 16px);margin:0 -8px;
+  padding:9px 8px;border:0;border-radius:13px;background:none;color:var(--tx);font:inherit;text-align:left;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+#sb .st-row.st-ro{cursor:default}
+#sb .st-row:not(.st-ro):active{background:color-mix(in srgb,var(--mut) 12%,transparent)}
+#sb .st-row+.st-row::before{content:"";position:absolute;left:50px;right:8px;top:0;height:1px;background:var(--line)}
+#sb .st-i{width:30px;height:30px;flex:none;border-radius:9px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--mut) 11%,transparent)}
+#sb .st-i svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#sb .st-t{flex:1;min-width:0;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb .st-v{flex:none;max-width:46%;color:var(--mut);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb .st-c{flex:none;color:var(--mut);opacity:.5;display:grid;place-items:center}
+#sb .st-c svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#sb .st-ro .st-v{max-width:52%}
+
+/* grouped control surface + rows */
+#sb .st-box{border-radius:16px;border:1px solid var(--line);background:var(--bg);padding:0 14px;margin:8px 0 4px}
+#sb .st-r{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+#sb .st-r:first-child{border-top:0}
+#sb .st-r>.f{flex:1;min-width:0}
+#sb .st-r>.f b{display:block;font-size:14px;font-weight:500}
+#sb .st-r>.f small{display:block;font-size:12px;color:var(--mut);margin-top:2px}
+#sb .st-r.st-col{display:block}
+#sb .st-r.st-col>*+*{margin-top:9px}
+#sb .st-sel{width:auto;max-width:56%;margin:0;padding:7px 10px;border-radius:10px;font-size:13.5px;
+  color:var(--mut);background:var(--card);border:1px solid var(--line)}
+#sb .st-in{width:auto;max-width:none;margin:0;padding:9px 11px;font-size:14px}
+#sb .st-note{font-size:12px;color:var(--mut);margin:10px 2px 0}
+
+/* app-icon preview, avatar, misc */
+#sb .st-icon{width:44px;height:44px;border-radius:11px;box-shadow:0 1px 4px #0004;flex:none}
+#sb .st-prof{display:flex;align-items:center;gap:14px;margin:2px 0 10px}
+#sb .st-av{width:56px;height:56px;border-radius:50%;flex:none;overflow:hidden;display:grid;place-items:center;
+  background:var(--bg);border:1px solid var(--line);font-size:20px;font-weight:600;color:var(--mut)}
+#sb .st-av img{width:100%;height:100%;object-fit:cover;display:block}
+#sb .st-prof .f{flex:1;min-width:0}
+#sb .st-prof .f b{display:block;font-size:15px}
+#sb .st-prof .f small{display:block;font-size:12.5px;color:var(--mut);margin-top:2px}
+#sb .st-pill{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--tx)}
+#sb .st-pill i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--g)}
+#sb .st-pill[data-s=off] i{background:var(--mut)}
+#sb .st-pill[data-s=warn] i{background:var(--uy)}
+#sb .st-pill[data-s=bad] i{background:var(--r)}
+
+/* danger zone */
+#sb .st-dz{border:1px solid color-mix(in srgb,#ff453a 34%,var(--line));border-radius:16px;padding:13px 15px;margin:26px 0 0}
+#sb .st-dz .eyebrow{color:#ff453a;margin:0 0 5px}
+#sb .st-dz p{font-size:12.5px;color:var(--mut);margin:0}
+#sb .st-dz .btn{width:100%;margin:11px 0 0;color:#ff453a;border-color:color-mix(in srgb,#ff453a 40%,var(--line))}
+#sb .st-dz .btn.dng-f{color:#fff}
+/* stacked control surfaces + button rows */
+#sb .st-box.st-col{padding:14px}
+#sb .st-box.st-col>*+*{margin-top:10px}
+#sb .st-box.st-col .btn{width:100%;margin:0}
+#sb .st-tt{flex:1;min-width:0}
+#sb .st-tt b{display:block;font-size:14.5px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb .st-tt small{display:block;font-size:11.5px;color:var(--mut);margin-top:2px}
+#sb .st-hit{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:none;color:var(--tx);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#sb .st-mv{padding:6px 9px;flex:none;display:grid;place-items:center}
+#sb .st-mv svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#sb .st-mv[disabled]{opacity:.32;pointer-events:none}
+#sb .st-r .pill{flex:none}
+#sb .btn[disabled]{opacity:.45}
+#sb .st-row+.st-row .st-hit:focus-visible,#sb .st-row:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+
+/* ==========================================================================
+   Balance visibility — one global state. Nothing is ever blurred: the real
+   amount stays in the layout (so a row can never move) and a clean dot mask
+   fades over it while the digits fade out. The digits are hidden with
+   -webkit-text-fill-color so the element keeps its colour, which the dots
+   inherit through currentColor.
+   ========================================================================== */
+.bv{position:relative}
+.bv::after{content:"••••••";position:absolute;inset:0;text-align:inherit;opacity:0;
+  transform:scale(.96);pointer-events:none;-webkit-text-fill-color:currentColor;
+  transition:opacity .2s ease,transform .2s ease}
+html.bvhide .bv{-webkit-text-fill-color:transparent;text-shadow:none!important;
+  transition:-webkit-text-fill-color .2s ease}
+html.bvhide .bv::after{opacity:1;transform:none}
+/* the eye control: a real button, small icon, generous tap target, no chrome */
+.bve{display:inline-grid;place-items:center;width:44px;height:44px;flex:none;padding:0;margin:0 0 0 2px;
+  border:0;background:none;color:var(--mut);cursor:pointer;border-radius:50%;vertical-align:middle;
+  -webkit-tap-highlight-color:transparent;transition:color .18s ease,transform .18s ease}
+.bve:hover{color:var(--tx)}
+.bve:active{transform:scale(.93)}
+.bve:focus-visible{outline:2px solid var(--ac);outline-offset:-2px}
+.bvi{display:inline-grid;place-items:center;width:19px;height:19px}
+.bvi svg{grid-area:1/1;width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s ease,transform .2s ease}
+.bvi .i2{opacity:0;transform:scale(.72) rotate(-14deg)}
+html.bvhide .bvi .i1{opacity:0;transform:scale(.72) rotate(14deg)}
+html.bvhide .bvi .i2{opacity:1;transform:none}
+html.noanim .bv::after,html.noanim .bv,html.noanim .bvi svg,html.noanim .bve{transition:none!important}
+html.rm .bv::after,html.rm .bv,html.rm .bvi svg{transition-duration:.001ms!important}
+@media (prefers-reduced-motion:reduce){
+  .bv::after,html.bvhide .bv,.bvi svg{transition-duration:.001ms}
+}
+
+/* ==========================================================================
+   App lock — an opaque cover shown until the passcode (or device auth) clears
+   ========================================================================== */
+#lock{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;padding:24px;
+  background:var(--bg);color:var(--tx)}
+#lock.open{display:flex}
+#lock .lk{width:min(330px,100%);text-align:center}
+#lock .lk-ic{width:58px;height:58px;margin:0 auto 14px;border-radius:17px;display:grid;place-items:center;
+  background:var(--card);border:1px solid var(--line)}
+#lock .lk-ic svg{width:26px;height:26px;stroke:var(--tx);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#lock h2{margin:0 0 6px;font-size:19px}
+#lock .lk p{margin:0 0 16px;color:var(--mut);font-size:13px}
+#lock input{text-align:center;letter-spacing:.32em;font-size:19px;padding:13px 12px}
+#lock .lk-err{color:var(--r);font-size:12.5px;min-height:17px;margin:9px 0 0}
+#lock .lk-fg{display:block;width:100%;margin:14px 0 0;padding:6px;border:0;background:none;color:var(--mut);
+  font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline}
+
+/* ==========================================================================
+   Motion preferences: "Animations off" and "Reduce motion" (in-app, on top of
+   the operating system's own reduced-motion setting).
+   ========================================================================== */
+html.noanim *,html.noanim *:before,html.noanim *:after{animation:none!important;transition:none!important}
+html.rm *,html.rm *:before,html.rm *:after{animation-duration:.001ms!important;animation-delay:0s!important;
+  transition-duration:.001ms!important;scroll-behavior:auto!important}
+
+/* Settings stays an icon on the page, not a floating control container. */
+.sbtn,.sbtn:hover,.sbtn:active{
+  width:44px;height:44px;padding:0;border:0;border-radius:0;background:transparent;
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;transform:none;
+  color:var(--tx)
+}
+.sbtn::before{display:none;content:none}
+.sbtn svg{display:block;width:24px;height:24px}
+.sbtn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}

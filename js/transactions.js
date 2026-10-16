@@ -275,7 +275,7 @@ ${calH()}<p>${["All", "Expenses", "Income", "Transfers", "Upcoming"].map((f) => 
         const t = txId ? S.tx.find((x) => x.id == txId) : null;
         if (txId && !t) return;
         const val = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"),
-          cats = Object.keys(CATS),
+          cats = catNames(),
           cat = t ? t.cat : "Food";
         openS(
           `<h2>${t ? "Edit transaction" : "New entry"}</h2><select id="ty"><option value="-1" ${t && t.amt < 0 ? "selected" : ""}>Expense</option><option value="1" ${t && t.amt > 0 ? "selected" : ""}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t ? Math.abs(t.amt) : ""}"><select id="ct">${cats.map((c) => `<option ${c == cat ? "selected" : ""}>${c}</option>`).join("")}</select><select id="ac">${S.accts.map((a) => `<option value="${a.id}" ${t && a.id == t.acct ? "selected" : ""}>${a.name}</option>`).join("")}</select><input id="dt" type="date" value="${t ? val(t.d) : today}"><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t ? val(t.note || "") : ""}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t ? val(t.desc || "") : ""}</textarea><button class="btn" onclick="saveTx(${txId || 0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>`,
@@ -327,7 +327,7 @@ ${calH()}<p>${["All", "Expenses", "Income", "Transfers", "Upcoming"].map((f) => 
 const fTx=id=>{let t=S.tx.find(x=>x.id==id);if(t)return{t,p:0};t=S.pend.find(x=>x.id==id);return t?{t,p:1}:null};
 const bApply=(t,k)=>{const a=S.accts.find(x=>x.id==t.acct);if(a)a.bal+=k*(a.type=='credit'?-t.amt:t.amt)};
 function openTx(txId=0){const f=txId?fTx(txId):null;if(txId&&!f)return;const t=f&&f.t,v=x=>String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'),cat=t?t.cat:'Food',a0=t?t.acct:(S.accts[0]||{}).id;
-openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value="-1" ${t&&t.amt<0?'selected':''}>Expense</option><option value="1" ${t&&t.amt>0?'selected':''}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t?Math.abs(t.amt):''}"><select id="ct">${Object.keys(CATS).map(c=>`<option ${c==cat?'selected':''}>${c}</option>`).join('')}</select><select id="ac" onchange="txAcc()">${S.accts.map(a=>`<option value="${a.id}" ${a.id==a0?'selected':''}>${esc(a.name)}</option>`).join('')}</select><input id="dt" type="date" value="${t?v(t.d):today}"><div id="ccf" style="display:none"><select id="ps" onchange="txAcc()"><option value="p" ${f&&f.p?'':'selected'}>Posted</option><option value="n" ${f&&f.p?'selected':''}>Not posted (pending)</option></select><input id="pdt" type="date" title="Posting date" value="${t&&t.pd?t.pd:(t?t.d:today)}"><p class="m" style="font-size:12px;margin:0 0 8px">Pending purchases stay out of balances and statements until posted. The posting date decides the billing cycle.</p></div><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t?v(t.note||''):''}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t?v(t.desc||''):''}</textarea><button class="btn" onclick="saveTx(${txId||0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>${txId?`<button class="btn s dng" onclick="askDel(${txId})">Delete transaction</button>`:''}`);txAcc()}
+openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value="-1" ${t&&t.amt<0?'selected':''}>Expense</option><option value="1" ${t&&t.amt>0?'selected':''}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t?Math.abs(t.amt):''}"><select id="ct">${catNames().map(c=>`<option ${c==cat?'selected':''}>${c}</option>`).join('')}</select><select id="ac" onchange="txAcc()">${S.accts.map(a=>`<option value="${a.id}" ${a.id==a0?'selected':''}>${esc(a.name)}</option>`).join('')}</select><input id="dt" type="date" value="${t?v(t.d):today}"><div id="ccf" style="display:none"><select id="ps" onchange="txAcc()"><option value="p" ${f&&f.p?'':'selected'}>Posted</option><option value="n" ${f&&f.p?'selected':''}>Not posted (pending)</option></select><input id="pdt" type="date" title="Posting date" value="${t&&t.pd?t.pd:(t?t.d:today)}"><p class="m" style="font-size:12px;margin:0 0 8px">Pending purchases stay out of balances and statements until posted. The posting date decides the billing cycle.</p></div><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t?v(t.note||''):''}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t?v(t.desc||''):''}</textarea><button class="btn" onclick="saveTx(${txId||0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>${txId?`<button class="btn s dng" onclick="askDel(${txId})">Delete transaction</button>`:''}`);txAcc()}
 function txAcc(){const c=acct($('#ac').value).type=='credit';$('#ccf').style.display=c?'block':'none';$('#pdt').style.display=c&&$('#ps').value=='p'?'block':'none'}
 function saveTx(txId=0){const a=Math.abs(+$('#am').value),s=+$('#ty').value,id=+$('#ac').value,ac=S.accts.find(x=>x.id==id),date=$('#dt').value||today;
 if(!(a>0))return toast('Enter an amount greater than 0');if(!ac)return toast('Choose an account');
@@ -340,10 +340,11 @@ Object.assign(t,{d:date,amt:s*a,cat:$('#ct').value,acct:id,note:$('#nt').value,d
 function delTx(id){const f=fTx(id);if(!f)return;const go=()=>{if(!f.p)bApply(f.t,-1);const b=billForTx(f.t);if(b)billUnmark(b,f.t);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast(b?'Deleted — bill marked unpaid':'Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
 
 /* ---- delete confirmation dialog */
-function confirmBox(title,sub,ok){
+function confirmBox(title,sub,ok,label){
   let o=document.getElementById('cfm');if(o)o.remove();
   o=document.createElement('div');o.id='cfm';o.setAttribute('role','alertdialog');o.setAttribute('aria-modal','true');o.setAttribute('aria-labelledby','cfm-t');
-  o.innerHTML='<div class="cfm-box"><h3 id="cfm-t"></h3><p class="m cfm-s"></p><div class="cfm-b"><button class="btn dng-f" id="cfm-ok">Confirm</button><button class="btn s" id="cfm-no">Cancel</button></div></div>';
+  o.innerHTML='<div class="cfm-box"><h3 id="cfm-t"></h3><p class="m cfm-s"></p><div class="cfm-b"><button class="btn dng-f" id="cfm-ok"></button><button class="btn s" id="cfm-no">Cancel</button></div></div>';
+  o.querySelector('#cfm-ok').textContent=label||'Confirm';
   o.querySelector('#cfm-t').textContent=title;const sp=o.querySelector('.cfm-s');if(sub)sp.textContent=sub;else sp.remove();
   document.body.appendChild(o);
   let done=0;const close=cb=>{if(done)return;done=1;document.removeEventListener('keydown',kd,true);o.classList.add('closing');setTimeout(()=>{o.remove();cb&&cb()},matchMedia('(prefers-reduced-motion:reduce)').matches?0:190)};
@@ -458,7 +459,7 @@ window.Activity=function(){return Act0.apply(this,arguments).replace(/sel='';ren
 const hl=(t,v)=>{t=String(t);const i=v?t.toLowerCase().indexOf(v):-1;return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+v.length))+'</mark>'+esc(t.slice(i+v.length))};
 function items(v){
   v=v.trim().toLowerCase();const L=rows(),out=[];
-  const cs=Object.keys(CATS).map(c=>({c,n:L.filter(t=>t.cat==c).length})).filter(x=>v?x.c.toLowerCase().includes(v):x.n).sort((a,b)=>b.n-a.n).slice(0,v?4:6);
+  const cs=catNames().map(c=>({c,n:L.filter(t=>t.cat==c).length})).filter(x=>v?x.c.toLowerCase().includes(v):x.n).sort((a,b)=>b.n-a.n).slice(0,v?4:6);
   if(cs.length)out.push({h:'Categories'},...cs.map(x=>({ic:ci(x.c),l:hl(x.c,v),s:x.n+(x.n==1?' entry':' entries'),val:x.c})));
   const seen={},ns=[];[...L].sort((a,b)=>b.d.localeCompare(a.d)).forEach(t=>{const n=String(t.note||'').trim(),k=n.toLowerCase();if(!n)return;if(!seen[k]){seen[k]={t,n:0};ns.push(seen[k])}seen[k].n++});
   const nm=ns.filter(x=>!v||x.t.note.toLowerCase().includes(v)).slice(0,v?5:4);
@@ -528,7 +529,7 @@ const KW={Food:/(food|lunch|dinner|breakfast|coffee|starbucks|jollibee|mcdo|kfc|
 function guess(note,low,inc){
   const has=c=>Object.prototype.hasOwnProperty.call(CATS,c);
   if(inc)return{cat:has('Salary')?'Salary':'Other'};
-  for(const c of Object.keys(CATS)){if(c=='Other'||c=='Salary')continue;if(new RegExp('(^|[^a-z])'+rxe(c.toLowerCase())+'($|[^a-z])').test(low))return{cat:c,rm:c}}
+  for(const c of catNames()){if(c=='Other'||c=='Salary')continue;if(new RegExp('(^|[^a-z])'+rxe(c.toLowerCase())+'($|[^a-z])').test(low))return{cat:c,rm:c}}
   const ws=note.toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>2&&!STOP.has(w)),vc={},va={};
   rows().filter(t=>t.amt<0).forEach(t=>{const tw=String(t.note||'').toLowerCase().split(/[^a-z0-9]+/);ws.forEach(w=>{if(tw.includes(w)){vc[t.cat]=(vc[t.cat]||0)+1;va[t.acct]=(va[t.acct]||0)+1}})});
   const bc=Object.keys(vc).filter(has).sort((a,b)=>vc[b]-vc[a])[0],ba=Object.keys(va).sort((a,b)=>va[b]-va[a])[0];

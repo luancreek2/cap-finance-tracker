@@ -17,6 +17,14 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/media/media-068255fe1779.png" />
     <link rel="manifest" href="manifest.json" />
 
+    <!-- Balance privacy: apply the saved visibility before the first paint, so a hidden
+         balance can never flash on screen while the app is still loading. -->
+    <script>
+      try {
+        if (JSON.parse(localStorage.getItem("pera") || "{}").hide == 1) document.documentElement.classList.add("bvhide");
+      } catch (e) {}
+    </script>
+
       <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/animations.css" />
   </head>
@@ -32,23 +40,14 @@
       /><button id="send-entry-button" class="aib go" aria-label="Send">↑</button>
     </div>
     <button id="settings-button" class="sbtn" aria-label="Settings">
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-      >
-        <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
-        <circle cx="16" cy="6" r="2" />
-        <circle cx="10" cy="12" r="2" />
-        <circle cx="18" cy="18" r="2" />
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.65 3.25h4.7l.6 2.35c.65.2 1.24.55 1.78.98l2.28-.82 2.35 4.07-1.68 1.53c.1.69.1 1.39 0 2.08l1.68 1.53-2.35 4.07-2.28-.82a7.6 7.6 0 0 1-1.78.98l-.6 2.35h-4.7l-.6-2.35a7.6 7.6 0 0 1-1.78-.98l-2.28.82-2.35-4.07 1.68-1.53a7.2 7.2 0 0 1 0-2.08L2.64 9.83l2.35-4.07 2.28.82c.54-.43 1.13-.78 1.78-.98l.6-2.35Z" />
+        <circle cx="12" cy="12.1" r="3.15" />
       </svg>
     </button>
     <div id="pop"><div id="pp"></div></div>
     <div id="sheet"><div id="sb"></div></div>
+    <div id="lock" role="dialog" aria-modal="true" aria-label="Cap is locked"><div class="lk"></div></div>
 
     <script src="js/cards.js"></script>
     <script src="js/app.js"></script>
