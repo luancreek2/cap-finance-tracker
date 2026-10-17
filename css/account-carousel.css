@@ -1,0 +1,14 @@
+.account-view-toggle{display:flex;gap:6px;margin:18px 0 8px}
+.account-carousel{position:relative;width:100%;overflow:hidden;touch-action:pan-y pinch-zoom;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.account-carousel:focus-visible{outline:2px solid var(--g);outline-offset:3px;border-radius:20px}
+.account-carousel.dragging{cursor:grabbing}
+.account-carousel-track{display:flex;gap:16px;padding:16px 0;will-change:transform}
+.account-carousel-slide{flex:0 0 var(--carousel-card-width,330px);min-width:0;box-sizing:border-box}
+.account-carousel-tilt{position:relative;transition:transform .3s cubic-bezier(.2,.8,.2,1);transform-style:preserve-3d;border-radius:20px}
+.account-carousel-tilt:after{content:'';position:absolute;inset:0;border-radius:20px;pointer-events:none;background:radial-gradient(circle at 40% 35%,#ffffff24,transparent 70%);opacity:0;transition:opacity .3s}
+.account-carousel-tilt.hovering:after{opacity:1}
+.account-carousel-tilt.hovering{filter:drop-shadow(0 10px 12px #0002)}
+.account-carousel .acct-flip{width:100%;margin:0}
+.account-carousel .cc{width:100%;box-sizing:border-box}
+.account-carousel.dragging .account-carousel-tilt{transition:none}
+@media(prefers-reduced-motion:reduce){.account-carousel-tilt,.account-carousel-tilt:after{transition:none}.account-carousel-track{will-change:auto}}

@@ -331,13 +331,13 @@ openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value
 function txAcc(){const c=acct($('#ac').value).type=='credit';$('#ccf').style.display=c?'block':'none';$('#pdt').style.display=c&&$('#ps').value=='p'?'block':'none';if(c)txCardKind()}
 function txCardKind(){const cash=$('#card-kind')?.value=='cash',wrap=$('#card-currency-wrap');if(wrap)wrap.style.display=cash?'none':'block'}
 function removeCardFeeChildren(parentId){const kids=S.tx.filter(x=>x.parentId==parentId&&x.feeActual);kids.forEach(t=>bApply(t,-1));S.tx=S.tx.filter(x=>!(x.parentId==parentId&&x.feeActual))}
-function syncLoggedCardFee(t,cash,currency,posted){removeCardFeeChildren(t.id);delete t.cashAdvance;delete t.cashAdvanceRate;delete t.cashAdvanceFeeEstimate;delete t.cashAdvanceFeeActual;delete t.foreignCurrency;delete t.foreignFeeRate;delete t.foreignFeeEstimate;delete t.foreignFeeActual;if(!posted||t.amt>=0)return;const a=acct(t.acct),f=cardFees(a);let kind,label,fee;if(cash){kind='cashAdvanceFee';label='Cash advance fee';fee=f.cashAdvanceFee;t.cashAdvance=true;t.cashAdvanceRate=f.cashAdvanceRate;t.cashAdvanceFeeActual=true}else if(currency&&currency!='PHP'){kind='foreignFee';label='Foreign transaction fee';fee=f.foreignFee;t.foreignCurrency=currency;t.foreignFeeRate=fee.value;t.foreignFeeActual=true}else return;const amount=cardFeeAmount(fee,Math.abs(t.amt));t[kind=='cashAdvanceFee'?'cashAdvanceFeeEstimate':'foreignFeeEstimate']=amount;if(amount>0){const child={id:uid(),d:t.d,amt:-amount,cat:'Other',acct:t.acct,note:label,cardFee:kind,feeActual:true,parentId:t.id};S.tx.push(child);bApply(child,1)}}
+function syncLoggedCardFee(t,cash,currency,posted){removeCardFeeChildren(t.id);delete t.cashAdvance;delete t.cashAdvanceRate;delete t.cashAdvanceFeeEstimate;delete t.cashAdvanceFeeActual;delete t.foreignCurrency;delete t.foreignFeeRate;delete t.foreignFeeEstimate;delete t.foreignFeeActual;if(!posted||t.amt>=0)return;const a=acct(t.acct),f=cardFees(a);let kind,label,fee;if(cash){kind='cashAdvanceFee';label='Cash advance fee';fee=f.cashAdvanceFee;t.cashAdvance=true;t.cashAdvanceRate=f.cashAdvanceRate;t.cashAdvanceFeeActual=true}else if(currency&&currency!='PHP'){kind='foreignFee';label='Foreign transaction fee';fee=f.foreignFee;t.foreignCurrency=currency;t.foreignFeeRate=fee.value;t.foreignFeeActual=true}else return;const amount=cardFeeAmount(fee,Math.abs(t.amt));t[kind=='cashAdvanceFee'?'cashAdvanceFeeEstimate':'foreignFeeEstimate']=amount;if(amount>0){const child={id:uid(),ts:Date.now(),d:t.d,amt:-amount,cat:'Other',acct:t.acct,note:label,cardFee:kind,feeActual:true,parentId:t.id};S.tx.push(child);bApply(child,1)}}
 function saveTx(txId=0,allowAllocationOverrun=false){const a=Math.abs(+$('#am').value),s=+$('#ty').value,id=+$('#ac').value,ac=S.accts.find(x=>x.id==id),date=$('#dt').value||today;
 if(!(a>0))return toast('Enter an amount greater than 0');if(!ac)return toast('Choose an account');
 const pend=ac.type=='credit'&&$('#ps').value=='n',pd=ac.type=='credit'&&!pend?($('#pdt').value||date):'';
 if(pd&&pd<date)return toast('Posting date can’t be before the purchase date');
 const f=txId?fTx(txId):null;if(txId&&!f)return;if(ac.type!='credit'&&s<0&&!allowAllocationOverrun){let base=ac.bal;if(f&&!f.p){const old=S.accts.find(x=>x.id==f.t.acct);if(old&&old.id==ac.id)base-=f.t.amt}const projected=base+s*a,allocated=sum(S.goals.filter(g=>+g.accountId==+ac.id).map(g=>+g.saved||0));if(projected<allocated-.005)return confirmBox('This may use goal savings',`${ac.name} would have ${php(Math.max(0,projected))} left while ${php(allocated)} is allocated to goals. Continue with this expense?`,()=>saveTx(txId,true),'Continue');}if(f&&!f.p)bApply(f.t,-1);if(f)removeCardFeeChildren(f.t.id);
-const t=f?f.t:{id:uid()};S.tx=S.tx.filter(x=>x.id!=t.id);S.pend=S.pend.filter(x=>x.id!=t.id);
+const t=f?f.t:{id:uid(),ts:Date.now()};S.tx=S.tx.filter(x=>x.id!=t.id);S.pend=S.pend.filter(x=>x.id!=t.id);
 Object.assign(t,{d:date,amt:s*a,cat:$('#ct').value,acct:id,note:$('#nt').value,desc:($('#ds')?$('#ds').value.trim():'')});if(pd)t.pd=pd;else delete t.pd;
 (pend?S.pend:S.tx).push(t);if(!pend)bApply(t,1);if(ac.type=='credit')syncLoggedCardFee(t,$('#card-kind')?.value=='cash',$('#card-currency')?.value,!pend);save();closeS();flash(t.id);render();toast(txId?'Transaction updated':pend?'Saved as pending':'Transaction added')}
 function delTx(id){const f=fTx(id);if(!f)return;const go=()=>{if(!f.p)bApply(f.t,-1);removeCardFeeChildren(id);const b=billForTx(f.t);if(b)billUnmark(b,f.t);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast(b?'Deleted — bill marked unpaid':'Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
@@ -373,7 +373,7 @@ function askDel(id){const f=fTx(id);if(!f)return;confirmBox('Are you sure you wa
       window._lp=Date.now();el.classList.remove('lp');void el.offsetWidth;el.classList.add('lp-done');
       setTimeout(()=>el.classList.remove('lp-done'),340);
       if(navigator.vibrate)try{navigator.vibrate(14)}catch(_){}
-      st=null;editTx(+id)
+      st=null;txDetail(+id)   /* long press reveals the payment details; editing is a tap away inside */
     },MS)};
     el.classList.add('lp');
   },true);
@@ -431,6 +431,51 @@ function xRow(x) {
 }
 function goalTransferDetail(id){const x=S.xfer.find(z=>z.id==id&&z.kind=='goal-transfer');if(!x)return;const g=S.goals.find(z=>z.id==x.goalId),from=acct(x.from),to=acct(x.to);openS(`<h2>${x.direction=='out'?'Goal withdrawal':'Goal contribution'}</h2><p>${g?esc(g.icon+' '+g.name):'Goal'}</p><div class="card"><div class="cc-sum-row"><span>Amount</span><b>${php(x.amt)}</b></div><div class="cc-sum-row"><span>From</span><b>${esc(from?.name||'Account')}</b></div><div class="cc-sum-row"><span>To</span><b>${esc(to?.name||'Account')}</b></div><div class="cc-sum-row"><span>Date</span><b>${noteD(x.d)}</b></div>${x.note?`<p class="m">${esc(x.note)}</p>`:''}</div><button class="btn s" onclick="closeS()">Close</button>`)}
 function rowT(t){if(t.transfer)return xRow(t.x);const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${t.cardFee?'<span class="tag fee-tag">Fee</span>':''}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
+
+/* ---- logged time ----
+   Entries saved from now on carry an explicit ts. Entries saved before that field existed can
+   still be dated, because every creation path stamped the clock into the id: uid() stores
+   Date.now()*1000 and the older paths stored Date.now() itself. Imported and demo ids are small
+   counters, so they decode to nothing and honestly report "Not recorded". */
+function txLoggedAt(t){
+  if(!t)return 0;
+  if(+t.ts>1e12)return +t.ts;
+  const id=+t.id||0,cap=Date.now()+864e5;
+  if(id>=1e15){const ms=Math.floor(id/1000);return ms>1e12&&ms<cap?ms:0}   /* uid() ids */
+  return id>=1e12&&id<cap?id:0;                                           /* Date.now() ids */
+}
+/* Payment details: the long-press overview for a logged transaction, with Edit and Delete inside. */
+function txDetail(id){
+  const f=fTx(id);if(!f)return;
+  const t=f.t,p=f.p,a=acct(t.acct),bill=billForTx(t),logged=txLoggedAt(t),logo=a?cardLogo(a):"",
+    R=(l,v)=>`<div class="cc-sum-row"><span>${l}</span><b style="text-align:right">${v}</b></div>`,
+    rows=[];
+  rows.push(["Type",t.amt>0?"Income":"Expense"]);
+  rows.push(["Status",p?"Pending":t.d>today?"Planned":"Posted"]);
+  rows.push(["Category",`${ci(t.cat)} ${esc(t.cat)}`]);
+  rows.push(["Account",(logo?logo+" ":"")+esc(a?a.name:"Unknown")+(a&&a.l4?` •• ${esc(a.l4)}`:"")]);
+  rows.push(["Date",noteD(t.d)]);
+  rows.push(["Time",logged?stWhen(new Date(logged).toISOString()):'<span class="m">Not recorded</span>']);
+  if(t.pd&&t.pd!=t.d)rows.push(["Posted",noteD(t.pd)]);
+  if(bill)rows.push(["Bill",esc(bill.name)]);
+  if(t.cashAdvance)rows.push(["Card type","Cash advance"]);
+  if(t.foreignCurrency)rows.push(["Currency",esc(t.foreignCurrency)]);
+  if(t.cardFee)rows.push(["Card fee",t.feeActual?"Recorded":"Estimated"]);
+  const fees=S.tx.filter(x=>x.parentId==t.id);
+  if(fees.length)rows.push(["Linked fee",fees.map(x=>esc(x.note||"Fee")+" · "+php(x.amt)).join("<br>")]);
+  navS(`<div class="sh-h"><h2>Payment details</h2><button class="pill" aria-label="Close" onclick="closeS()">✕</button></div>`
+    +`<div style="display:flex;gap:12px;align-items:flex-start"><div style="width:5px;align-self:stretch;border-radius:9px;background:${t.amt>0?'#30d158':'#ff453a'};flex:none"></div>`
+    +`<div style="flex:1;min-width:0"><h2 style="font-size:26px;margin:0 0 6px">${esc(t.note||t.cat)}</h2>`
+    +`<div class="${t.amt>0?'g':'r'}" style="font-size:22px;font-weight:700">${t.amt>0?'+':''}${php(t.amt)}</div>`
+    +(p||t.d>today?`<div style="margin-top:6px">${p?'<span class="tag">Pending</span>':'<span class="tag">Planned</span>'}</div>`:"")
+    +`</div><div class="xmi" aria-hidden="true">${ti(t)}</div></div>`
+    +`<div class="eyebrow" style="margin:18px 0 6px">Details</div><div class="card">${rows.map(r=>R(r[0],r[1])).join("")}</div>`
+    +(t.desc?`<div class="eyebrow" style="margin:18px 0 6px">Description</div><div class="card"><p class="m" style="margin:0;overflow-wrap:anywhere">${esc(t.desc)}</p></div>`:"")
+    +`<button class="btn" style="width:100%;margin:14px 0 8px" onclick="closeS();editTx(${t.id})">Edit transaction</button>`
+    +`<button class="btn s" style="width:100%;color:#ff453a" onclick="askDel(${t.id})">Delete entry</button>`,
+    'tx-'+t.id,{keep:1});
+  const sb=document.getElementById('sb');if(sb)sb.classList.add('nosel');
+}
 function actGroups(){const l=actList(),g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
 const pl=S.pend.filter(t=>(filt=='All'||(filt=='Expenses'?t.amt<0:filt=='Income'?t.amt>0:false))&&(!q||(t.note+(t.desc||"")+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>b.d.localeCompare(a.d)),
 ph=pl.length?`<div style="display:flex;justify-content:space-between;margin:18px 4px 6px"><b>Pending · not posted</b><span class="m" style="font-size:13px">${pl.length} · not in balances</span></div><div class="card" style="padding:2px 14px">${pl.map(rowT).join('')}</div>`:'';

@@ -218,12 +218,13 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
         const cash = sum(S.accts.filter((a) => a.type != "credit").map((a) => a.bal)),
           owed = sum(S.accts.filter((a) => a.type == "credit").map((a) => a.bal));
         const grp = (t, ti) => {
-          const l = S.accts.filter((a) => t.includes(a.type));
+          const l = accountSorted(S.accts.filter((a) => t.includes(a.type)));
           return l.length
-            ? `<div class="eyebrow" style="margin:18px 0 8px">${ti}</div><div class="cards">${l.map((a) => cardH(a, 1)).join("")}</div>`
+            ? `<div class="eyebrow" style="margin:18px 0 8px">${ti}</div>${accountSelecting?`<div class="cards">${l.map(accountSelectableCard).join('')}</div>`:S.accountView==='carousel'?accountCarouselMarkup(l,ti):`<div class="cards">${l.map((a) => cardH(a, 1)).join("")}</div>`}`
             : "";
         };
-        return `<h1>Accounts</h1><div class="card"><div class="eyebrow">Net worth</div><div style="display:flex;align-items:center;gap:2px"><div class="big bv">${php(cash - owed)}</div>${bvEye()}</div><div class="m">Cash & bank ${bv(php(cash))} · Owed <span class="r">${bv(php(owed))}</span></div></div>
+        return `${accountSelecting?'<h1>Accounts</h1>':accountOptionsHeader()}<div class="card"><div class="eyebrow">Net worth</div><div style="display:flex;align-items:center;gap:2px"><div class="big bv">${php(cash - owed)}</div>${bvEye()}</div><div class="m">Cash & bank ${bv(php(cash))} · Owed <span class="r">${bv(php(owed))}</span></div></div>
+${accountSelectionBar()}
 ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit")}<p><button class="btn" onclick="openAcct()">＋ Add card or account</button></p>`;
       }
       function Notes() {
@@ -331,8 +332,8 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
       function nextInterestCreditDate(a){const d=new Date(T);if(a.interestCreditFreq=='daily')d.setDate(d.getDate()+1);else if(a.interestCreditFreq=='quarterly'){let m=(Math.floor(d.getMonth()/3)+1)*3;d.setFullYear(d.getFullYear(),m,0);if(d<=T){m+=3;d.setFullYear(d.getFullYear(),m,0)}}else if(a.interestCreditFreq=='other')d.setDate(d.getDate()+Math.max(1,+a.interestOtherDays||30));else{d.setFullYear(d.getFullYear(),d.getMonth()+1,0);if(d<=T)d.setFullYear(d.getFullYear(),d.getMonth()+2,0)}return d.toLocaleDateString('en-PH',{day:'numeric',month:'short',year:'numeric'})}
       function interestCreditSheet(id){const a=acct(id);if(!a||!a.interestEnabled)return toast('Turn on savings interest in account details first');const eligible=S.goals.filter(g=>+g.accountId==+id),daily=savingsInterestDaily(a);openS(`<h2>Record interest earned</h2><p class="m">Actual interest credited by ${esc(a.name)}. Estimate today: ${php(daily)}.</p><label class="m">Amount credited (${CS()})</label><input id="ic-amount" type="number" min="0.01" step="0.01" placeholder="Enter bank credit"><label class="m">Date credited</label><input id="ic-date" type="date" value="${today}"><label class="m">Note (optional)</label><input id="ic-note" placeholder="e.g. October interest"><p class="m">Goal interest preference: ${a.goalInterestMode=='goal'?'Selected goal':a.goalInterestMode=='proportional'?'Proportional allocation':'Keep unallocated'}.</p><button class="btn" onclick="saveInterestCredit(${id})">Record interest credit</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
       function allocateCreditedInterest(a,amount,t){const goals=S.goals.filter(g=>+g.accountId==+a.id&&g.saved>=0);if(a.goalInterestMode=='goal'){const g=goals.find(g=>+g.id==+a.interestGoalId);if(g){g.saved+=amount;t.goalInterestAllocations=[{goalId:g.id,amount}]}}else if(a.goalInterestMode=='proportional'&&goals.length){const total=sum(goals.map(g=>+g.saved||0));if(total>0){t.goalInterestAllocations=goals.map(g=>({goalId:g.id,amount:amount*(g.saved/total)}));goals.forEach(g=>g.saved+=amount*(g.saved/total))}}}
-      function saveInterestCredit(id){const a=acct(id),amount=+$('#ic-amount').value,date=$('#ic-date').value||today;if(!a||!(amount>0))return toast('Enter the actual interest amount credited');const t={id:uid(),d:date,amt:amount,cat:'Interest Earned',acct:id,note:($('#ic-note').value||'Interest credited by bank'),interestActual:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=date;save();closeS();render();toast('Interest credit recorded',true)}
-      function simulateSavingsInterest(){if(typeof S=='undefined'||!S||!Array.isArray(S.accts))return;let changed=false;for(const a of S.accts.filter(x=>x.type!='credit'&&x.interestEnabled&&x.interestSimulation&&+x.interestRate>0)){const last=a.interestLastCredited||today,elapsed=Math.floor((new Date(today+'T00:00:00')-new Date(last+'T00:00:00'))/86400000),freq=a.interestCreditFreq||'monthly',d=new Date(T),isMonthEnd=d.getDate()==new Date(d.getFullYear(),d.getMonth()+1,0).getDate(),isQuarterEnd=isMonthEnd&&[2,5,8,11].includes(d.getMonth()),due=freq=='daily'?elapsed>=1:freq=='quarterly'?isQuarterEnd&&elapsed>=1:freq=='other'?elapsed>=Math.max(1,+a.interestOtherDays||30):isMonthEnd&&elapsed>=1;if(!due)continue;const amount=savingsInterestDaily(a)*elapsed;if(amount<=0){a.interestLastCredited=today;continue}const t={id:uid(),d:today,amt:amount,cat:'Interest Earned',acct:a.id,note:'Simulated savings interest credit',interestActual:true,interestSimulation:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=today;changed=true}if(changed){save();if(typeof render=='function')render()}}
+      function saveInterestCredit(id){const a=acct(id),amount=+$('#ic-amount').value,date=$('#ic-date').value||today;if(!a||!(amount>0))return toast('Enter the actual interest amount credited');const t={id:uid(),ts:Date.now(),d:date,amt:amount,cat:'Interest Earned',acct:id,note:($('#ic-note').value||'Interest credited by bank'),interestActual:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=date;save();closeS();render();toast('Interest credit recorded',true)}
+      function simulateSavingsInterest(){if(typeof S=='undefined'||!S||!Array.isArray(S.accts))return;let changed=false;for(const a of S.accts.filter(x=>x.type!='credit'&&x.interestEnabled&&x.interestSimulation&&+x.interestRate>0)){const last=a.interestLastCredited||today,elapsed=Math.floor((new Date(today+'T00:00:00')-new Date(last+'T00:00:00'))/86400000),freq=a.interestCreditFreq||'monthly',d=new Date(T),isMonthEnd=d.getDate()==new Date(d.getFullYear(),d.getMonth()+1,0).getDate(),isQuarterEnd=isMonthEnd&&[2,5,8,11].includes(d.getMonth()),due=freq=='daily'?elapsed>=1:freq=='quarterly'?isQuarterEnd&&elapsed>=1:freq=='other'?elapsed>=Math.max(1,+a.interestOtherDays||30):isMonthEnd&&elapsed>=1;if(!due)continue;const amount=savingsInterestDaily(a)*elapsed;if(amount<=0){a.interestLastCredited=today;continue}const t={id:uid(),ts:Date.now(),d:today,amt:amount,cat:'Interest Earned',acct:a.id,note:'Simulated savings interest credit',interestActual:true,interestSimulation:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=today;changed=true}if(changed){save();if(typeof render=='function')render()}}
       function bootSavingsInterest(tries=0){if(typeof S=='undefined'||!S||!Array.isArray(S.accts)){if(tries<20)setTimeout(()=>bootSavingsInterest(tries+1),250);return}simulateSavingsInterest()}
       setTimeout(bootSavingsInterest,0);document.addEventListener('visibilitychange',()=>{if(!document.hidden)simulateSavingsInterest()});
       function openAcct() {
@@ -484,6 +485,7 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
         b.paid = k.slice(0, 7); b.acct = a.id;
         S.tx.push({
           id: Date.now() + Math.floor(Math.random() * 1000),
+          ts: Date.now(),
           d: today,
           amt: -b.amt,
           cat: "Bills",
@@ -496,16 +498,23 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
         });
         a.bal += a.type == "credit" ? b.amt : -b.amt;
         save();
-        playPaymentConfirmation();
-        showPaymentSuccess(b.name,php(b.amt));
         const btn = document.querySelector('#sb button[onclick^="confirmBillPay"]'),
           done = () => { window._paying = false; closeS(); render(); toast("Paid · " + b.name, true); };
-        if (btn && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        /* The tone is the last cue, not the first, so it plays when the terminal says "confirmed".
+           Priming it here - inside the tap gesture - is what keeps browsers from blocking that
+           later playback. Payments themselves never depend on any of this. */
+        readyPaymentSound();
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) { playPaymentConfirmation(); return done(); }
+        /* loading dots on the button first, then the sheet hands over to the payment terminal */
+        if (btn) {
           btn.style.minWidth = btn.offsetWidth + "px";
-          btn.disabled = true; btn.classList.add("paid-ok");
-          btn.innerHTML = '<svg class="ck2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Paid';
-          setTimeout(done, 560);
-        } else done();
+          btn.style.minHeight = btn.offsetHeight + "px";   /* dots must not resize the button */
+          btn.disabled = true; btn.classList.add("paid-ok", "pay-dots");
+          btn.innerHTML = '<span class="pdots" aria-hidden="true"><i></i><i></i><i></i></span>';
+          btn.setAttribute("aria-label", "Processing payment");
+          vib(10);
+        }
+        payTerminal(b.name, php(b.amt), "Paid from " + a.name, btn ? PT_DOTS_MS : 0, done);
       }
 
 
@@ -688,7 +697,24 @@ function payOk(id,allowAllocationOverrun=false){
   /* One linked transfer is the source-side record and the card payment. It updates both
      balances but is deliberately not inserted into S.tx, so it never counts as spending. */
   const paymentId=uid();S.xfer.push({id:paymentId,linkId:paymentId,paymentId,d:payDate,amt:m,from:f.id,to:id,due:ctx.due||'',statementId:ctx.statementId||'',kind:'card-payment',note:(($('#pc-note')||{}).value||'').trim()});
-  a.bal-=m;f.bal-=m;save();playPaymentConfirmation();showPaymentSuccess(a.nickname||a.name,php(m));render();acctMenu(id);toast('Payment recorded',true);
+  a.bal-=m;f.bal-=m;save();
+  /* Card payments now close on the same terminal beat as a bill payment. The tone is the last cue,
+     not the first, so it plays when the terminal reads "Payment confirmed"; priming it here - inside
+     the tap gesture - is what keeps browsers from blocking that later playback. The payment is
+     already written and saved above, so the terminal is presentation only. */
+  const btn=document.querySelector('#sb #cc-pay-confirm'),
+    done=()=>{delete CARD_PAY_LOCK[id];closeS();render();toast('Payment recorded',true)};
+  readyPaymentSound();
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){playPaymentConfirmation();return done()}
+  if(btn){
+    btn.style.minWidth=btn.offsetWidth+'px';
+    btn.style.minHeight=btn.offsetHeight+'px';   /* dots must not resize the button */
+    btn.disabled=true;btn.classList.add('paid-ok','pay-dots');
+    btn.innerHTML='<span class="pdots" aria-hidden="true"><i></i><i></i><i></i></span>';
+    btn.setAttribute('aria-label','Processing payment');
+    vib(10);
+  }
+  payTerminal(a.nickname||a.name, php(m), 'Paid from '+f.name, btn?PT_DOTS_MS:0, done);
 }
 function delPay(id){const x=S.xfer.find(z=>z.id==id);if(!x)return;const c=S.accts.find(z=>z.id==x.to),f=S.accts.find(z=>z.id==x.from);if(c)c.bal+=x.amt;if(f)f.bal+=x.amt;S.xfer=S.xfer.filter(z=>z.id!=id);render();acctMenu(x.to);toast('Payment removed')}
 

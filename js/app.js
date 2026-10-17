@@ -426,7 +426,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         q = "",
         cm = 0,
         sel = "",
-        pt = "Budgets",
+        pt = "Upcoming",
         rg = "1M",
         goalIndex = 0,
         goalTouchX = null,
@@ -733,10 +733,11 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         $("#tabs").innerHTML = ["Home", "Activity", "Plan", "Accounts"]
           .map(
             (t) =>
-              `<button class="${t == tab ? "on" : ""}" onclick="tab='${t}';trendM=null;render()">${t}</button>`,
+              `<button class="${t == tab ? "on" : ""}" onclick="tab='${t}';trendM=null;${t == "Plan" ? "pt='Upcoming';" : ""}render()">${t}</button>`,
           )
           .join("");
         $("#app").innerHTML = { Home, Activity, Plan, Accounts, Notes }[tab]();
+        initAccountCarousels();
         pageAnim();
         save();
       }
@@ -1430,7 +1431,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
                 : pt == "Notes"
                   ? Notes2()
                   : Debts();
-        return `<h1>Plan</h1><p style="display:flex;gap:6px;overflow:auto">${["Budgets", "Upcoming", "Goals", "Debts", "Notes"].map((t) => `<button class="pill ${t == pt ? "on" : ""}" style="flex:1" onclick="pt='${t}';render()">${t}</button>`).join("")}</p>${body}`;
+        return `<h1>Plan</h1><p style="display:flex;gap:6px;overflow:auto">${["Upcoming", "Budgets", "Goals", "Debts", "Notes"].map((t) => `<button class="pill ${t == pt ? "on" : ""}" style="flex:1" onclick="pt='${t}';render()">${t}</button>`).join("")}</p>${body}`;
       }
       /* Cloud sync + offline persistence live in the #cap-offline module (CapOff). */
       async function dbInit() {
@@ -1449,6 +1450,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           id = Date.now() + Math.floor(Math.random() * 1000);
         S.tx.push({
           id,
+          ts: Date.now(),
           d: /^\d{4}-\d{2}-\d{2}$/.test(e.date || "") ? e.date : today,
           amt,
           cat,
@@ -2160,7 +2162,7 @@ function calWheel(e){if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.2||Math.abs(e.d
    Every page renders through stSheet() -> navS(), so the modal, its backdrop
    and its scroll position stay stable while pages slide/fade in and out.
    ========================================================================== */
-const APP_VERSION='1.0.2',APP_VER=APP_VERSION;
+const APP_VERSION='1.0.2.5',APP_VER=APP_VERSION;
 const LOCK_KEY='cap_lock',BIO_KEY='cap_bio',NOTIF_SEEN='cap_notif_seen',BK_KEY='cap_lastbackup';
 const ST_IC={
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.4"/><path d="M4.9 20c.7-3.5 3.6-5.6 7.1-5.6s6.4 2.1 7.1 5.6"/></svg>',
@@ -2180,8 +2182,18 @@ const ST_IC={
   down:'<svg viewBox="0 0 24 24"><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"/></svg>',
 };
 const APP_REPOSITORY_URL='https://github.com/luancreek2/cap-finance-tracker',WHATS_NEW_SEEN_KEY='cap_whats_new_seen_version';
+/* Auto-present the release note once per version, after the launch animation. */
+const WHATS_NEW_AUTO=true;
 let WHATS_NEW_MEMORY_SEEN='';
-const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-17',title:'What’s New in Cap',summary:'Cap 1.0.2 brings linked savings goals, a more polished card experience, and clearer account updates.',changes:[
+const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.2.5 is all about the Accounts tab: a new options menu, Grid and Carousel views, sorting, and drag-to-reorder with multi-card selection.',changes:[
+  {category:'New',icon:'🧭',title:'Accounts options menu',description:'A compact ⋯ menu gives you Grid or Carousel view plus sorting by Recent, Name, Balance, or Manual.'},
+  {category:'New',icon:'🎠',title:'Carousel view',description:'Swipe through credit and debit/e-wallet cards side by side with 3D tilt, shine, and smooth momentum.'},
+  {category:'New',icon:'✅',title:'Selection mode',description:'Tap Select All or pick cards with the circle, then drag a card — or a whole selected group — into the position you want.'},
+  {category:'Design',icon:'🎨',title:'Fresh Cap logo',description:'A new glossy mark across the app, About, What’s New, and the browser and PWA icons, with light and dark logo options in Settings.'},
+  {category:'Design',icon:'🌗',title:'Theme-aware launch animation',description:'Cap now opens with a light or dark intro featuring the logo entrance, expanding glow rings, and loading dots.'},
+  {category:'Improved',icon:'ℹ️',title:'What’s New & About',description:'See release notes once per version, reopen them from About, and jump straight to the official GitHub repository.'},
+  {category:'Performance',icon:'⚡',title:'Polish & reliability',description:'Smoother card motion, responsive layout at phone and tablet widths, and reduced-motion friendly animations.'}
+]},{version:'1.0.2',releaseDate:'2026-10-17',title:'What’s New in Cap',summary:'Cap 1.0.2 brings linked savings goals, a more polished card experience, and clearer account updates.',changes:[
   {category:'Improved',icon:'💳',title:'Credit cards & payments',description:'Refined statements, account-funded payments, card fee settings, and clearer interest estimates.'},
   {category:'New',icon:'🎯',title:'Goals linked to accounts',description:'Allocate savings from real accounts, move money as internal transfers, and review unallocated funds.'},
   {category:'New',icon:'🏦',title:'Daily savings interest',description:'Estimate interest from annual APY, record actual bank credits, and keep estimates out of balances.'},
@@ -2193,9 +2205,29 @@ const GITHUB_MARK='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="curre
 function latestAppUpdate(){return APP_UPDATES[0]}
 function openGitHubRepository(){window.open(APP_REPOSITORY_URL,'_blank','noopener,noreferrer')}
 function whatsNewSeen(){try{return localStorage.getItem(WHATS_NEW_SEEN_KEY)==APP_VERSION}catch(_){return WHATS_NEW_MEMORY_SEEN==APP_VERSION}}
-function openWhatsNew(manual=false){const item=latestAppUpdate();if(!item||(!manual&&whatsNewSeen())||document.getElementById('whats-new-overlay'))return;const date=new Date(item.releaseDate+'T00:00:00').toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'}),changes=item.changes.map((x,i)=>`<article class="wn-item" style="--wn-i:${i}"><span class="wn-icon" aria-hidden="true">${esc(x.icon)}</span><div class="wn-copy"><div class="wn-item-head"><h3>${esc(x.title)}</h3><span class="wn-category wn-${esc(x.category.toLowerCase())}">${esc(x.category)}</span></div><p>${esc(x.description)}</p></div></article>`).join('');document.body.insertAdjacentHTML('beforeend',`<div id="whats-new-overlay" class="whats-new-overlay" role="presentation"><section class="whats-new-panel" role="dialog" aria-modal="true" aria-labelledby="wn-title" aria-describedby="wn-summary"><header class="wn-head"><span class="wn-brand"><img src="assets/icons/icon-192.png" alt=""><span>CAP UPDATE</span></span><button type="button" class="wn-close" aria-label="Close What's New" onclick="closeWhatsNew()">×</button></header><div class="wn-title-block"><h2 id="wn-title">${esc(item.title)}</h2><div class="wn-version"><span>Version ${esc(item.version)}</span><i></i><span>${date}</span></div><p id="wn-summary">${esc(item.summary)}</p></div><div class="wn-content" tabindex="0">${changes}</div><footer class="wn-footer"><button id="wn-got-it" class="btn" onclick="closeWhatsNew()">Got it</button></footer></section></div>`);const overlay=$('#whats-new-overlay'),panel=overlay.querySelector('.whats-new-panel');overlay.addEventListener('click',e=>{if(e.target===overlay)closeWhatsNew()});overlay._key=e=>{if(e.key=='Escape'){e.preventDefault();closeWhatsNew();return}if(e.key=='Tab'){const f=[...panel.querySelectorAll('button:not(:disabled),[tabindex="0"]')].filter(x=>x.offsetParent!==null);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};document.addEventListener('keydown',overlay._key,true);requestAnimationFrame(()=>overlay.classList.add('visible'));setTimeout(()=>$('#wn-got-it')?.focus({preventScroll:true}),80)}
+function openWhatsNew(manual=false){const item=latestAppUpdate();if(!item||(!manual&&whatsNewSeen())||document.getElementById('whats-new-overlay'))return;const date=new Date(item.releaseDate+'T00:00:00').toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'}),changes=item.changes.map((x,i)=>`<article class="wn-item" style="--wn-i:${i}"><span class="wn-icon" aria-hidden="true">${esc(x.icon)}</span><div class="wn-copy"><div class="wn-item-head"><h3>${esc(x.title)}</h3><span class="wn-category wn-${esc(x.category.toLowerCase())}">${esc(x.category)}</span></div><p>${esc(x.description)}</p></div></article>`).join('');document.body.insertAdjacentHTML('beforeend',`<div id="whats-new-overlay" class="whats-new-overlay" role="presentation"><section class="whats-new-panel" role="dialog" aria-modal="true" aria-labelledby="wn-title" aria-describedby="wn-summary"><header class="wn-head"><span class="wn-brand">${capBrandLogo()}<span>CAP UPDATE</span></span><button type="button" class="wn-close" aria-label="Close What's New" onclick="closeWhatsNew()">×</button></header><div class="wn-title-block"><h2 id="wn-title">${esc(item.title)}</h2><div class="wn-version"><span>Version ${esc(item.version)}</span><i></i><span>${date}</span></div><p id="wn-summary">${esc(item.summary)}</p></div><div class="wn-content" tabindex="0">${changes}</div><footer class="wn-footer"><button id="wn-got-it" class="btn" onclick="closeWhatsNew()">Got it</button></footer></section></div>`);const overlay=$('#whats-new-overlay'),panel=overlay.querySelector('.whats-new-panel');overlay.addEventListener('click',e=>{if(e.target===overlay)closeWhatsNew()});overlay._key=e=>{if(e.key=='Escape'){e.preventDefault();closeWhatsNew();return}if(e.key=='Tab'){const f=[...panel.querySelectorAll('button:not(:disabled),[tabindex="0"]')].filter(x=>x.offsetParent!==null);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};document.addEventListener('keydown',overlay._key,true);requestAnimationFrame(()=>overlay.classList.add('visible'));setTimeout(()=>$('#wn-got-it')?.focus({preventScroll:true}),80)}
 function closeWhatsNew(){const overlay=$('#whats-new-overlay');if(!overlay)return;WHATS_NEW_MEMORY_SEEN=APP_VERSION;try{localStorage.setItem(WHATS_NEW_SEEN_KEY,APP_VERSION)}catch(_){}if(overlay._key)document.removeEventListener('keydown',overlay._key,true);overlay.classList.add('closing');setTimeout(()=>overlay.remove(),matchMedia('(prefers-reduced-motion:reduce)').matches?100:260)}
-function scheduleWhatsNew(){if(window.__whatsNewScheduled)return;window.__whatsNewScheduled=true;let tries=0;const attempt=()=>{if(tries++>180)return;if(whatsNewSeen())return;const locked=window._unlocked===0||$('#lock')?.classList.contains('open'),ready=$('#app')?.children.length>0,sheet=$('#sheet')?.classList.contains('open');if(document.hidden||locked||!ready||sheet){setTimeout(attempt,500);return}openWhatsNew(false)};setTimeout(attempt,900)}
+/* Present a release note only after the launch animation has finished, the
+   interface is painted, and any passcode lock / open sheet has settled. */
+function scheduleWhatsNew(){
+  if(!WHATS_NEW_AUTO)return;
+  if(window.__whatsNewScheduled)return;window.__whatsNewScheduled=true;
+  let started=false;
+  const start=()=>{
+    if(started)return;started=true;
+    let tries=0;
+    const attempt=()=>{
+      if(tries++>180)return;
+      if(whatsNewSeen())return;
+      const locked=window._unlocked===0||$('#lock')?.classList.contains('open'),ready=$('#app')?.children.length>0,sheet=$('#sheet')?.classList.contains('open');
+      if(window.capLaunchActive||document.hidden||locked||!ready||sheet){setTimeout(attempt,400);return}
+      openWhatsNew(false);
+    };
+    setTimeout(attempt,400);
+  };
+  if(window.capLaunchActive){document.addEventListener('cap:launch-complete',start,{once:true});setTimeout(start,9000)}
+  else start();
+}
 let stCur='home',stKeep=0,stIx=0;
 function stStart(){stIx=0}
 function stSheet(html,key,keep){const sh=$('#sheet');navS(html,key,keep?{keep:1}:null);if(sh)sh.classList.add('st')}
@@ -2289,7 +2321,7 @@ function stAppearance(){
   const h=stHead('Appearance','openSettings()')
     +`<div class="st-grp eyebrow">Theme</div><p style="display:flex;gap:6px;margin:4px 0 0">${[['light','Light'],['dark','Dark'],['auto','Auto']].map(x=>`<button class="pill ${t==x[0]?'on':''}" style="flex:1" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('')}</p>`
     +`<p class="st-note">Auto follows your device's light or dark setting.</p>`
-    +`<div class="st-grp eyebrow">App Icon</div><div class="st-box"><div class="st-r"><span class="f"><b>Default Cap icon</b><small>Cap ships a single icon</small></span><img class="st-icon" src="assets/icons/icon-192.png" alt=""></div></div>`
+    +capLogoChoices()
     +`<div class="st-grp eyebrow">Motion</div><div class="st-box">`
       +stSw('Animations','Screen and list transitions',S.anim!==0,"stMotion('anim',this.checked)")
       +stSw('Reduce Motion','Keep large transitions to a minimum',S.rm===1,"stMotion('rm',this.checked)")
@@ -2539,7 +2571,7 @@ function stPrivacy(){ stStart();
 /* ---- About ---- */
 function stAbout(){ stStart();
   const h=stHead('About Cap','openSettings()')
-    +`<div class="st-prof" style="margin:4px 0 14px"><img class="st-icon" src="assets/icons/icon-192.png" alt="" style="width:56px;height:56px;border-radius:15px"><span class="f"><b style="font-size:17px">Cap</b><small>Finance Tracker · Version ${APP_VER}</small></span></div>`
+    +`<div class="st-prof" style="margin:4px 0 14px">${capBrandLogo()}<span class="f"><b style="font-size:17px">Cap</b><small>Finance Tracker · Version ${APP_VER}</small></span></div>`
     +stGrp('About',[
       stRow(ST_IC.info,"What's New",null,'openWhatsNew(true)'),
       stRow(ST_IC.ver,'Version',APP_VERSION,null),

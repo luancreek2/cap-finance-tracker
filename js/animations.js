@@ -125,6 +125,64 @@ function showPaymentSuccess(title,amount){
   el.innerHTML=`<div class="payment-success-card"><div class="payment-success-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="m12 25 8 8 17-18"/></svg></div><b>Payment recorded</b><span>${title?String(title).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])):''}</span><strong>${amount||''}</strong></div>`;
   document.body.append(el);requestAnimationFrame(()=>el.classList.add('show'));setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),320)},1500);
 }
+/* Prepares the confirmation chime without playing it. Run this inside the tap gesture: creating
+   and resuming the AudioContext there is what stops browsers blocking playback that happens a
+   second later, once the terminal reaches "Payment confirmed". */
+function readyPaymentSound(){
+  try{
+    primePaymentSound();
+    if(!sndOn())return;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    payCtx=payCtx||new AC();
+    if(payCtx.state==='suspended')payCtx.resume();
+  }catch(_){/* Audio may be unavailable; payments must still work. */}
+}
+/* The Pay sheet's confirmation beat: loading dots on the button, then a card terminal that spins,
+   then ticks, then the sheet closes. The transaction is already written and saved before this
+   runs, so the terminal is presentation only - payments never depend on it finishing. preDelay is
+   how long the button shows its dots before the sheet hands over. */
+const PT_DOTS_MS=700,    /* loading dots on the pay button */
+      PT_SPIN_MS=800,    /* terminal spinner */
+      PT_HOLD_MS=2000;   /* how long "Payment confirmed" stays up before the sheet closes */
+function payTerminalView(name,amount){
+  const nm=String(name==null?'':name).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return `<div class="pt-wrap" role="status">`
+    +`<div class="pt-amt">${amount||''}</div>`
+    +`<div class="pt-name">${nm}</div>`
+    +`<div class="pt-term"><div class="pt-screen"><div class="pt-spin"></div>`
+    +`<svg class="pt-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`
+    +`</div><div class="pt-slot"><span class="pt-card"></span></div></div>`
+    +`<div class="pt-title">Processing payment</div>`
+    +`<div class="pt-sub">Please wait while we confirm</div>`
+    +`</div>`;
+}
+function payTerminal(name,amount,sub,preDelay,done){
+  const sb=$('#sb');
+  const finish=()=>{
+    clearTimeout(window._ptPre);clearTimeout(window._ptTick);clearTimeout(window._ptEnd);
+    if(sb)sb.style.pointerEvents='';   /* only unlock if this run locked it */
+    done();
+  };
+  const tick=()=>{
+    const sheet=$('#sheet');
+    if(!sheet||!sheet.classList.contains('open'))return finish();
+    navS(payTerminalView(name,amount),'payterm');
+    /* the money is already recorded: nothing in the sheet may be tapped or cancelled now */
+    if(sb)sb.style.pointerEvents='none';
+    window._ptTick=setTimeout(()=>{
+      const wrap=$('#sv')&&$('#sv').querySelector('.pt-wrap');
+      if(!wrap||!wrap.isConnected)return finish();
+      wrap.classList.add('done');
+      const t=wrap.querySelector('.pt-title'),s=wrap.querySelector('.pt-sub');
+      if(t)t.textContent='Payment confirmed';
+      if(s)s.textContent=sub;          /* textContent, so an account name can never inject markup */
+      playPaymentConfirmation();       /* the tone lands with the tick, not with the tap */
+      window._ptEnd=setTimeout(finish,PT_HOLD_MS);
+    },PT_SPIN_MS);
+  };
+  if(preDelay>0)window._ptPre=setTimeout(tick,preDelay);else tick();
+}
 document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))m.classList.remove('open')});
 
 

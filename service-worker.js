@@ -1,11 +1,17 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v54";
+const VERSION = "cap-shell-v83";
 const CORE = [
   "./index.html",
   "./manifest.json",
   "./css/styles.css",
   "./css/animations.css",
+  "./css/brand.css",
+  "./js/brand.js",
+  "./js/account-carousel.js",
+  "./js/account-options.js",
+  "./css/account-options.css",
+  "./css/account-carousel.css",
   "./js/cards.js",
   "./js/app.js",
   "./js/transactions.js",

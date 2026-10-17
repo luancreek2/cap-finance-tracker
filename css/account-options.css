@@ -1,0 +1,38 @@
+.account-heading{display:flex;align-items:center;justify-content:space-between;position:relative;gap:16px}
+.account-options-button{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;min-width:32px;min-height:32px;aspect-ratio:1;padding:0;box-sizing:border-box;border-radius:50%;font-size:17px;line-height:1;letter-spacing:.5px}
+.account-options-button:focus-visible{outline:2px solid var(--g);outline-offset:2px;border-radius:50%}
+.account-options-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:60;width:min(216px,calc(100vw - 40px));padding:8px 6px;border-radius:20px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(24px) saturate(130%);-webkit-backdrop-filter:blur(24px) saturate(130%);border:1px solid var(--line);box-shadow:0 14px 40px #0003;animation:accountMenuIn .18s ease-out;max-height:75dvh;overflow-y:auto}
+.account-options-menu[hidden]{display:none}
+.account-options-menu button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--tx);font:inherit;font-size:14px;padding:7px 9px;text-align:left;border-radius:10px;cursor:pointer;min-height:36px}
+.account-options-menu button:hover,.account-options-menu button:focus-visible{background:color-mix(in srgb,var(--tx) 8%,transparent);outline:none}
+.ao-check{width:15px;flex:none;font-size:13px}.ao-icon{display:grid;place-items:center;width:16px;flex:none;font-size:16px}.ao-icon svg{width:16px;height:16px;display:block}.ao-icon:empty{display:none}
+.account-options-menu [role=separator]{height:1px;background:var(--line);margin:6px 10px}
+.account-options-menu p{margin:9px 16px 4px;color:var(--mut);font-size:12px}
+.account-selection-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:16px}
+.account-selection-bar .account-select-confirm{margin-left:auto}
+.account-selection-bar .pill{font-size:14px;padding:5px 14px}
+.account-select-all{margin:0}
+.account-selection-hint{display:block;margin-top:8px;color:var(--mut)}
+.account-select-confirm{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;min-width:34px;min-height:34px;aspect-ratio:1;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--tx);color:var(--bg);font-size:15px;line-height:1;cursor:pointer;box-shadow:0 6px 18px #0004;transition:transform .15s ease}
+.account-select-confirm:active{transform:scale(.94)}
+.account-select-confirm:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.account-select-card{display:block;position:relative;cursor:pointer;min-width:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.account-select-card:has(input:checked){cursor:grab;touch-action:none}
+.account-select-card.dragging{z-index:30;cursor:grabbing}
+.account-select-card.block-moving{z-index:2}
+.account-select-card.block-moving:has(input:checked) .account-select-art{filter:drop-shadow(0 20px 32px #00000073)}
+.account-select-card.dragging .account-select-name{opacity:.65}
+.account-select-card.block-moving .account-select-name{opacity:.65}
+.account-select-card input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.account-select-art{display:block;position:relative;pointer-events:none;border-radius:22px;transition:transform .24s cubic-bezier(.2,.8,.2,1),filter .24s ease;will-change:transform}
+.account-select-circle{position:absolute;right:12px;bottom:12px;width:26px;height:26px;box-sizing:border-box;border:2px solid #fff;border-radius:50%;background:#0b0f1a66;box-shadow:0 2px 10px #0006;transition:background .2s ease,border-color .2s ease,transform .2s ease}
+.account-select-circle:after{content:'';position:absolute;left:7.5px;top:3.5px;width:6px;height:11px;border:solid #0b0b0b;border-width:0 2.5px 2.5px 0;transform:rotate(45deg) scale(0);transition:transform .2s cubic-bezier(.2,.9,.3,1.4)}
+.account-select-card:hover .account-select-circle{transform:scale(1.08)}
+.account-select-card:has(input:checked){z-index:2}
+.account-select-card:has(input:checked) .account-select-art{transform:translateY(-8px) scale(1.04);filter:drop-shadow(0 16px 26px #0000008c)}
+.account-select-card:has(input:checked) .account-select-circle{background:#fff;border-color:#fff;transform:scale(1.04)}
+.account-select-card:has(input:checked) .account-select-circle:after{transform:rotate(45deg) scale(1)}
+.account-select-card:has(input:focus-visible){outline:2px solid var(--g);outline-offset:4px;border-radius:18px}
+.account-select-name{display:block;margin:8px 0;color:var(--tx);font-size:13px}
+@keyframes accountMenuIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.account-options-menu{animation:none}.account-select-art,.account-select-circle,.account-select-circle:after{transition:none}.account-select-card.dragging .account-select-art{transform:translateY(-8px) scale(1.04)}}
