@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v31";
+const VERSION = "cap-shell-v32";
 const CORE = [
   "./index.html",
   "./manifest.json",

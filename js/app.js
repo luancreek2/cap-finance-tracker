@@ -651,6 +651,54 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           ? `<span class="lg ${k == "mari" ? "w" : ""}"><img src="${LOGO[k]}" alt="${a.bank}"></span>`
           : `<span class="b">${a.bank}</span>`;
       };
+      let acctFlipActive = null;
+      function flipAccountCard(id, force) {
+        const key = id == null ? null : String(id);
+        const next = force === true ? key : force === false ? null : acctFlipActive === key ? null : key;
+        acctFlipActive = next;
+        document.querySelectorAll("#app .acct-flip").forEach((w) => {
+          const on = w.dataset.accountId === next;
+          w.classList.toggle("is-flipped", on);
+          w.classList.remove("is-pressing");
+          w.setAttribute("aria-pressed", on ? "true" : "false");
+          const front = w.querySelector(".acct-flip-front"), back = w.querySelector(".acct-flip-back");
+          if (front) {
+            front.setAttribute("aria-hidden", on ? "true" : "false"); front.inert = on;
+            const control = front.querySelector(".cc[role=button]"); if (control) control.setAttribute("aria-pressed", on ? "true" : "false");
+          }
+          if (back) { back.setAttribute("aria-hidden", on ? "false" : "true"); back.inert = !on; }
+        });
+        return next;
+      }
+      function acctBackHtml(a, art, on) {
+        const kind = a.type === "credit" ? "Credit" : a.type === "ewallet" ? "E-wallet" : "Debit";
+        const recent = (S.tx || [])
+          .filter((t) => String(t.acct) === String(a.id) && !(S.pend || []).some((p) => p.id == t.id) && t.d <= today)
+          .sort((x, y) => y.d.localeCompare(x.d) || (+y.id || 0) - (+x.id || 0))
+          .slice(0, 4);
+        const rows = recent.map((t) => `<div class="afb-tx"><span class="afb-ico">${ti(t)}</span><span class="afb-desc"><b>${esc(t.note || t.cat || "Transaction")}</b><small>${noteD(t.d)}</small></span><strong class="${t.amt < 0 ? "r" : "g"}">${t.amt > 0 ? "+" : ""}${php(t.amt)}</strong></div>`).join("");
+        const title = `${esc(a.bank || a.name)} ${kind}${a.l4 ? ` · ${esc(a.l4)}` : ""}`;
+        const bg = art
+          ? `background-image:linear-gradient(135deg,rgba(10,14,23,.91),rgba(10,14,23,.78)),url(${art})`
+          : `background:linear-gradient(135deg,${(a.g || ["#24344c", "#111827"])[0]},${(a.g || ["#24344c", "#111827"])[1]})`;
+        return `<div class="acct-flip-face acct-flip-back" aria-hidden="${on ? "false" : "true"}" ${on ? "" : "inert"} style="${bg}"><div class="afb-head"><b>${title}</b><small>Recent transactions</small></div><div class="afb-list">${rows || '<div class="afb-empty">No transactions for this account yet.</div>'}</div><button type="button" class="afb-all" data-acct-viewall onclick="event.stopPropagation();openAccountFromBack(${a.id})">View All <span aria-hidden="true">→</span></button></div>`;
+      }
+      function accountCardMarkup(a, art, front) {
+        const on = String(acctFlipActive) === String(a.id);
+        return `<div class="acct-flip${on ? " is-flipped" : ""}" data-account-id="${a.id}" aria-label="${esc(a.name)} account card"><div class="acct-flip-inner"><div class="acct-flip-face acct-flip-front" aria-hidden="${on ? "true" : "false"}" ${on ? "inert" : ""}>${front}</div>${acctBackHtml(a, art, on)}</div></div>`;
+      }
+      function openAccountFromBack(id) {
+        const w = [...document.querySelectorAll("#app .acct-flip")].find((x) => x.dataset.accountId == id);
+        if (!w || !w.classList.contains("is-flipped")) return acctMenu(+id);
+        flipAccountCard(id, false);
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return acctMenu(+id);
+        const inner = w.querySelector(".acct-flip-inner");
+        let done = false;
+        const open = () => { if (done) return; done = true; inner.removeEventListener("transitionend", end); acctMenu(+id); };
+        const end = (e) => { if (e.target === inner && e.propertyName === "transform") open(); };
+        inner.addEventListener("transitionend", end);
+        setTimeout(open, 540);
+      }
       function cardH(a, full, det) {
         const cr = a.type == "credit",
           lim = +a.lim || 0,
@@ -660,18 +708,21 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           label = av ? "AVAILABLE CREDIT" : "BALANCE",
           amt = php(av ? Math.max(0, lim - owed) : owed),
           art = a.photo || ART[a.img] || ART[ARTN[a.name]] || ART[a.bank],
-          oc = full && !det ? `onclick="acctMenu(${a.id})"` : "";
+          oc = full && !det ? `onclick="acctMenu(${a.id})" role="button" tabindex="0" aria-pressed="${String(acctFlipActive) === String(a.id)}" aria-label="${esc(a.name)}. Tap to view account details; long press for recent transactions." onkeydown="if(event.key=='Enter'||event.key==' '){event.preventDefault();if(this.closest('.acct-flip')&&this.closest('.acct-flip').classList.contains('is-flipped'))flipAccountCard(${a.id},false);else acctMenu(${a.id})}"` : "";
         const bar =
           full && cr && lim
             ? `<div class="pb"><b style="width:${Math.max(used, 2)}%"></b></div><div class="pr"><span>${used}% used</span><span>Limit ${bv(php(lim))}</span></div>`
             : "";
-        if (art)
-          return `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}</div>`;
+        if (art) {
+          const front = `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}</div>`;
+          return full && !det ? accountCardMarkup(a, art, front) : front;
+        }
         const n =
           a.net == "mc"
             ? '<span class="mc"><i></i><i></i></span>'
             : '<img class="visa" alt="Visa" src="' + VISAI + '">';
-        return `<div class="cc${det ? " detail" : ""}" style="background:linear-gradient(135deg,${a.g[0]},${a.g[1]})" ${oc}><div style="display:flex;justify-content:space-between">${logoH(a)}<small>${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</small></div><div class="chip"></div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}<div class="bt" style="justify-content:flex-end">${n}</div></div>`;
+        const front = `<div class="cc${det ? " detail" : ""}" style="background:linear-gradient(135deg,${a.g[0]},${a.g[1]})" ${oc}><div style="display:flex;justify-content:space-between">${logoH(a)}<small>${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</small></div><div class="chip"></div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}<div class="bt" style="justify-content:flex-end">${n}</div></div>`;
+        return full && !det ? accountCardMarkup(a, art, front) : front;
       }
       function render() {
         applyTheme();

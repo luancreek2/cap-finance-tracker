@@ -614,6 +614,43 @@ function initCardAnimations() {
   const $1=s=>document.querySelector(s);
   let fx=null,busy=false,phase='',pend=false,hid=null,cur=null,tg=null;const mode={};
 
+  /* Accounts cards: a hold flips the card in place; an ordinary click still
+     falls through to the existing account-detail action. */
+  const acctSel='#app .acct-flip[data-account-id]';
+  let hold=null,suppressAcctClick=null;
+  const stopHold=()=>{if(!hold)return;clearTimeout(hold.timer);hold.el.classList.remove('is-pressing');hold=null;};
+  document.addEventListener('pointerdown',e=>{
+    if(e.button>0||e.isPrimary===false||hold)return;
+    const el=e.target.closest&&e.target.closest(acctSel);
+    if(!el||e.target.closest('button,a,input,select,textarea,label'))return;
+    const id=el.dataset.accountId;
+    if(el.classList.contains('is-flipped'))return;
+    el.classList.add('is-pressing');
+    const state={el,id,x:e.clientX,y:e.clientY,fired:false,timer:0};hold=state;
+    state.timer=setTimeout(()=>{
+      if(hold!==state)return;
+      state.fired=true;el.classList.remove('is-pressing');
+      suppressAcctClick={id,until:Date.now()+850};
+      flipAccountCard(id,true);
+    },450);
+  },true);
+  document.addEventListener('pointermove',e=>{if(hold&&Math.hypot(e.clientX-hold.x,e.clientY-hold.y)>10)stopHold()},true);
+  ['pointerup','pointercancel','pointerleave','dragstart'].forEach(t=>document.addEventListener(t,stopHold,true));
+  window.addEventListener('scroll',stopHold,true);
+  document.addEventListener('contextmenu',e=>{if(e.target.closest&&e.target.closest(acctSel))e.preventDefault()},true);
+  document.addEventListener('click',e=>{
+    const el=e.target.closest&&e.target.closest(acctSel);if(!el)return;
+    if(e.target.closest('[data-acct-viewall]'))return;
+    const id=el.dataset.accountId;
+    if(suppressAcctClick&&suppressAcctClick.id===id&&Date.now()<suppressAcctClick.until){
+      e.preventDefault();e.stopImmediatePropagation();suppressAcctClick=null;return;
+    }
+    if(el.classList.contains('is-flipped')){
+      e.preventDefault();e.stopImmediatePropagation();flipAccountCard(id,false);return;
+    }
+    if(acctFlipActive!=null)flipAccountCard(null,false);
+  },true);
+
   const hs=document.createElement('style');hs.id='cardfx-hide';document.head.appendChild(hs);
   const setHide=id=>{hid=id;hs.textContent='#app .cc[onclick="acctMenu('+id+')"]{visibility:hidden!important}';};
   const clearHide=()=>{hid=null;hs.textContent='';};
