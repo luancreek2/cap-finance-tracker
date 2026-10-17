@@ -119,6 +119,12 @@ function playPaymentConfirmation(){
     src.start(payCtx.currentTime,payStart,Math.max(0.05,(payEnd||payBuf.duration)-payStart));
   }catch(_){/* Payment must still complete if sound is blocked or unsupported. */}
 }
+function showPaymentSuccess(title,amount){
+  const old=document.getElementById('payment-success');if(old)old.remove();
+  const el=document.createElement('div');el.id='payment-success';el.className='payment-success';el.setAttribute('role','status');el.setAttribute('aria-live','polite');
+  el.innerHTML=`<div class="payment-success-card"><div class="payment-success-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="m12 25 8 8 17-18"/></svg></div><b>Payment recorded</b><span>${title?String(title).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])):''}</span><strong>${amount||''}</strong></div>`;
+  document.body.append(el);requestAnimationFrame(()=>el.classList.add('show'));setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),320)},1500);
+}
 document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))m.classList.remove('open')});
 
 
@@ -344,3 +350,6 @@ initGlobalNoSelection();
 initPullToRefresh();
 primePaymentSound();
 try{stBoot()}catch(e){}
+/* Let Cap's initial render, sheet settling and lock check finish before presenting
+   a release note. A pending lock or open sheet keeps the notice queued. */
+try{if(typeof scheduleWhatsNew=='function')scheduleWhatsNew()}catch(e){}

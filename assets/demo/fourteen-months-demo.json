@@ -1,0 +1,6847 @@
+{
+  "app": "cap-finance-tracker",
+  "version": "1.01",
+  "exported": "2026-10-17T12:00:00.000Z",
+  "data": {
+    "_mt": 0,
+    "name": "Cap Demo · 14 Months",
+    "cur": "PHP",
+    "dec": 1,
+    "snd": 1,
+    "accts": [
+      {
+        "id": 1001,
+        "bank": "BDO",
+        "name": "BDO Everyday",
+        "type": "debit",
+        "net": "mc",
+        "img": "bdomc",
+        "g": [
+          "#25499a",
+          "#3481c9"
+        ],
+        "bal": 411973,
+        "l4": "1001"
+      },
+      {
+        "id": 1002,
+        "bank": "GCash",
+        "name": "GCash Wallet",
+        "type": "ewallet",
+        "net": "visa",
+        "img": "gcashg",
+        "g": [
+          "#0b2a7a",
+          "#2f6fe0"
+        ],
+        "bal": 7833,
+        "l4": "2002"
+      },
+      {
+        "id": 1003,
+        "bank": "UnionBank",
+        "name": "UnionBank Rewards",
+        "type": "credit",
+        "net": "visa",
+        "g": [
+          "#f29b23",
+          "#d35d19"
+        ],
+        "bal": 35383,
+        "lim": 100000,
+        "stmt": 24,
+        "dueN": 20,
+        "l4": "3003"
+      },
+      {
+        "id": 1004,
+        "bank": "BPI",
+        "name": "BPI Savings Debit",
+        "type": "debit",
+        "net": "visa",
+        "g": [
+          "#a82c3b",
+          "#55213e"
+        ],
+        "bal": 69160,
+        "l4": "4004"
+      },
+      {
+        "id": 1005,
+        "bank": "Maya",
+        "name": "Maya Black Credit",
+        "type": "credit",
+        "net": "visa",
+        "img": "mayaplat",
+        "g": [
+          "#17191d",
+          "#34363a"
+        ],
+        "bal": 16026,
+        "lim": 75000,
+        "stmt": 18,
+        "dueN": 20,
+        "l4": "5005"
+      },
+      {
+        "id": 1006,
+        "bank": "Metrobank",
+        "name": "Metrobank Debit",
+        "type": "debit",
+        "net": "visa",
+        "g": [
+          "#164b85",
+          "#173354"
+        ],
+        "bal": 37670,
+        "l4": "6006"
+      },
+      {
+        "id": 1007,
+        "bank": "MariBank",
+        "name": "MariBank Credit",
+        "type": "credit",
+        "net": "visa",
+        "g": [
+          "#0c6e5b",
+          "#173d43"
+        ],
+        "bal": 24140,
+        "lim": 50000,
+        "stmt": 13,
+        "dueN": 20,
+        "l4": "7007"
+      },
+      {
+        "id": 1008,
+        "bank": "BDO",
+        "name": "BDO Gold Credit",
+        "type": "credit",
+        "net": "visa",
+        "g": [
+          "#bd8d2c",
+          "#563d1b"
+        ],
+        "bal": 22270,
+        "lim": 90000,
+        "stmt": 15,
+        "dueN": 20,
+        "l4": "8008"
+      },
+      {
+        "id": 1009,
+        "bank": "Security Bank",
+        "name": "Security Bank Credit",
+        "type": "credit",
+        "net": "visa",
+        "g": [
+          "#19558a",
+          "#102842"
+        ],
+        "bal": 26290,
+        "lim": 60000,
+        "stmt": 20,
+        "dueN": 20,
+        "l4": "9009"
+      }
+    ],
+    "tx": [
+      {
+        "id": 60001,
+        "d": "2025-09-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60017,
+        "d": "2025-09-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60025,
+        "d": "2025-09-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60026,
+        "d": "2025-09-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60010,
+        "d": "2025-09-03",
+        "amt": -1740,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60013,
+        "d": "2025-09-04",
+        "amt": -390,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60002,
+        "d": "2025-09-05",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60030,
+        "d": "2025-09-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60041,
+        "d": "2025-09-05",
+        "amt": -850,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60018,
+        "d": "2025-09-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60029,
+        "d": "2025-09-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60050,
+        "d": "2025-09-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60037,
+        "d": "2025-09-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60032,
+        "d": "2025-09-08",
+        "amt": -2250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60034,
+        "d": "2025-09-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60019,
+        "d": "2025-09-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60044,
+        "d": "2025-09-09",
+        "amt": -1700,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60051,
+        "d": "2025-09-09",
+        "amt": -2300,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60003,
+        "d": "2025-09-10",
+        "amt": -2050,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60014,
+        "d": "2025-09-11",
+        "amt": -640,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60011,
+        "d": "2025-09-12",
+        "amt": -2250,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60038,
+        "d": "2025-09-12",
+        "amt": -1250,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60040,
+        "d": "2025-09-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60047,
+        "d": "2025-09-12",
+        "amt": -750,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60020,
+        "d": "2025-09-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60004,
+        "d": "2025-09-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60005,
+        "d": "2025-09-15",
+        "amt": -820,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60042,
+        "d": "2025-09-15",
+        "amt": -1600,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60021,
+        "d": "2025-09-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60031,
+        "d": "2025-09-16",
+        "amt": -2350,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60027,
+        "d": "2025-09-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60028,
+        "d": "2025-09-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60045,
+        "d": "2025-09-17",
+        "amt": -1150,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60006,
+        "d": "2025-09-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60015,
+        "d": "2025-09-18",
+        "amt": -510,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60052,
+        "d": "2025-09-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60035,
+        "d": "2025-09-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60007,
+        "d": "2025-09-20",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60022,
+        "d": "2025-09-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60039,
+        "d": "2025-09-21",
+        "amt": -980,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60048,
+        "d": "2025-09-21",
+        "amt": -2400,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60033,
+        "d": "2025-09-22",
+        "amt": -3450,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60008,
+        "d": "2025-09-23",
+        "amt": -480,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60012,
+        "d": "2025-09-23",
+        "amt": -1680,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60016,
+        "d": "2025-09-25",
+        "amt": -760,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60043,
+        "d": "2025-09-25",
+        "amt": -700,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60023,
+        "d": "2025-09-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60049,
+        "d": "2025-09-26",
+        "amt": -980,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60053,
+        "d": "2025-09-26",
+        "amt": -1150,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60036,
+        "d": "2025-09-27",
+        "amt": -1450,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60009,
+        "d": "2025-09-28",
+        "amt": 4200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60046,
+        "d": "2025-09-28",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60024,
+        "d": "2025-09-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60054,
+        "d": "2025-10-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60070,
+        "d": "2025-10-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60078,
+        "d": "2025-10-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60079,
+        "d": "2025-10-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60063,
+        "d": "2025-10-03",
+        "amt": -1747,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60066,
+        "d": "2025-10-04",
+        "amt": -402,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60055,
+        "d": "2025-10-05",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60083,
+        "d": "2025-10-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60094,
+        "d": "2025-10-05",
+        "amt": -870,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60071,
+        "d": "2025-10-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60082,
+        "d": "2025-10-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60103,
+        "d": "2025-10-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60090,
+        "d": "2025-10-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60085,
+        "d": "2025-10-08",
+        "amt": -2330,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60087,
+        "d": "2025-10-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60072,
+        "d": "2025-10-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60097,
+        "d": "2025-10-09",
+        "amt": -1745,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60104,
+        "d": "2025-10-09",
+        "amt": -2380,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60056,
+        "d": "2025-10-10",
+        "amt": -1955,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60067,
+        "d": "2025-10-11",
+        "amt": -652,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60064,
+        "d": "2025-10-12",
+        "amt": -2257,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60091,
+        "d": "2025-10-12",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60093,
+        "d": "2025-10-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60100,
+        "d": "2025-10-12",
+        "amt": -770,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60073,
+        "d": "2025-10-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60057,
+        "d": "2025-10-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60058,
+        "d": "2025-10-15",
+        "amt": -775,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60095,
+        "d": "2025-10-15",
+        "amt": -1660,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60074,
+        "d": "2025-10-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60084,
+        "d": "2025-10-16",
+        "amt": -2450,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60080,
+        "d": "2025-10-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60081,
+        "d": "2025-10-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60098,
+        "d": "2025-10-17",
+        "amt": -1185,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60059,
+        "d": "2025-10-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60068,
+        "d": "2025-10-18",
+        "amt": -522,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60105,
+        "d": "2025-10-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60088,
+        "d": "2025-10-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60060,
+        "d": "2025-10-20",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60075,
+        "d": "2025-10-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60092,
+        "d": "2025-10-21",
+        "amt": -1015,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60101,
+        "d": "2025-10-21",
+        "amt": -2470,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60086,
+        "d": "2025-10-22",
+        "amt": -3350,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60061,
+        "d": "2025-10-23",
+        "amt": -445,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60065,
+        "d": "2025-10-23",
+        "amt": -1687,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60069,
+        "d": "2025-10-25",
+        "amt": -772,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60096,
+        "d": "2025-10-25",
+        "amt": -725,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60076,
+        "d": "2025-10-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60102,
+        "d": "2025-10-26",
+        "amt": -1005,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60106,
+        "d": "2025-10-26",
+        "amt": -1220,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60089,
+        "d": "2025-10-27",
+        "amt": -1550,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60062,
+        "d": "2025-10-28",
+        "amt": 4550,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60099,
+        "d": "2025-10-28",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60077,
+        "d": "2025-10-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60107,
+        "d": "2025-11-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60136,
+        "d": "2025-11-01",
+        "amt": 350,
+        "cat": "Other",
+        "acct": 1004,
+        "note": "Savings interest"
+      },
+      {
+        "id": 60123,
+        "d": "2025-11-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60131,
+        "d": "2025-11-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60132,
+        "d": "2025-11-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60116,
+        "d": "2025-11-03",
+        "amt": -1754,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60119,
+        "d": "2025-11-04",
+        "amt": -414,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60108,
+        "d": "2025-11-05",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60137,
+        "d": "2025-11-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60148,
+        "d": "2025-11-05",
+        "amt": -890,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60124,
+        "d": "2025-11-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60135,
+        "d": "2025-11-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60157,
+        "d": "2025-11-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60144,
+        "d": "2025-11-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60139,
+        "d": "2025-11-08",
+        "amt": -2410,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60141,
+        "d": "2025-11-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60125,
+        "d": "2025-11-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60151,
+        "d": "2025-11-09",
+        "amt": -1790,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60158,
+        "d": "2025-11-09",
+        "amt": -2460,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60109,
+        "d": "2025-11-10",
+        "amt": -1860,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60120,
+        "d": "2025-11-11",
+        "amt": -664,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60117,
+        "d": "2025-11-12",
+        "amt": -2264,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60145,
+        "d": "2025-11-12",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60147,
+        "d": "2025-11-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60154,
+        "d": "2025-11-12",
+        "amt": -790,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60126,
+        "d": "2025-11-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60110,
+        "d": "2025-11-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60111,
+        "d": "2025-11-15",
+        "amt": -730,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60149,
+        "d": "2025-11-15",
+        "amt": -1720,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60127,
+        "d": "2025-11-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60138,
+        "d": "2025-11-16",
+        "amt": -2550,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60133,
+        "d": "2025-11-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60134,
+        "d": "2025-11-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60152,
+        "d": "2025-11-17",
+        "amt": -1220,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60112,
+        "d": "2025-11-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60121,
+        "d": "2025-11-18",
+        "amt": -534,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60159,
+        "d": "2025-11-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60142,
+        "d": "2025-11-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60113,
+        "d": "2025-11-20",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60128,
+        "d": "2025-11-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60146,
+        "d": "2025-11-21",
+        "amt": -1050,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60155,
+        "d": "2025-11-21",
+        "amt": -2540,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60140,
+        "d": "2025-11-22",
+        "amt": -3250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60114,
+        "d": "2025-11-23",
+        "amt": -410,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60118,
+        "d": "2025-11-23",
+        "amt": -1694,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60122,
+        "d": "2025-11-25",
+        "amt": -784,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60150,
+        "d": "2025-11-25",
+        "amt": -750,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60129,
+        "d": "2025-11-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60156,
+        "d": "2025-11-26",
+        "amt": -1030,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60160,
+        "d": "2025-11-26",
+        "amt": -1290,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60143,
+        "d": "2025-11-27",
+        "amt": -1650,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60115,
+        "d": "2025-11-28",
+        "amt": 4900,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60153,
+        "d": "2025-11-28",
+        "amt": -1400,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60130,
+        "d": "2025-11-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60161,
+        "d": "2025-12-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60177,
+        "d": "2025-12-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60185,
+        "d": "2025-12-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60186,
+        "d": "2025-12-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60170,
+        "d": "2025-12-03",
+        "amt": -1761,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60173,
+        "d": "2025-12-04",
+        "amt": -426,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60162,
+        "d": "2025-12-05",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60190,
+        "d": "2025-12-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60201,
+        "d": "2025-12-05",
+        "amt": -910,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60178,
+        "d": "2025-12-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60189,
+        "d": "2025-12-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60210,
+        "d": "2025-12-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60197,
+        "d": "2025-12-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60192,
+        "d": "2025-12-08",
+        "amt": -2490,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60194,
+        "d": "2025-12-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60179,
+        "d": "2025-12-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60204,
+        "d": "2025-12-09",
+        "amt": -1700,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60211,
+        "d": "2025-12-09",
+        "amt": -2540,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60163,
+        "d": "2025-12-10",
+        "amt": -1765,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60174,
+        "d": "2025-12-11",
+        "amt": -676,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60171,
+        "d": "2025-12-12",
+        "amt": -2271,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60198,
+        "d": "2025-12-12",
+        "amt": -1250,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60200,
+        "d": "2025-12-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60207,
+        "d": "2025-12-12",
+        "amt": -750,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60180,
+        "d": "2025-12-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60164,
+        "d": "2025-12-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60165,
+        "d": "2025-12-15",
+        "amt": -820,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60202,
+        "d": "2025-12-15",
+        "amt": -1600,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60181,
+        "d": "2025-12-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60191,
+        "d": "2025-12-16",
+        "amt": -2650,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60187,
+        "d": "2025-12-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60188,
+        "d": "2025-12-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60205,
+        "d": "2025-12-17",
+        "amt": -1255,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60166,
+        "d": "2025-12-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60175,
+        "d": "2025-12-18",
+        "amt": -546,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60212,
+        "d": "2025-12-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60195,
+        "d": "2025-12-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60167,
+        "d": "2025-12-20",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60182,
+        "d": "2025-12-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60199,
+        "d": "2025-12-21",
+        "amt": -1085,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60208,
+        "d": "2025-12-21",
+        "amt": -2610,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60193,
+        "d": "2025-12-22",
+        "amt": -3450,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60168,
+        "d": "2025-12-23",
+        "amt": -375,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60172,
+        "d": "2025-12-23",
+        "amt": -1701,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60176,
+        "d": "2025-12-25",
+        "amt": -796,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60203,
+        "d": "2025-12-25",
+        "amt": -775,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60183,
+        "d": "2025-12-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60209,
+        "d": "2025-12-26",
+        "amt": -980,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60213,
+        "d": "2025-12-26",
+        "amt": -1150,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60196,
+        "d": "2025-12-27",
+        "amt": -1450,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60169,
+        "d": "2025-12-28",
+        "amt": 5250,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60206,
+        "d": "2025-12-28",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60184,
+        "d": "2025-12-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60214,
+        "d": "2026-01-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60230,
+        "d": "2026-01-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60238,
+        "d": "2026-01-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60239,
+        "d": "2026-01-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60223,
+        "d": "2026-01-03",
+        "amt": -1768,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60226,
+        "d": "2026-01-04",
+        "amt": -438,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60215,
+        "d": "2026-01-05",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60243,
+        "d": "2026-01-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60254,
+        "d": "2026-01-05",
+        "amt": -850,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60231,
+        "d": "2026-01-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60242,
+        "d": "2026-01-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60263,
+        "d": "2026-01-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60250,
+        "d": "2026-01-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60245,
+        "d": "2026-01-08",
+        "amt": -2250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60247,
+        "d": "2026-01-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60232,
+        "d": "2026-01-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60257,
+        "d": "2026-01-09",
+        "amt": -1745,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60264,
+        "d": "2026-01-09",
+        "amt": -2300,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60216,
+        "d": "2026-01-10",
+        "amt": -2050,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60227,
+        "d": "2026-01-11",
+        "amt": -688,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60224,
+        "d": "2026-01-12",
+        "amt": -2278,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60251,
+        "d": "2026-01-12",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60253,
+        "d": "2026-01-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60260,
+        "d": "2026-01-12",
+        "amt": -770,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60233,
+        "d": "2026-01-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60217,
+        "d": "2026-01-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60218,
+        "d": "2026-01-15",
+        "amt": -775,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60255,
+        "d": "2026-01-15",
+        "amt": -1660,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60234,
+        "d": "2026-01-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60244,
+        "d": "2026-01-16",
+        "amt": -2350,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60240,
+        "d": "2026-01-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60241,
+        "d": "2026-01-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60258,
+        "d": "2026-01-17",
+        "amt": -1150,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60219,
+        "d": "2026-01-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60228,
+        "d": "2026-01-18",
+        "amt": -558,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60265,
+        "d": "2026-01-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60248,
+        "d": "2026-01-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60220,
+        "d": "2026-01-20",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60235,
+        "d": "2026-01-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60252,
+        "d": "2026-01-21",
+        "amt": -980,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60261,
+        "d": "2026-01-21",
+        "amt": -2400,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60246,
+        "d": "2026-01-22",
+        "amt": -3350,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60221,
+        "d": "2026-01-23",
+        "amt": -480,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60225,
+        "d": "2026-01-23",
+        "amt": -1708,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60229,
+        "d": "2026-01-25",
+        "amt": -808,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60256,
+        "d": "2026-01-25",
+        "amt": -700,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60236,
+        "d": "2026-01-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60262,
+        "d": "2026-01-26",
+        "amt": -1005,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60266,
+        "d": "2026-01-26",
+        "amt": -1220,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60249,
+        "d": "2026-01-27",
+        "amt": -1550,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60222,
+        "d": "2026-01-28",
+        "amt": 4200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60259,
+        "d": "2026-01-28",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60237,
+        "d": "2026-01-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60267,
+        "d": "2026-02-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60296,
+        "d": "2026-02-01",
+        "amt": 350,
+        "cat": "Other",
+        "acct": 1004,
+        "note": "Savings interest"
+      },
+      {
+        "id": 60283,
+        "d": "2026-02-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60291,
+        "d": "2026-02-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60292,
+        "d": "2026-02-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60276,
+        "d": "2026-02-03",
+        "amt": -1775,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60279,
+        "d": "2026-02-04",
+        "amt": -390,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60268,
+        "d": "2026-02-05",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60297,
+        "d": "2026-02-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60308,
+        "d": "2026-02-05",
+        "amt": -870,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60284,
+        "d": "2026-02-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60295,
+        "d": "2026-02-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60317,
+        "d": "2026-02-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60304,
+        "d": "2026-02-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60299,
+        "d": "2026-02-08",
+        "amt": -2330,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60301,
+        "d": "2026-02-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60285,
+        "d": "2026-02-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60311,
+        "d": "2026-02-09",
+        "amt": -1790,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60318,
+        "d": "2026-02-09",
+        "amt": -2380,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60269,
+        "d": "2026-02-10",
+        "amt": -1955,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60280,
+        "d": "2026-02-11",
+        "amt": -640,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60277,
+        "d": "2026-02-12",
+        "amt": -2285,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60305,
+        "d": "2026-02-12",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60307,
+        "d": "2026-02-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60314,
+        "d": "2026-02-12",
+        "amt": -790,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60286,
+        "d": "2026-02-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60270,
+        "d": "2026-02-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60271,
+        "d": "2026-02-15",
+        "amt": -730,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60309,
+        "d": "2026-02-15",
+        "amt": -1720,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60287,
+        "d": "2026-02-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60298,
+        "d": "2026-02-16",
+        "amt": -2450,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60293,
+        "d": "2026-02-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60294,
+        "d": "2026-02-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60312,
+        "d": "2026-02-17",
+        "amt": -1185,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60272,
+        "d": "2026-02-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60281,
+        "d": "2026-02-18",
+        "amt": -510,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60319,
+        "d": "2026-02-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60302,
+        "d": "2026-02-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60273,
+        "d": "2026-02-20",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60288,
+        "d": "2026-02-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60306,
+        "d": "2026-02-21",
+        "amt": -1015,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60315,
+        "d": "2026-02-21",
+        "amt": -2470,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60300,
+        "d": "2026-02-22",
+        "amt": -3250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60274,
+        "d": "2026-02-23",
+        "amt": -445,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60278,
+        "d": "2026-02-23",
+        "amt": -1715,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60282,
+        "d": "2026-02-25",
+        "amt": -760,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60310,
+        "d": "2026-02-25",
+        "amt": -725,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60289,
+        "d": "2026-02-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60316,
+        "d": "2026-02-26",
+        "amt": -1030,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60320,
+        "d": "2026-02-26",
+        "amt": -1290,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60303,
+        "d": "2026-02-27",
+        "amt": -1650,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60275,
+        "d": "2026-02-28",
+        "amt": 4550,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60313,
+        "d": "2026-02-28",
+        "amt": -1400,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60290,
+        "d": "2026-02-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60321,
+        "d": "2026-03-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60337,
+        "d": "2026-03-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60345,
+        "d": "2026-03-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60346,
+        "d": "2026-03-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60330,
+        "d": "2026-03-03",
+        "amt": -1782,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60333,
+        "d": "2026-03-04",
+        "amt": -402,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60322,
+        "d": "2026-03-05",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60350,
+        "d": "2026-03-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60361,
+        "d": "2026-03-05",
+        "amt": -890,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60338,
+        "d": "2026-03-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60349,
+        "d": "2026-03-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60370,
+        "d": "2026-03-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60357,
+        "d": "2026-03-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60352,
+        "d": "2026-03-08",
+        "amt": -2410,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60354,
+        "d": "2026-03-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60339,
+        "d": "2026-03-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60364,
+        "d": "2026-03-09",
+        "amt": -1700,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60371,
+        "d": "2026-03-09",
+        "amt": -2460,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60323,
+        "d": "2026-03-10",
+        "amt": -1860,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60334,
+        "d": "2026-03-11",
+        "amt": -652,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60331,
+        "d": "2026-03-12",
+        "amt": -2292,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60358,
+        "d": "2026-03-12",
+        "amt": -1250,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60360,
+        "d": "2026-03-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60367,
+        "d": "2026-03-12",
+        "amt": -750,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60340,
+        "d": "2026-03-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60324,
+        "d": "2026-03-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60325,
+        "d": "2026-03-15",
+        "amt": -820,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60362,
+        "d": "2026-03-15",
+        "amt": -1600,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60341,
+        "d": "2026-03-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60351,
+        "d": "2026-03-16",
+        "amt": -2550,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60347,
+        "d": "2026-03-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60348,
+        "d": "2026-03-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60365,
+        "d": "2026-03-17",
+        "amt": -1220,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60326,
+        "d": "2026-03-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60335,
+        "d": "2026-03-18",
+        "amt": -522,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60372,
+        "d": "2026-03-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60355,
+        "d": "2026-03-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60327,
+        "d": "2026-03-20",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60342,
+        "d": "2026-03-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60359,
+        "d": "2026-03-21",
+        "amt": -1050,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60368,
+        "d": "2026-03-21",
+        "amt": -2540,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60353,
+        "d": "2026-03-22",
+        "amt": -3450,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60328,
+        "d": "2026-03-23",
+        "amt": -410,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60332,
+        "d": "2026-03-23",
+        "amt": -1722,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60336,
+        "d": "2026-03-25",
+        "amt": -772,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60363,
+        "d": "2026-03-25",
+        "amt": -750,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60343,
+        "d": "2026-03-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60369,
+        "d": "2026-03-26",
+        "amt": -980,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60373,
+        "d": "2026-03-26",
+        "amt": -1150,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60356,
+        "d": "2026-03-27",
+        "amt": -1450,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60329,
+        "d": "2026-03-28",
+        "amt": 4900,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60366,
+        "d": "2026-03-28",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60344,
+        "d": "2026-03-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60374,
+        "d": "2026-04-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60390,
+        "d": "2026-04-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60398,
+        "d": "2026-04-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60399,
+        "d": "2026-04-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60383,
+        "d": "2026-04-03",
+        "amt": -1789,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60386,
+        "d": "2026-04-04",
+        "amt": -414,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60375,
+        "d": "2026-04-05",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60403,
+        "d": "2026-04-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60414,
+        "d": "2026-04-05",
+        "amt": -910,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60391,
+        "d": "2026-04-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60402,
+        "d": "2026-04-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60423,
+        "d": "2026-04-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60410,
+        "d": "2026-04-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60405,
+        "d": "2026-04-08",
+        "amt": -2490,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60407,
+        "d": "2026-04-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60392,
+        "d": "2026-04-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60417,
+        "d": "2026-04-09",
+        "amt": -1745,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60424,
+        "d": "2026-04-09",
+        "amt": -2540,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60376,
+        "d": "2026-04-10",
+        "amt": -1765,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60387,
+        "d": "2026-04-11",
+        "amt": -664,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60384,
+        "d": "2026-04-12",
+        "amt": -2299,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60411,
+        "d": "2026-04-12",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60413,
+        "d": "2026-04-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60420,
+        "d": "2026-04-12",
+        "amt": -770,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60393,
+        "d": "2026-04-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60377,
+        "d": "2026-04-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60378,
+        "d": "2026-04-15",
+        "amt": -775,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60415,
+        "d": "2026-04-15",
+        "amt": -1660,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60394,
+        "d": "2026-04-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60404,
+        "d": "2026-04-16",
+        "amt": -2650,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60400,
+        "d": "2026-04-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60401,
+        "d": "2026-04-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60418,
+        "d": "2026-04-17",
+        "amt": -1255,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60379,
+        "d": "2026-04-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60388,
+        "d": "2026-04-18",
+        "amt": -534,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60425,
+        "d": "2026-04-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60408,
+        "d": "2026-04-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60380,
+        "d": "2026-04-20",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60395,
+        "d": "2026-04-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60412,
+        "d": "2026-04-21",
+        "amt": -1085,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60421,
+        "d": "2026-04-21",
+        "amt": -2610,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60406,
+        "d": "2026-04-22",
+        "amt": -3350,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60381,
+        "d": "2026-04-23",
+        "amt": -375,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60385,
+        "d": "2026-04-23",
+        "amt": -1729,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60389,
+        "d": "2026-04-25",
+        "amt": -784,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60416,
+        "d": "2026-04-25",
+        "amt": -775,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60396,
+        "d": "2026-04-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60422,
+        "d": "2026-04-26",
+        "amt": -1005,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60426,
+        "d": "2026-04-26",
+        "amt": -1220,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60409,
+        "d": "2026-04-27",
+        "amt": -1550,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60382,
+        "d": "2026-04-28",
+        "amt": 5250,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60419,
+        "d": "2026-04-28",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60397,
+        "d": "2026-04-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60427,
+        "d": "2026-05-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60456,
+        "d": "2026-05-01",
+        "amt": 350,
+        "cat": "Other",
+        "acct": 1004,
+        "note": "Savings interest"
+      },
+      {
+        "id": 60443,
+        "d": "2026-05-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60451,
+        "d": "2026-05-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60452,
+        "d": "2026-05-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60436,
+        "d": "2026-05-03",
+        "amt": -1796,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60439,
+        "d": "2026-05-04",
+        "amt": -426,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60428,
+        "d": "2026-05-05",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60457,
+        "d": "2026-05-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60468,
+        "d": "2026-05-05",
+        "amt": -850,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60444,
+        "d": "2026-05-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60455,
+        "d": "2026-05-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60477,
+        "d": "2026-05-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60464,
+        "d": "2026-05-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60459,
+        "d": "2026-05-08",
+        "amt": -2250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60461,
+        "d": "2026-05-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60445,
+        "d": "2026-05-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60471,
+        "d": "2026-05-09",
+        "amt": -1790,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60478,
+        "d": "2026-05-09",
+        "amt": -2300,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60429,
+        "d": "2026-05-10",
+        "amt": -2050,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60440,
+        "d": "2026-05-11",
+        "amt": -676,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60437,
+        "d": "2026-05-12",
+        "amt": -2306,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60465,
+        "d": "2026-05-12",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60467,
+        "d": "2026-05-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60474,
+        "d": "2026-05-12",
+        "amt": -790,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60446,
+        "d": "2026-05-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60430,
+        "d": "2026-05-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60431,
+        "d": "2026-05-15",
+        "amt": -730,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60469,
+        "d": "2026-05-15",
+        "amt": -1720,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60447,
+        "d": "2026-05-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60458,
+        "d": "2026-05-16",
+        "amt": -2350,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60453,
+        "d": "2026-05-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60454,
+        "d": "2026-05-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60472,
+        "d": "2026-05-17",
+        "amt": -1150,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60432,
+        "d": "2026-05-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60441,
+        "d": "2026-05-18",
+        "amt": -546,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60479,
+        "d": "2026-05-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60462,
+        "d": "2026-05-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60433,
+        "d": "2026-05-20",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60448,
+        "d": "2026-05-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60466,
+        "d": "2026-05-21",
+        "amt": -980,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60475,
+        "d": "2026-05-21",
+        "amt": -2400,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60460,
+        "d": "2026-05-22",
+        "amt": -3250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60434,
+        "d": "2026-05-23",
+        "amt": -480,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60438,
+        "d": "2026-05-23",
+        "amt": -1736,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60442,
+        "d": "2026-05-25",
+        "amt": -796,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60470,
+        "d": "2026-05-25",
+        "amt": -700,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60449,
+        "d": "2026-05-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60476,
+        "d": "2026-05-26",
+        "amt": -1030,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60480,
+        "d": "2026-05-26",
+        "amt": -1290,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60463,
+        "d": "2026-05-27",
+        "amt": -1650,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60435,
+        "d": "2026-05-28",
+        "amt": 4200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60473,
+        "d": "2026-05-28",
+        "amt": -1400,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60450,
+        "d": "2026-05-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60481,
+        "d": "2026-06-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60497,
+        "d": "2026-06-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60505,
+        "d": "2026-06-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60506,
+        "d": "2026-06-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60490,
+        "d": "2026-06-03",
+        "amt": -1803,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60493,
+        "d": "2026-06-04",
+        "amt": -438,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60482,
+        "d": "2026-06-05",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60510,
+        "d": "2026-06-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60521,
+        "d": "2026-06-05",
+        "amt": -870,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60498,
+        "d": "2026-06-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60509,
+        "d": "2026-06-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60530,
+        "d": "2026-06-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60517,
+        "d": "2026-06-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60512,
+        "d": "2026-06-08",
+        "amt": -2330,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60514,
+        "d": "2026-06-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60499,
+        "d": "2026-06-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60524,
+        "d": "2026-06-09",
+        "amt": -1700,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60531,
+        "d": "2026-06-09",
+        "amt": -2380,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60483,
+        "d": "2026-06-10",
+        "amt": -1955,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60494,
+        "d": "2026-06-11",
+        "amt": -688,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60491,
+        "d": "2026-06-12",
+        "amt": -2313,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60518,
+        "d": "2026-06-12",
+        "amt": -1250,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60520,
+        "d": "2026-06-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60527,
+        "d": "2026-06-12",
+        "amt": -750,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60500,
+        "d": "2026-06-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60484,
+        "d": "2026-06-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60485,
+        "d": "2026-06-15",
+        "amt": -820,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60522,
+        "d": "2026-06-15",
+        "amt": -1600,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60501,
+        "d": "2026-06-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60511,
+        "d": "2026-06-16",
+        "amt": -2450,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60507,
+        "d": "2026-06-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60508,
+        "d": "2026-06-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60525,
+        "d": "2026-06-17",
+        "amt": -1185,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60486,
+        "d": "2026-06-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60495,
+        "d": "2026-06-18",
+        "amt": -558,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60532,
+        "d": "2026-06-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60515,
+        "d": "2026-06-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60487,
+        "d": "2026-06-20",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60502,
+        "d": "2026-06-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60519,
+        "d": "2026-06-21",
+        "amt": -1015,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60528,
+        "d": "2026-06-21",
+        "amt": -2470,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60513,
+        "d": "2026-06-22",
+        "amt": -3450,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60488,
+        "d": "2026-06-23",
+        "amt": -445,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60492,
+        "d": "2026-06-23",
+        "amt": -1743,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60496,
+        "d": "2026-06-25",
+        "amt": -808,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60523,
+        "d": "2026-06-25",
+        "amt": -725,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60503,
+        "d": "2026-06-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60529,
+        "d": "2026-06-26",
+        "amt": -980,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60533,
+        "d": "2026-06-26",
+        "amt": -1150,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60516,
+        "d": "2026-06-27",
+        "amt": -1450,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60489,
+        "d": "2026-06-28",
+        "amt": 4550,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60526,
+        "d": "2026-06-28",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60504,
+        "d": "2026-06-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60534,
+        "d": "2026-07-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60550,
+        "d": "2026-07-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60558,
+        "d": "2026-07-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60559,
+        "d": "2026-07-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60543,
+        "d": "2026-07-03",
+        "amt": -1810,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60546,
+        "d": "2026-07-04",
+        "amt": -390,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60535,
+        "d": "2026-07-05",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60563,
+        "d": "2026-07-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60574,
+        "d": "2026-07-05",
+        "amt": -890,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60551,
+        "d": "2026-07-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60562,
+        "d": "2026-07-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60583,
+        "d": "2026-07-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60570,
+        "d": "2026-07-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60565,
+        "d": "2026-07-08",
+        "amt": -2410,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60567,
+        "d": "2026-07-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60552,
+        "d": "2026-07-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60577,
+        "d": "2026-07-09",
+        "amt": -1745,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60584,
+        "d": "2026-07-09",
+        "amt": -2460,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60536,
+        "d": "2026-07-10",
+        "amt": -1860,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60547,
+        "d": "2026-07-11",
+        "amt": -640,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60544,
+        "d": "2026-07-12",
+        "amt": -2320,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60571,
+        "d": "2026-07-12",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60573,
+        "d": "2026-07-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60580,
+        "d": "2026-07-12",
+        "amt": -770,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60553,
+        "d": "2026-07-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60537,
+        "d": "2026-07-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60538,
+        "d": "2026-07-15",
+        "amt": -775,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60575,
+        "d": "2026-07-15",
+        "amt": -1660,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60554,
+        "d": "2026-07-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60564,
+        "d": "2026-07-16",
+        "amt": -2550,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60560,
+        "d": "2026-07-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60561,
+        "d": "2026-07-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60578,
+        "d": "2026-07-17",
+        "amt": -1220,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60539,
+        "d": "2026-07-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60548,
+        "d": "2026-07-18",
+        "amt": -510,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60585,
+        "d": "2026-07-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60568,
+        "d": "2026-07-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60540,
+        "d": "2026-07-20",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60555,
+        "d": "2026-07-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60572,
+        "d": "2026-07-21",
+        "amt": -1050,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60581,
+        "d": "2026-07-21",
+        "amt": -2540,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60566,
+        "d": "2026-07-22",
+        "amt": -3350,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60541,
+        "d": "2026-07-23",
+        "amt": -410,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60545,
+        "d": "2026-07-23",
+        "amt": -1750,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60549,
+        "d": "2026-07-25",
+        "amt": -760,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60576,
+        "d": "2026-07-25",
+        "amt": -750,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60556,
+        "d": "2026-07-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60582,
+        "d": "2026-07-26",
+        "amt": -1005,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60586,
+        "d": "2026-07-26",
+        "amt": -1220,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60569,
+        "d": "2026-07-27",
+        "amt": -1550,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60542,
+        "d": "2026-07-28",
+        "amt": 4900,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60579,
+        "d": "2026-07-28",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60557,
+        "d": "2026-07-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60587,
+        "d": "2026-08-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60616,
+        "d": "2026-08-01",
+        "amt": 350,
+        "cat": "Other",
+        "acct": 1004,
+        "note": "Savings interest"
+      },
+      {
+        "id": 60603,
+        "d": "2026-08-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60611,
+        "d": "2026-08-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60612,
+        "d": "2026-08-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60596,
+        "d": "2026-08-03",
+        "amt": -1817,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60599,
+        "d": "2026-08-04",
+        "amt": -402,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60588,
+        "d": "2026-08-05",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60617,
+        "d": "2026-08-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60628,
+        "d": "2026-08-05",
+        "amt": -910,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60604,
+        "d": "2026-08-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60615,
+        "d": "2026-08-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60637,
+        "d": "2026-08-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60624,
+        "d": "2026-08-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60619,
+        "d": "2026-08-08",
+        "amt": -2490,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60621,
+        "d": "2026-08-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60605,
+        "d": "2026-08-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60631,
+        "d": "2026-08-09",
+        "amt": -1790,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60638,
+        "d": "2026-08-09",
+        "amt": -2540,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60589,
+        "d": "2026-08-10",
+        "amt": -1765,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60600,
+        "d": "2026-08-11",
+        "amt": -652,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60597,
+        "d": "2026-08-12",
+        "amt": -2327,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60625,
+        "d": "2026-08-12",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60627,
+        "d": "2026-08-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60634,
+        "d": "2026-08-12",
+        "amt": -790,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60606,
+        "d": "2026-08-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60590,
+        "d": "2026-08-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60591,
+        "d": "2026-08-15",
+        "amt": -730,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60629,
+        "d": "2026-08-15",
+        "amt": -1720,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60607,
+        "d": "2026-08-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60618,
+        "d": "2026-08-16",
+        "amt": -2650,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60613,
+        "d": "2026-08-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60614,
+        "d": "2026-08-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60632,
+        "d": "2026-08-17",
+        "amt": -1255,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60592,
+        "d": "2026-08-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60601,
+        "d": "2026-08-18",
+        "amt": -522,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60639,
+        "d": "2026-08-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60622,
+        "d": "2026-08-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60593,
+        "d": "2026-08-20",
+        "amt": 29300,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60608,
+        "d": "2026-08-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60626,
+        "d": "2026-08-21",
+        "amt": -1085,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60635,
+        "d": "2026-08-21",
+        "amt": -2610,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60620,
+        "d": "2026-08-22",
+        "amt": -3250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60594,
+        "d": "2026-08-23",
+        "amt": -375,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60598,
+        "d": "2026-08-23",
+        "amt": -1757,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60602,
+        "d": "2026-08-25",
+        "amt": -772,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60630,
+        "d": "2026-08-25",
+        "amt": -775,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60609,
+        "d": "2026-08-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60636,
+        "d": "2026-08-26",
+        "amt": -1030,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60640,
+        "d": "2026-08-26",
+        "amt": -1290,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60623,
+        "d": "2026-08-27",
+        "amt": -1650,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60595,
+        "d": "2026-08-28",
+        "amt": 5250,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60633,
+        "d": "2026-08-28",
+        "amt": -1400,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60610,
+        "d": "2026-08-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60641,
+        "d": "2026-09-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60657,
+        "d": "2026-09-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60665,
+        "d": "2026-09-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60666,
+        "d": "2026-09-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60650,
+        "d": "2026-09-03",
+        "amt": -1824,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60653,
+        "d": "2026-09-04",
+        "amt": -414,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60642,
+        "d": "2026-09-05",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60670,
+        "d": "2026-09-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60681,
+        "d": "2026-09-05",
+        "amt": -850,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60658,
+        "d": "2026-09-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60669,
+        "d": "2026-09-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60690,
+        "d": "2026-09-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60677,
+        "d": "2026-09-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60672,
+        "d": "2026-09-08",
+        "amt": -2250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60674,
+        "d": "2026-09-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60659,
+        "d": "2026-09-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60684,
+        "d": "2026-09-09",
+        "amt": -1700,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60691,
+        "d": "2026-09-09",
+        "amt": -2300,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60643,
+        "d": "2026-09-10",
+        "amt": -2050,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60654,
+        "d": "2026-09-11",
+        "amt": -664,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60651,
+        "d": "2026-09-12",
+        "amt": -2334,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60678,
+        "d": "2026-09-12",
+        "amt": -1250,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60680,
+        "d": "2026-09-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60687,
+        "d": "2026-09-12",
+        "amt": -750,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60660,
+        "d": "2026-09-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60644,
+        "d": "2026-09-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60645,
+        "d": "2026-09-15",
+        "amt": -820,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60682,
+        "d": "2026-09-15",
+        "amt": -1600,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60661,
+        "d": "2026-09-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60671,
+        "d": "2026-09-16",
+        "amt": -2350,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60667,
+        "d": "2026-09-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60668,
+        "d": "2026-09-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60685,
+        "d": "2026-09-17",
+        "amt": -1150,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      },
+      {
+        "id": 60646,
+        "d": "2026-09-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 60655,
+        "d": "2026-09-18",
+        "amt": -534,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60692,
+        "d": "2026-09-18",
+        "amt": -1450,
+        "cat": "Groceries",
+        "acct": 1006,
+        "note": "Neighborhood market"
+      },
+      {
+        "id": 60675,
+        "d": "2026-09-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 60647,
+        "d": "2026-09-20",
+        "amt": 28700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60662,
+        "d": "2026-09-21",
+        "amt": -190,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60679,
+        "d": "2026-09-21",
+        "amt": -980,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Dinner out"
+      },
+      {
+        "id": 60688,
+        "d": "2026-09-21",
+        "amt": -2400,
+        "cat": "Shopping",
+        "acct": 1009,
+        "note": "Security Bank electronics"
+      },
+      {
+        "id": 60673,
+        "d": "2026-09-22",
+        "amt": -3450,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Electronics & home"
+      },
+      {
+        "id": 60648,
+        "d": "2026-09-23",
+        "amt": -480,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 60652,
+        "d": "2026-09-23",
+        "amt": -1764,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 60656,
+        "d": "2026-09-25",
+        "amt": -784,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 60683,
+        "d": "2026-09-25",
+        "amt": -700,
+        "cat": "Entertainment",
+        "acct": 1007,
+        "note": "MariBank weekend plans"
+      },
+      {
+        "id": 60663,
+        "d": "2026-09-26",
+        "amt": -135,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60689,
+        "d": "2026-09-26",
+        "amt": -980,
+        "cat": "Entertainment",
+        "acct": 1009,
+        "note": "Security Bank event tickets"
+      },
+      {
+        "id": 60693,
+        "d": "2026-09-26",
+        "amt": -1150,
+        "cat": "Other",
+        "acct": 1006,
+        "note": "Car care"
+      },
+      {
+        "id": 60676,
+        "d": "2026-09-27",
+        "amt": -1450,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Cinema & dinner"
+      },
+      {
+        "id": 60649,
+        "d": "2026-09-28",
+        "amt": 4200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 60686,
+        "d": "2026-09-28",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1008,
+        "note": "BDO Gold home supplies"
+      },
+      {
+        "id": 60664,
+        "d": "2026-09-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60694,
+        "d": "2026-10-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 60703,
+        "d": "2026-10-02",
+        "amt": -105,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60708,
+        "d": "2026-10-02",
+        "amt": -2500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60709,
+        "d": "2026-10-02",
+        "amt": 2500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60699,
+        "d": "2026-10-03",
+        "amt": -1831,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 60701,
+        "d": "2026-10-04",
+        "amt": -426,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 60695,
+        "d": "2026-10-05",
+        "amt": 29000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 60713,
+        "d": "2026-10-05",
+        "amt": -920,
+        "cat": "Health",
+        "acct": 1004,
+        "note": "Dental checkup"
+      },
+      {
+        "id": 60720,
+        "d": "2026-10-05",
+        "amt": -870,
+        "cat": "Food",
+        "acct": 1007,
+        "note": "MariBank café"
+      },
+      {
+        "id": 60704,
+        "d": "2026-10-06",
+        "amt": -175,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60712,
+        "d": "2026-10-06",
+        "amt": -2250,
+        "cat": "Bills",
+        "acct": 1004,
+        "note": "Health insurance"
+      },
+      {
+        "id": 60725,
+        "d": "2026-10-06",
+        "amt": 6500,
+        "cat": "Salary",
+        "acct": 1006,
+        "note": "Weekend market sales"
+      },
+      {
+        "id": 60717,
+        "d": "2026-10-07",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1005,
+        "note": "Coffee with a friend"
+      },
+      {
+        "id": 60715,
+        "d": "2026-10-08",
+        "amt": -2330,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 60716,
+        "d": "2026-10-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 60705,
+        "d": "2026-10-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 60722,
+        "d": "2026-10-09",
+        "amt": -1745,
+        "cat": "Groceries",
+        "acct": 1008,
+        "note": "BDO Gold supermarket"
+      },
+      {
+        "id": 60726,
+        "d": "2026-10-09",
+        "amt": -2380,
+        "cat": "Transport",
+        "acct": 1006,
+        "note": "Fuel"
+      },
+      {
+        "id": 60696,
+        "d": "2026-10-10",
+        "amt": -1955,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 60702,
+        "d": "2026-10-11",
+        "amt": -676,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 60700,
+        "d": "2026-10-12",
+        "amt": -2341,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 60718,
+        "d": "2026-10-12",
+        "amt": -1300,
+        "cat": "Shopping",
+        "acct": 1005,
+        "note": "Online order"
+      },
+      {
+        "id": 60719,
+        "d": "2026-10-12",
+        "amt": -119,
+        "cat": "Entertainment",
+        "acct": 1005,
+        "note": "Cloud storage"
+      },
+      {
+        "id": 60724,
+        "d": "2026-10-12",
+        "amt": -770,
+        "cat": "Food",
+        "acct": 1009,
+        "note": "Security Bank lunch"
+      },
+      {
+        "id": 60706,
+        "d": "2026-10-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 60697,
+        "d": "2026-10-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 60698,
+        "d": "2026-10-15",
+        "amt": -775,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 60721,
+        "d": "2026-10-15",
+        "amt": -1660,
+        "cat": "Shopping",
+        "acct": 1007,
+        "note": "MariBank online order"
+      },
+      {
+        "id": 60707,
+        "d": "2026-10-16",
+        "amt": -110,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 60714,
+        "d": "2026-10-16",
+        "amt": -2450,
+        "cat": "Shopping",
+        "acct": 1004,
+        "note": "Home essentials"
+      },
+      {
+        "id": 60710,
+        "d": "2026-10-17",
+        "amt": -1500,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60711,
+        "d": "2026-10-17",
+        "amt": 1500,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet top-up"
+      },
+      {
+        "id": 60723,
+        "d": "2026-10-17",
+        "amt": -1185,
+        "cat": "Transport",
+        "acct": 1008,
+        "note": "BDO Gold fuel"
+      }
+    ],
+    "pend": [],
+    "xfer": [
+      {
+        "id": 70001,
+        "d": "2025-09-26",
+        "amt": 5600,
+        "from": 1001,
+        "to": 1003,
+        "due": "2025-09-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70002,
+        "d": "2025-09-27",
+        "amt": 2300,
+        "from": 1004,
+        "to": 1005,
+        "due": "2025-09-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70003,
+        "d": "2025-09-26",
+        "amt": 1900,
+        "from": 1001,
+        "to": 1007,
+        "due": "2025-09-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70004,
+        "d": "2025-09-28",
+        "amt": 3200,
+        "from": 1004,
+        "to": 1008,
+        "due": "2025-09-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70005,
+        "d": "2025-09-28",
+        "amt": 2600,
+        "from": 1006,
+        "to": 1009,
+        "due": "2025-09-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70006,
+        "d": "2025-10-26",
+        "amt": 5625,
+        "from": 1001,
+        "to": 1003,
+        "due": "2025-10-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70007,
+        "d": "2025-10-27",
+        "amt": 2310,
+        "from": 1004,
+        "to": 1005,
+        "due": "2025-10-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70008,
+        "d": "2025-10-26",
+        "amt": 1915,
+        "from": 1001,
+        "to": 1007,
+        "due": "2025-10-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70009,
+        "d": "2025-10-28",
+        "amt": 3210,
+        "from": 1004,
+        "to": 1008,
+        "due": "2025-10-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70010,
+        "d": "2025-10-28",
+        "amt": 2615,
+        "from": 1006,
+        "to": 1009,
+        "due": "2025-10-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70011,
+        "d": "2025-11-26",
+        "amt": 5650,
+        "from": 1001,
+        "to": 1003,
+        "due": "2025-11-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70012,
+        "d": "2025-11-27",
+        "amt": 2320,
+        "from": 1004,
+        "to": 1005,
+        "due": "2025-11-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70013,
+        "d": "2025-11-26",
+        "amt": 1930,
+        "from": 1001,
+        "to": 1007,
+        "due": "2025-11-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70014,
+        "d": "2025-11-28",
+        "amt": 3220,
+        "from": 1004,
+        "to": 1008,
+        "due": "2025-11-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70015,
+        "d": "2025-11-28",
+        "amt": 2630,
+        "from": 1006,
+        "to": 1009,
+        "due": "2025-11-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70016,
+        "d": "2025-12-26",
+        "amt": 5675,
+        "from": 1001,
+        "to": 1003,
+        "due": "2025-12-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70017,
+        "d": "2025-12-27",
+        "amt": 2330,
+        "from": 1004,
+        "to": 1005,
+        "due": "2025-12-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70018,
+        "d": "2025-12-26",
+        "amt": 1945,
+        "from": 1001,
+        "to": 1007,
+        "due": "2025-12-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70019,
+        "d": "2025-12-28",
+        "amt": 3230,
+        "from": 1004,
+        "to": 1008,
+        "due": "2025-12-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70020,
+        "d": "2025-12-28",
+        "amt": 2645,
+        "from": 1006,
+        "to": 1009,
+        "due": "2025-12-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70021,
+        "d": "2026-01-26",
+        "amt": 5700,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-01-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70022,
+        "d": "2026-01-27",
+        "amt": 2340,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-01-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70023,
+        "d": "2026-01-26",
+        "amt": 1960,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-01-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70024,
+        "d": "2026-01-28",
+        "amt": 3240,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-01-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70025,
+        "d": "2026-01-28",
+        "amt": 2660,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-01-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70026,
+        "d": "2026-02-26",
+        "amt": 5725,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-02-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70027,
+        "d": "2026-02-27",
+        "amt": 2350,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-02-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70028,
+        "d": "2026-02-26",
+        "amt": 1975,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-02-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70029,
+        "d": "2026-02-28",
+        "amt": 3250,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-02-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70030,
+        "d": "2026-02-28",
+        "amt": 2675,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-02-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70031,
+        "d": "2026-03-26",
+        "amt": 5750,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-03-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70032,
+        "d": "2026-03-27",
+        "amt": 2360,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-03-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70033,
+        "d": "2026-03-26",
+        "amt": 1990,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-03-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70034,
+        "d": "2026-03-28",
+        "amt": 3260,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-03-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70035,
+        "d": "2026-03-28",
+        "amt": 2690,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-03-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70036,
+        "d": "2026-04-26",
+        "amt": 5775,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-04-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70037,
+        "d": "2026-04-27",
+        "amt": 2370,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-04-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70038,
+        "d": "2026-04-26",
+        "amt": 2005,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-04-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70039,
+        "d": "2026-04-28",
+        "amt": 3270,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-04-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70040,
+        "d": "2026-04-28",
+        "amt": 2705,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-04-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70041,
+        "d": "2026-05-26",
+        "amt": 5800,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-05-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70042,
+        "d": "2026-05-27",
+        "amt": 2380,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-05-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70043,
+        "d": "2026-05-26",
+        "amt": 2020,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-05-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70044,
+        "d": "2026-05-28",
+        "amt": 3280,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-05-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70045,
+        "d": "2026-05-28",
+        "amt": 2720,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-05-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70046,
+        "d": "2026-06-26",
+        "amt": 5825,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-06-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70047,
+        "d": "2026-06-27",
+        "amt": 2390,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-06-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70048,
+        "d": "2026-06-26",
+        "amt": 2035,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-06-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70049,
+        "d": "2026-06-28",
+        "amt": 3290,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-06-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70050,
+        "d": "2026-06-28",
+        "amt": 2735,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-06-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70051,
+        "d": "2026-07-26",
+        "amt": 5850,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-07-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70052,
+        "d": "2026-07-27",
+        "amt": 2400,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-07-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70053,
+        "d": "2026-07-26",
+        "amt": 2050,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-07-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70054,
+        "d": "2026-07-28",
+        "amt": 3300,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-07-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70055,
+        "d": "2026-07-28",
+        "amt": 2750,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-07-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70056,
+        "d": "2026-08-26",
+        "amt": 5875,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-08-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70057,
+        "d": "2026-08-27",
+        "amt": 2410,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-08-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70058,
+        "d": "2026-08-26",
+        "amt": 2065,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-08-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70059,
+        "d": "2026-08-28",
+        "amt": 3310,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-08-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70060,
+        "d": "2026-08-28",
+        "amt": 2765,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-08-28",
+        "note": "Security Bank card payment"
+      },
+      {
+        "id": 70061,
+        "d": "2026-09-26",
+        "amt": 5900,
+        "from": 1001,
+        "to": 1003,
+        "due": "2026-09-26",
+        "note": "UnionBank card payment"
+      },
+      {
+        "id": 70062,
+        "d": "2026-09-27",
+        "amt": 2420,
+        "from": 1004,
+        "to": 1005,
+        "due": "2026-09-27",
+        "note": "Maya card payment"
+      },
+      {
+        "id": 70063,
+        "d": "2026-09-26",
+        "amt": 2080,
+        "from": 1001,
+        "to": 1007,
+        "due": "2026-09-26",
+        "note": "MariBank card payment"
+      },
+      {
+        "id": 70064,
+        "d": "2026-09-28",
+        "amt": 3320,
+        "from": 1004,
+        "to": 1008,
+        "due": "2026-09-28",
+        "note": "BDO Gold card payment"
+      },
+      {
+        "id": 70065,
+        "d": "2026-09-28",
+        "amt": 2780,
+        "from": 1006,
+        "to": 1009,
+        "due": "2026-09-28",
+        "note": "Security Bank card payment"
+      }
+    ],
+    "bills": [
+      {
+        "id": 8001,
+        "name": "Apartment rent",
+        "amt": 14500,
+        "due": 1,
+        "freq": "monthly",
+        "start": "2025-09-01",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-01",
+          "2025-10-01",
+          "2025-11-01",
+          "2025-12-01",
+          "2026-01-01",
+          "2026-02-01",
+          "2026-03-01",
+          "2026-04-01",
+          "2026-05-01",
+          "2026-06-01",
+          "2026-07-01",
+          "2026-08-01",
+          "2026-09-01",
+          "2026-10-01"
+        ]
+      },
+      {
+        "id": 8002,
+        "name": "Electric bill",
+        "amt": 2200,
+        "due": 10,
+        "freq": "monthly",
+        "start": "2025-09-10",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-10",
+          "2025-10-10",
+          "2025-11-10",
+          "2025-12-10",
+          "2026-01-10",
+          "2026-02-10",
+          "2026-03-10",
+          "2026-04-10",
+          "2026-05-10",
+          "2026-06-10",
+          "2026-07-10",
+          "2026-08-10",
+          "2026-09-10",
+          "2026-10-10"
+        ]
+      },
+      {
+        "id": 8003,
+        "name": "Home internet",
+        "amt": 1599,
+        "due": 18,
+        "freq": "monthly",
+        "start": "2025-09-18",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-18",
+          "2025-10-18",
+          "2025-11-18",
+          "2025-12-18",
+          "2026-01-18",
+          "2026-02-18",
+          "2026-03-18",
+          "2026-04-18",
+          "2026-05-18",
+          "2026-06-18",
+          "2026-07-18",
+          "2026-08-18",
+          "2026-09-18"
+        ]
+      },
+      {
+        "id": 8004,
+        "name": "Water bill",
+        "amt": 515,
+        "due": 23,
+        "freq": "monthly",
+        "start": "2025-09-23",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-23",
+          "2025-10-23",
+          "2025-11-23",
+          "2025-12-23",
+          "2026-01-23",
+          "2026-02-23",
+          "2026-03-23",
+          "2026-04-23",
+          "2026-05-23",
+          "2026-06-23",
+          "2026-07-23",
+          "2026-08-23",
+          "2026-09-23"
+        ]
+      },
+      {
+        "id": 8005,
+        "name": "Mobile plan",
+        "amt": 899,
+        "due": 14,
+        "freq": "monthly",
+        "start": "2025-09-14",
+        "acct": 1002,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-14",
+          "2025-10-14",
+          "2025-11-14",
+          "2025-12-14",
+          "2026-01-14",
+          "2026-02-14",
+          "2026-03-14",
+          "2026-04-14",
+          "2026-05-14",
+          "2026-06-14",
+          "2026-07-14",
+          "2026-08-14",
+          "2026-09-14",
+          "2026-10-14"
+        ]
+      },
+      {
+        "id": 8006,
+        "name": "Health insurance",
+        "amt": 2250,
+        "due": 6,
+        "freq": "monthly",
+        "start": "2025-09-06",
+        "acct": 1004,
+        "cat": "Bills",
+        "paidOn": [
+          "2025-09-06",
+          "2025-10-06",
+          "2025-11-06",
+          "2025-12-06",
+          "2026-01-06",
+          "2026-02-06",
+          "2026-03-06",
+          "2026-04-06",
+          "2026-05-06",
+          "2026-06-06",
+          "2026-07-06",
+          "2026-08-06",
+          "2026-09-06",
+          "2026-10-06"
+        ]
+      },
+      {
+        "id": 8007,
+        "name": "Music subscription",
+        "amt": 199,
+        "due": 8,
+        "freq": "monthly",
+        "start": "2025-09-08",
+        "acct": 1003,
+        "cat": "Entertainment",
+        "paidOn": [
+          "2025-09-08",
+          "2025-10-08",
+          "2025-11-08",
+          "2025-12-08",
+          "2026-01-08",
+          "2026-02-08",
+          "2026-03-08",
+          "2026-04-08",
+          "2026-05-08",
+          "2026-06-08",
+          "2026-07-08",
+          "2026-08-08",
+          "2026-09-08",
+          "2026-10-08"
+        ]
+      },
+      {
+        "id": 8008,
+        "name": "Video subscription",
+        "amt": 279,
+        "due": 19,
+        "freq": "monthly",
+        "start": "2025-09-19",
+        "acct": 1003,
+        "cat": "Entertainment",
+        "paidOn": [
+          "2025-09-19",
+          "2025-10-19",
+          "2025-11-19",
+          "2025-12-19",
+          "2026-01-19",
+          "2026-02-19",
+          "2026-03-19",
+          "2026-04-19",
+          "2026-05-19",
+          "2026-06-19",
+          "2026-07-19",
+          "2026-08-19",
+          "2026-09-19"
+        ]
+      },
+      {
+        "id": 8009,
+        "name": "Cloud storage",
+        "amt": 119,
+        "due": 12,
+        "freq": "monthly",
+        "start": "2025-09-12",
+        "acct": 1005,
+        "cat": "Entertainment",
+        "paidOn": [
+          "2025-09-12",
+          "2025-10-12",
+          "2025-11-12",
+          "2025-12-12",
+          "2026-01-12",
+          "2026-02-12",
+          "2026-03-12",
+          "2026-04-12",
+          "2026-05-12",
+          "2026-06-12",
+          "2026-07-12",
+          "2026-08-12",
+          "2026-09-12",
+          "2026-10-12"
+        ]
+      },
+      {
+        "id": 8010,
+        "name": "Cloud Plus free trial",
+        "amt": 299,
+        "due": 29,
+        "freq": "monthly",
+        "start": "2026-10-29",
+        "acct": 1005,
+        "cat": "Entertainment",
+        "isFreeTrial": true,
+        "trialStartDate": "2026-10-01",
+        "trialEndDate": "2026-10-29",
+        "firstBillingDate": "2026-10-29",
+        "priceAfterTrial": 299
+      }
+    ],
+    "budgets": {
+      "Food": 9500,
+      "Groceries": 14500,
+      "Transport": 7500,
+      "Shopping": 18000,
+      "Entertainment": 7000,
+      "Health": 6500,
+      "Bills": 26000,
+      "Other": 5500
+    },
+    "goals": [
+      {
+        "id": 9001,
+        "name": "Emergency fund",
+        "icon": "🛟",
+        "target": 250000,
+        "saved": 108500
+      },
+      {
+        "id": 9002,
+        "name": "Home upgrade",
+        "icon": "🏠",
+        "target": 90000,
+        "saved": 32500
+      },
+      {
+        "id": 9003,
+        "name": "Travel fund",
+        "icon": "✈️",
+        "target": 65000,
+        "saved": 21000
+      }
+    ],
+    "debts": [
+      {
+        "id": 9101,
+        "who": "Sam",
+        "note": "Shared weekend trip",
+        "amt": 3200,
+        "dir": "in",
+        "due": "2026-11-12"
+      },
+      {
+        "id": 9102,
+        "who": "Alex",
+        "note": "Concert tickets",
+        "amt": 1800,
+        "dir": "out",
+        "due": "2026-11-02"
+      }
+    ],
+    "notes": "14-month fictional sample dataset. History covers September 2025 through October 17, 2026.\nUse only for testing and exploration."
+  }
+}

@@ -192,11 +192,12 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
       function cardStatementRow(x) {
         const a = x.a,
           c = x.statement.c,
+          calc = estimateStatement(a, x.statement),
           n = Math.round((bDt(x.due) - bDt(today)) / 864e5),
           urgency = urgOf(n),
-          status = n < 0 ? `Overdue by ${Math.abs(n)}d` : n == 0 ? "Due today" : `Due in ${n}d`,
-          aria = `${a.name} statement, ${status}, ${php(x.amount)}. Press and hold, right-click or press Enter for details.`;
-        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${urgTxt(n)}</span></small></div><b class="du bv">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
+          status = n < 0 ? `Overdue · ${Math.abs(n)}d` : n == 0 ? "Due today" : `Due in ${n}d`,
+          aria = `${a.name} statement, ${status}, ${php(x.amount)} remaining. ${calc.status}. Press and hold, right-click or press Enter for details.`;
+        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.nickname||a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${esc(status)}</span> · ${calc.status}</small></div><b class="du bv">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
       }
       function planOld() {
         const cardStatements = outstandingCardStatements();
@@ -211,7 +212,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span>${ci(c)} ${c}</span><span class="${s > b && b ? "r" : "m"}">${bv(php(s))} / <input style="width:90px;display:inline;padding:3px 6px;margin:0" type="number" value="${b}" onchange="S.budgets['${c}']=+this.value;render()"></span></div><div class="bar ${s > b && b ? "o" : ""}"><b style="width:${p}%"></b></div></div>`;
           })
           .join("")}</div>
-<div class="card"><h2>Bills &amp; Subscriptions</h2>${S.bills.map(upcomingBillRow).join("")}${cardStatements.length ? `<div class="eyebrow" style="margin:18px 0 4px">Credit Card Statements</div>${cardStatements.map(cardStatementRow).join("")}` : ""}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
+ <div class="card"><h2>Bills &amp; Subscriptions</h2>${typeof annualRenewalRows=='function'&&annualRenewalRows().length?`<div class="eyebrow">Scheduled card fees</div>${annualRenewalRows().map(annualRenewalNoticeRow).join("")}`:''}${S.bills.map(upcomingBillRow).join("")}${cardStatements.length ? `<div class="eyebrow" style="margin:18px 0 4px">Credit Card Statements</div>${cardStatements.map(cardStatementRow).join("")}` : ""}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
       }
       function Accounts() {
         const cash = sum(S.accts.filter((a) => a.type != "credit").map((a) => a.bal)),
@@ -316,21 +317,24 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
       function pickGrp(t, label) {
         const it = CAT.map((c, i) => [c, i]).filter((x) => x[0].type == t);
         return it.length
-          ? `<div class="eyebrow" style="margin:14px 0 6px">${label}</div><div class="pick">${it.map(([c, i]) => `<div data-pk="${i}" onclick="pickCard(${i})">${cardH({ ...c, l4: "" }, 0)}</div>`).join("")}</div>`
+          ? `<div class="eyebrow" style="margin:14px 0 6px">${label}</div><div class="pick">${it.map(([c, i]) => `<button type="button" class="acct-design-choice" data-pk="${i}" aria-label="Choose ${esc(c.bank||c.name)} ${label.slice(0,-1)}" onclick="pickCard(${i},this)">${cardH({ ...c, l4: "" }, 0)}</button>`).join("")}</div>`
           : "";
       }
-      function pickCard(i, init) {
-        pk = i;
-        document.querySelectorAll(".pick .cc").forEach((e) => e.classList.remove("sel", "pop"));
-        const el = document.querySelector('[data-pk="' + i + '"] .cc');
-        if (el) {
-          el.classList.add("sel");
-          if (!init) el.classList.add("pop");
-        }
-        $("#cu").style.display = "none";
-        $("#cf").style.display = CAT[i].type == "credit" ? "block" : "none";
-        $("#bl").placeholder = (CAT[i].type == "credit" ? "Amount owed (" : "Current balance (") + CS() + ")";
+      function pickCard(i, source) {const choice=CAT[+i];if(!choice||!source)return;beginAccountSetup({...choice},source.querySelector('.cc')||source)}
+      function interestSettingsMarkup(a, prefix='si'){
+        const enabled=!!(a&&a.interestEnabled),mode=(a&&a.goalInterestMode)||'unallocated',goals=S.goals.filter(g=>+g.accountId==+(a&&a.id));
+        return `<div class="interest-edit"><div class="eyebrow">Savings Interest</div><label class="m" for="${prefix}-enabled">Interest</label><select id="${prefix}-enabled" onchange="savingsInterestToggle('${prefix}')"><option value="0" ${enabled?'':'selected'}>Off</option><option value="1" ${enabled?'selected':''}>On</option></select><div id="${prefix}-fields" style="display:${enabled?'block':'none'}"><label class="m" for="${prefix}-rate">Annual interest rate (% p.a.)</label><input id="${prefix}-rate" type="number" min="0" max="100" step="0.01" value="${+((a||{}).interestRate)||0}" placeholder="e.g. 3.5"><p class="m" style="font-size:12px">Estimated interest is calculated daily: eligible balance × annual rate ÷ 365. Crediting frequency is separate.</p><label class="m" for="${prefix}-credit-freq">Interest crediting frequency</label><select id="${prefix}-credit-freq"><option value="daily" ${(a||{}).interestCreditFreq=='daily'?'selected':''}>Daily</option><option value="monthly" ${!(a||{}).interestCreditFreq||a.interestCreditFreq=='monthly'?'selected':''}>Monthly</option><option value="quarterly" ${(a||{}).interestCreditFreq=='quarterly'?'selected':''}>Quarterly</option><option value="other" ${(a||{}).interestCreditFreq=='other'?'selected':''}>Other interval</option></select><label class="m" for="${prefix}-other-days">Other interval (days)</label><input id="${prefix}-other-days" type="number" min="1" max="365" value="${+((a||{}).interestOtherDays)||30}"><label class="m" for="${prefix}-goal-mode">Allocate credited interest to goals</label><select id="${prefix}-goal-mode"><option value="unallocated" ${mode=='unallocated'?'selected':''}>Keep interest unallocated</option><option value="goal" ${mode=='goal'?'selected':''}>Add to one selected goal</option><option value="proportional" ${mode=='proportional'?'selected':''}>Distribute proportionally</option></select><select id="${prefix}-goal-id"><option value="">Choose goal</option>${goals.map(g=>`<option value="${g.id}" ${+g.id==+(a||{}).interestGoalId?'selected':''}>${esc(g.name)}</option>`).join('')}</select><label class="swx-row"><span class="f"><b>Simulate bank credits</b><small>Off by default; simulation adds actual transactions on the selected crediting schedule.</small></span><span class="swx"><input id="${prefix}-simulate" type="checkbox" role="switch" ${(a||{}).interestSimulation?'checked':''}><i></i></span></label></div></div>`
       }
+      function savingsInterestToggle(prefix){const e=$('#'+prefix+'-fields'),on=$('#'+prefix+'-enabled');if(e&&on)e.style.display=on.value=='1'?'block':'none'}
+      function savingsInterestDaily(a){return Math.max(0,+a.bal||0)*Math.max(0,+a.interestRate||0)/100/365}
+      function savingsInterestSummary(a){if(a.type=='credit')return'';if(!a.interestEnabled)return`<div class="card savings-interest"><div class="eyebrow">Savings Interest</div><p class="m">Optional · set an annual rate in account details.</p><button class="pill" onclick="showEd();$('#si-enabled').value='1';savingsInterestToggle('si')">Set interest</button></div>`;const daily=savingsInterestDaily(a),days=new Date(T.getFullYear(),T.getMonth()+1,0).getDate(),earned=sum(S.tx.filter(t=>t.acct==a.id&&t.cat=='Interest Earned').map(t=>+t.amt||0)),next=nextInterestCreditDate(a);return`<div class="card savings-interest"><div class="eyebrow">Savings Interest · Estimate</div><div class="cc-sum-row"><span>Current balance</span><b>${php(a.bal)}</b></div><div class="cc-sum-row"><span>Annual interest rate</span><b>${(+a.interestRate||0)}% p.a.</b></div><div class="cc-sum-row"><span>Estimated interest today</span><b>${php(daily)}</b></div><div class="cc-sum-row"><span>Estimated interest this month</span><b>${php(daily*days)}</b></div><div class="cc-sum-row"><span>Interest earned · recorded</span><b>${php(earned)}</b></div><div class="cc-sum-row"><span>Next interest credit</span><b>${next}</b></div><small>Estimates are not added to your actual balance until credited and recorded.</small><button class="btn s" style="margin-top:8px" onclick="interestCreditSheet(${a.id})">＋ Record interest credited</button></div>`}
+      function nextInterestCreditDate(a){const d=new Date(T);if(a.interestCreditFreq=='daily')d.setDate(d.getDate()+1);else if(a.interestCreditFreq=='quarterly'){let m=(Math.floor(d.getMonth()/3)+1)*3;d.setFullYear(d.getFullYear(),m,0);if(d<=T){m+=3;d.setFullYear(d.getFullYear(),m,0)}}else if(a.interestCreditFreq=='other')d.setDate(d.getDate()+Math.max(1,+a.interestOtherDays||30));else{d.setFullYear(d.getFullYear(),d.getMonth()+1,0);if(d<=T)d.setFullYear(d.getFullYear(),d.getMonth()+2,0)}return d.toLocaleDateString('en-PH',{day:'numeric',month:'short',year:'numeric'})}
+      function interestCreditSheet(id){const a=acct(id);if(!a||!a.interestEnabled)return toast('Turn on savings interest in account details first');const eligible=S.goals.filter(g=>+g.accountId==+id),daily=savingsInterestDaily(a);openS(`<h2>Record interest earned</h2><p class="m">Actual interest credited by ${esc(a.name)}. Estimate today: ${php(daily)}.</p><label class="m">Amount credited (${CS()})</label><input id="ic-amount" type="number" min="0.01" step="0.01" placeholder="Enter bank credit"><label class="m">Date credited</label><input id="ic-date" type="date" value="${today}"><label class="m">Note (optional)</label><input id="ic-note" placeholder="e.g. October interest"><p class="m">Goal interest preference: ${a.goalInterestMode=='goal'?'Selected goal':a.goalInterestMode=='proportional'?'Proportional allocation':'Keep unallocated'}.</p><button class="btn" onclick="saveInterestCredit(${id})">Record interest credit</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
+      function allocateCreditedInterest(a,amount,t){const goals=S.goals.filter(g=>+g.accountId==+a.id&&g.saved>=0);if(a.goalInterestMode=='goal'){const g=goals.find(g=>+g.id==+a.interestGoalId);if(g){g.saved+=amount;t.goalInterestAllocations=[{goalId:g.id,amount}]}}else if(a.goalInterestMode=='proportional'&&goals.length){const total=sum(goals.map(g=>+g.saved||0));if(total>0){t.goalInterestAllocations=goals.map(g=>({goalId:g.id,amount:amount*(g.saved/total)}));goals.forEach(g=>g.saved+=amount*(g.saved/total))}}}
+      function saveInterestCredit(id){const a=acct(id),amount=+$('#ic-amount').value,date=$('#ic-date').value||today;if(!a||!(amount>0))return toast('Enter the actual interest amount credited');const t={id:uid(),d:date,amt:amount,cat:'Interest Earned',acct:id,note:($('#ic-note').value||'Interest credited by bank'),interestActual:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=date;save();closeS();render();toast('Interest credit recorded',true)}
+      function simulateSavingsInterest(){if(typeof S=='undefined'||!S||!Array.isArray(S.accts))return;let changed=false;for(const a of S.accts.filter(x=>x.type!='credit'&&x.interestEnabled&&x.interestSimulation&&+x.interestRate>0)){const last=a.interestLastCredited||today,elapsed=Math.floor((new Date(today+'T00:00:00')-new Date(last+'T00:00:00'))/86400000),freq=a.interestCreditFreq||'monthly',d=new Date(T),isMonthEnd=d.getDate()==new Date(d.getFullYear(),d.getMonth()+1,0).getDate(),isQuarterEnd=isMonthEnd&&[2,5,8,11].includes(d.getMonth()),due=freq=='daily'?elapsed>=1:freq=='quarterly'?isQuarterEnd&&elapsed>=1:freq=='other'?elapsed>=Math.max(1,+a.interestOtherDays||30):isMonthEnd&&elapsed>=1;if(!due)continue;const amount=savingsInterestDaily(a)*elapsed;if(amount<=0){a.interestLastCredited=today;continue}const t={id:uid(),d:today,amt:amount,cat:'Interest Earned',acct:a.id,note:'Simulated savings interest credit',interestActual:true,interestSimulation:true};allocateCreditedInterest(a,amount,t);S.tx.push(t);bApply(t,1);a.interestLastCredited=today;changed=true}if(changed){save();if(typeof render=='function')render()}}
+      function bootSavingsInterest(tries=0){if(typeof S=='undefined'||!S||!Array.isArray(S.accts)){if(tries<20)setTimeout(()=>bootSavingsInterest(tries+1),250);return}simulateSavingsInterest()}
+      setTimeout(bootSavingsInterest,0);document.addEventListener('visibilitychange',()=>{if(!document.hidden)simulateSavingsInterest()});
       function openAcct() {
         pk = 0;
         openS(
@@ -338,22 +342,48 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
         );
         const f0 = CAT.findIndex((c) => c.type == "credit");
         pickCard(f0 >= 0 ? f0 : 0, true);
+        const feeBox=$('#cf'),interestBox=document.createElement('div');interestBox.id='interest-settings';interestBox.innerHTML=interestSettingsMarkup(null,'newsi');feeBox.after(interestBox);interestBox.style.display='none';
+        const customType=$('#cut');if(customType)customType.addEventListener('change',()=>{const box=$('#interest-settings');if(box)box.style.display=customType.value=='credit'?'none':'block'});
+        const customPick=document.querySelectorAll('.pick');if(customPick.length)customPick[customPick.length-1].firstElementChild?.addEventListener('click',()=>setTimeout(()=>{const box=$('#interest-settings');if(box&&$('#cu').style.display!='none')box.style.display=$('#cut').value=='credit'?'none':'block'},0));
       }
       function addAcct() {
-        const c = pk == CAT.length ? { bank: $('#cub').value || 'Custom', name: $('#cun').value || $('#cub').value || 'My card', type: $('#cut').value, net: $('#cuw').value, g: ['#222', '#444'], photo: CPH } : CAT[pk];
+        const c = pk == CAT.length ? { bank: $('#cub').value || 'Custom', name: $('#cun').value || $('#cub').value || 'My card', type: $('#cut').value, net: $('#cuw').value, g: ['#222', '#444'], photo: CPH } : CAT[pk],balanceField=$('#bl'),balance=Number(balanceField.value),due=dueVals(),credit=c.type=='credit',interestOn=$('#newsi-enabled')?.value=='1';
+        if(balanceField.value===''||!Number.isFinite(balance)||balance<0)return toast('Enter the account balance (0 is okay)');
+        if(credit&&(!(+($('#cl')||{}).value>0)||!(+($('#sd')||{}).value>0)||!(due.due>0||due.dueN>0)))return toast('Credit cards need a credit limit, statement date and payment due date');
+        if(interestOn&&(!Number.isFinite(+$('#newsi-rate').value)||+$('#newsi-rate').value<0||+$('#newsi-rate').value>100))return toast('Enter a valid annual interest rate');
         CPH = '';
         S.accts.push({
           id: Date.now(),
           ...c,
-          bal: +$("#bl").value || 0,
+          bal: balance,
           l4: $("#l4").value.replace(/\D/g, ""),
-          stmt: c.type == "credit" ? +($("#sd") || {}).value || 0 : 0,
-          ...(c.type == "credit" ? dueVals() : { due: 0, dueN: 0 }),
+          stmt: credit ? +($("#sd") || {}).value || 0 : 0,
+          ...(credit ? due : { due: 0, dueN: 0 }),
           lim: c.type == "credit" ? +($("#cl") || {}).value || 0 : 0,
+          ...(interestOn?{interestEnabled:true,interestRate:+$('#newsi-rate').value,interestCalc:'daily',interestCreditFreq:$('#newsi-credit-freq').value,interestOtherDays:+$('#newsi-other-days').value||30,interestSimulation:$('#newsi-simulate').checked,goalInterestMode:$('#newsi-goal-mode').value,interestGoalId:+$('#newsi-goal-id').value||0,interestLastCredited:today}:{}),
         });
+        save();
         closeS();
         render();
       }
+      /* Premium add-account flow: design selection first, then a centered 3D card
+         setup experience. Nothing is added to S until the validated Save action. */
+      let ACCT_SETUP=null,ACCT_CUSTOM=null;
+      function openAcct(){ACCT_SETUP=null;ACCT_CUSTOM=null;pk=-1;CPH='';openS(`<div class="acct-design-selection"><h2>Add New Account</h2><p class="m">Choose a card design to begin setup.</p>${pickGrp('debit','Debit cards')}${pickGrp('credit','Credit cards')}${pickGrp('ewallet','E-wallets')}<div class="eyebrow" style="margin:14px 0 6px">Custom</div><div class="pick"><button type="button" class="acct-design-choice custom-design-choice" onclick="beginCustomCard(this)"><div class="cc custom-design-card"><span>＋</span><b>Add your own card photo</b></div></button></div></div>`,'add-account-selection')}
+      function addAcct(){setupAccountSave()}
+      function setupDateValue(day){if(!day)return'';const n=new Date(),d=Math.min(+day,new Date(n.getFullYear(),n.getMonth()+1,0).getDate());return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
+      function setupBackMarkup(card){const typ=card.type=='credit'?'CREDIT':card.type=='ewallet'?'E-WALLET':'DEBIT',owner=esc(String(S.name||'Your name').trim()||'Your name'),bank=esc(card.bank||''),name=esc(card.name||'Your card'),colors=card.g||['#1b2b47','#111827'];return`<div class="acct-setup-back" style="--setup-card-a:${colors[0]};--setup-card-b:${colors[1]}"><div class="setup-back-mark">${owner}</div><div class="setup-back-stripe"></div><div class="setup-back-chip"><i></i><i></i><i></i><i></i></div><div class="setup-back-label"><b>${typ}</b><span>${bank?bank+' · ':''}${name}</span></div></div>`}
+      function setupFormMarkup(card){const credit=card.type=='credit',debit=card.type=='debit',bank=esc(card.bank||''),name=esc(card.name||''),creditRates=credit?`<div class="setup-form-section"><div class="eyebrow">Card rates</div><label for="setup-finance">Finance charge (% / month)</label><input id="setup-finance" type="number" min="0" max="100" step="0.1" value="3"><label for="setup-cash-rate">Cash advance rate (% / month)</label><input id="setup-cash-rate" type="number" min="0" max="100" step="0.1" value="3"><label for="setup-min-percent">Minimum payment (%)</label><input id="setup-min-percent" type="number" min="0" max="100" step="0.1" value="5"><label for="setup-min-fixed">Minimum fixed amount (${CS()})</label><input id="setup-min-fixed" type="number" min="0" step="0.01" value="500"><small>Additional fees can be configured in Card Fees after setup.</small></div>`:'';return`<div id="acct-setup-form" class="acct-setup-form" role="dialog" aria-modal="true" aria-labelledby="setup-title"><div class="setup-form-head"><div><div class="eyebrow">${credit?'CREDIT CARD':debit?'DEBIT CARD':'E-WALLET'} SETUP</div><h2 id="setup-title">Finish setting up your card</h2><p class="m">Your details stay on this device unless you enable sync.</p><small class="setup-required-note"><b>*</b> indicates a required field.</small></div><button type="button" class="pill" aria-label="Cancel setup" onclick="cancelAccountSetup()">×</button></div><label for="setup-bank">Bank / issuer <em aria-hidden="true">*</em></label><input id="setup-bank" maxlength="60" value="${bank}" placeholder="Bank or issuer name" autocomplete="organization"><label for="setup-name">Account / card name <em aria-hidden="true">*</em></label><input id="setup-name" maxlength="60" value="${name}" placeholder="e.g. Everyday Debit" autocomplete="off"><label for="setup-balance">Current balance (${CS()}) <em aria-hidden="true">*</em></label><input id="setup-balance" type="number" min="0" step="0.01" inputmode="decimal" value="" placeholder="0.00"><small class="setup-help">Enter 0 if this account currently has no balance.</small><label for="setup-last4">Last 4 digits <span>optional</span></label><input id="setup-last4" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{0,4}" placeholder="Optional"><div id="setup-credit-fields" class="setup-form-section" ${credit?'':'hidden'}><div class="eyebrow">Credit card billing</div><label for="setup-limit">Credit limit (${CS()}) <em aria-hidden="true">*</em></label><input id="setup-limit" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00"><label for="setup-statement">Monthly statement cut-off <em aria-hidden="true">*</em></label><input id="setup-statement" type="date" aria-label="Choose monthly statement cut-off date"><small class="setup-help">Select a date; Cap repeats that day each month.</small><label for="setup-due">Payment due date <em aria-hidden="true">*</em></label><input id="setup-due" type="date" aria-label="Choose monthly payment due date"><small class="setup-help">Select a date; Cap repeats that day each month.</small></div>${debit?interestSettingsMarkup(null,'setup-si'):''}${creditRates}<p id="setup-error" class="setup-error" role="alert" hidden></p><div class="setup-form-actions"><button type="button" class="btn s" onclick="cancelAccountSetup()">Cancel</button><button type="button" id="setup-save" class="btn" onclick="setupAccountSave()">Add Account</button></div></div>`}
+      function beginAccountSetup(card,source,sourceRect){if(!card||ACCT_SETUP?.busy)return;const element=source&&source.querySelector?source.querySelector('.cc')||source:source,rect=sourceRect||element?.getBoundingClientRect?.()||{left:innerWidth/2-90,top:100,width:180,height:114},reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;ACCT_SETUP={card:{...card},rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},busy:false,reduce};const front=cardH({...card,l4:''},0);document.body.insertAdjacentHTML('beforeend',`<div id="acct-setup-overlay" class="acct-setup-overlay" aria-label="Card setup"><div id="acct-setup-stage" class="acct-setup-stage"><div id="acct-setup-flip" class="acct-setup-flip"><div class="acct-setup-face acct-setup-front">${front}</div><div class="acct-setup-face acct-setup-backface">${setupBackMarkup(card)}</div></div></div><div id="acct-setup-panel" class="acct-setup-panel" hidden>${setupFormMarkup(card)}</div></div>`);const overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),panel=$('#acct-setup-panel'),cardWidth=Math.min(340,innerWidth-40),cardHeight=cardWidth/1.586,top=Math.max(18,parseFloat(getComputedStyle(overlay).paddingTop)||18),left=(innerWidth-cardWidth)/2;ACCT_SETUP.target={left,top,width:cardWidth,height:cardHeight,formTop:top+cardHeight+16};stage.style.cssText=`left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;const clone=stage.querySelector('.acct-setup-front .cc');if(clone){clone.classList.remove('sel','pop');clone.removeAttribute('onclick');clone.removeAttribute('role');clone.style.width='100%';clone.style.height='100%'}panel.style.top=`${ACCT_SETUP.target.formTop}px`;panel.style.maxHeight=`calc(100dvh - ${ACCT_SETUP.target.formTop+14}px)`;overlay.addEventListener('click',e=>{if(e.target===overlay)cancelAccountSetup()});overlay._setupEsc=e=>{if(e.key=='Escape'){e.preventDefault();cancelAccountSetup();return}if(e.key=='Tab'&&!panel.hidden){const f=[...panel.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled)')].filter(x=>x.offsetParent!==null);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};document.addEventListener('keydown',overlay._setupEsc);requestAnimationFrame(()=>{overlay.classList.add('visible');stage.classList.add('moving');stage.style.left=`${left}px`;stage.style.top=`${top}px`;stage.style.width=`${cardWidth}px`;stage.style.height=`${cardHeight}px`});const flipDelay=reduce?60:290,formDelay=reduce?100:650;setTimeout(()=>{if(!ACCT_SETUP)return;$('#acct-setup-flip')?.classList.add('flipped')},flipDelay);setTimeout(()=>{if(!ACCT_SETUP)return;panel.hidden=false;setupWireForm();requestAnimationFrame(()=>panel.classList.add('visible'));setTimeout(()=>$('#setup-name')?.focus({preventScroll:true}),80)},formDelay)}
+      function beginCustomCard(source){if(ACCT_SETUP?.busy)return;const rect=source.getBoundingClientRect();ACCT_CUSTOM={rect};const old=$('#custom-card-dialog');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div id="custom-card-dialog" class="custom-card-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-card-title"><div class="custom-card-dialog-box"><button type="button" class="pill custom-dialog-close" aria-label="Close" onclick="closeCustomCard()">×</button><h2 id="custom-card-title">Use your own card photo</h2><p class="m">Choose the account type, then select a photo. It will be fitted to the card design.</p><label for="custom-card-type">Account type</label><select id="custom-card-type"><option value="debit">Debit</option><option value="credit">Credit</option><option value="ewallet">E-wallet</option></select><input id="custom-card-file" type="file" accept="image/*" hidden onchange="customCardFile(this)"><button type="button" class="btn" style="width:100%;margin-top:14px" onclick="$('#custom-card-file').click()">Choose card photo</button><button type="button" class="btn s" style="width:100%;margin-top:8px" onclick="closeCustomCard()">Cancel</button></div></div>`)}
+      function closeCustomCard(){const d=$('#custom-card-dialog');if(d)d.remove();ACCT_CUSTOM=null}
+      function customCardFile(input){const file=input.files&&input.files[0];if(!file)return;const type=$('#custom-card-type').value,rect=ACCT_CUSTOM?.rect;imgPick(input,1100,'jpg',photo=>{const card={bank:'',name:'',type,net:'visa',g:['#1d3557','#101820'],photo};closeCustomCard();beginAccountSetup(card,null,rect)})}
+      function setupToggleSave(){const b=$('#setup-save'),s=ACCT_SETUP;if(!b||!s)return;const c=s.card,credit=c.type=='credit',bank=($('#setup-bank')||{}).value?.trim(),name=($('#setup-name')||{}).value?.trim(),bv=($('#setup-balance')||{}).value,last=($('#setup-last4')||{}).value?.replace(/\D/g,''),limit=+($('#setup-limit')||{}).value,stmt=($('#setup-statement')||{}).value,due=($('#setup-due')||{}).value,on=c.type=='debit'&&$('#setup-si-enabled')?.value=='1',rate=+($('#setup-si-rate')||{}).value,finance=+($('#setup-finance')||{}).value,cash=+($('#setup-cash-rate')||{}).value,pct=+($('#setup-min-percent')||{}).value,fixed=+($('#setup-min-fixed')||{}).value;let valid=!!bank&&!!name&&bv!==''&&Number.isFinite(+bv)&&+bv>=0&&(!last||last.length==4);if(credit)valid=valid&&limit>0&&!!stmt&&!!due&&finance>=0&&finance<=100&&cash>=0&&cash<=100&&pct>=0&&pct<=100&&fixed>=0;if(on)valid=valid&&Number.isFinite(rate)&&rate>=0&&rate<=100;b.disabled=!valid||s.busy}
+      function setupWireForm(){const panel=$('#acct-setup-panel');if(!panel)return;panel.addEventListener('input',setupToggleSave);panel.addEventListener('change',setupToggleSave);setupToggleSave()}
+      function setupError(message){const el=$('#setup-error');if(el){el.textContent=message;el.hidden=false;el.scrollIntoView({block:'nearest',behavior:ACCT_SETUP?.reduce?'auto':'smooth'})}}
+      function cancelAccountSetup(){if(!ACCT_SETUP||ACCT_SETUP.busy)return;const state=ACCT_SETUP,overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),flip=$('#acct-setup-flip');if(!overlay||!stage){ACCT_SETUP=null;return}$('#acct-setup-panel')?.classList.remove('visible');flip?.classList.remove('flipped');const r=state.rect;overlay.classList.remove('visible');stage.style.left=`${r.left}px`;stage.style.top=`${r.top}px`;stage.style.width=`${r.width}px`;stage.style.height=`${r.height}px`;setTimeout(()=>{if(overlay._setupEsc)document.removeEventListener('keydown',overlay._setupEsc);overlay.remove();ACCT_SETUP=null},state.reduce?0:440)}
+      function setupAccountSave(){const state=ACCT_SETUP;if(!state||state.busy)return;const card=state.card,type=card.type,bank=$('#setup-bank').value.trim(),name=$('#setup-name').value.trim(),balanceText=$('#setup-balance').value,balance=Number(balanceText),last4=$('#setup-last4').value.replace(/\D/g,''),credit=type=='credit';$('#setup-error').hidden=true;if(!bank||!name)return setupError('Enter the bank / issuer and account name.');if(balanceText===''||!Number.isFinite(balance)||balance<0)return setupError('Enter a valid current balance. Zero is allowed.');if(last4.length&&last4.length!=4)return setupError('Last 4 digits must be four numbers, or leave the field blank.');let statement=0,due=0,limit=0,finance=3,cashRate=3,pct=5,fixed=500;if(credit){limit=+$('#setup-limit').value;statement=+($('#setup-statement').value||'').slice(-2);due=+($('#setup-due').value||'').slice(-2);finance=+$('#setup-finance').value;cashRate=+$('#setup-cash-rate').value;pct=+$('#setup-min-percent').value;fixed=+$('#setup-min-fixed').value;if(!(limit>0))return setupError('Enter a credit limit greater than zero.');if(!statement)return setupError('Choose the monthly statement cut-off date.');if(!due)return setupError('Choose the payment due date.');if(!Number.isFinite(finance)||finance<0||finance>100||!Number.isFinite(cashRate)||cashRate<0||cashRate>100||!Number.isFinite(pct)||pct<0||pct>100||!Number.isFinite(fixed)||fixed<0)return setupError('Enter valid rate and minimum payment settings.')}const interestOn=type=='debit'&&$('#setup-si-enabled')?.value=='1';let interestRate=0;if(interestOn){interestRate=+$('#setup-si-rate').value;if(!Number.isFinite(interestRate)||interestRate<0||interestRate>100)return setupError('Enter a valid annual savings interest rate.')}state.busy=true;const saveButton=$('#setup-save');if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving…'}const id=Date.now()+Math.floor(Math.random()*1000),account={id,...card,bank,name,type,net:card.net||'visa',bal:balance,l4:last4,stmt:credit?statement:0,due:credit?due:0,dueN:0,lim:credit?limit:0,...(credit?{fees:{financeRate:finance,cashAdvanceRate:cashRate},minimumPayment:{mode:'percent-or-fixed',percent:pct,fixed}}:{}),...(interestOn?{interestEnabled:true,interestRate,interestCalc:'daily',interestCreditFreq:$('#setup-si-credit-freq').value,interestOtherDays:+$('#setup-si-other-days').value||30,interestSimulation:$('#setup-si-simulate').checked,goalInterestMode:$('#setup-si-goal-mode').value,interestGoalId:+$('#setup-si-goal-id').value||0,interestLastCredited:today}:{})};S.accts.push(account);save();const panel=$('#acct-setup-panel');panel.innerHTML=`<div class="acct-setup-success"><div class="acct-setup-success-mark">✓</div><h2>Account added</h2><p>${esc(name)} is ready in Accounts.</p></div>`;panel.classList.add('success');tab='Accounts';render();setTimeout(()=>finishAccountSetup(account),ACCT_SETUP.reduce?180:430)}
+      function finishAccountSetup(account){const state=ACCT_SETUP;if(!state)return;const overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),flip=$('#acct-setup-flip');if(!overlay||!stage){ACCT_SETUP=null;closeS();render();return}const target=[...document.querySelectorAll('#app .cc')].find(x=>x.getAttribute('onclick')==`acctMenu(${account.id})`);if(target){const rect=target.getBoundingClientRect(),front=$('#acct-setup-stage .acct-setup-front');front.innerHTML=cardH(account,1,1);const targetCard=front.querySelector('.cc');if(targetCard){targetCard.removeAttribute('onclick');targetCard.removeAttribute('role');targetCard.style.width='100%';targetCard.style.height='100%'}target.style.visibility='hidden';flip.classList.remove('flipped');overlay.classList.remove('visible');stage.style.left=`${rect.left}px`;stage.style.top=`${rect.top}px`;stage.style.width=`${rect.width}px`;stage.style.height=`${rect.height}px`;setTimeout(()=>{if(overlay._setupEsc)document.removeEventListener('keydown',overlay._setupEsc);overlay.remove();target.style.visibility='';ACCT_SETUP=null;closeS();toast('Account added',true)},state.reduce?0:440)}else{if(overlay._setupEsc)document.removeEventListener('keydown',overlay._setupEsc);overlay.remove();ACCT_SETUP=null;closeS();toast('Account added',true)}}
       function acctMenu(id) {
         const a = acct(id);
         openS(
@@ -443,11 +473,12 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
             (a.type == "credit" ? "Credit card" : a.type == "ewallet" ? "E-wallet" : "Bank account")
           : "No account selected";
       }
-      function confirmBillPay(id, k) {
+      function confirmBillPay(id, k, allowAllocationOverrun=false) {
         const b = S.bills.find((x) => x.id == id),
           a = S.accts.find((x) => x.id == +($("#bill-account") || {}).value);
         if (b) k = k || bIso(nextDue(b));
         if (!b || bPaid(b, k) || !a || window._paying) return;
+        if(a.type!='credit'&&!allowAllocationOverrun){const allocated=sum(S.goals.filter(g=>+g.accountId==+a.id).map(g=>+g.saved||0));if(a.bal-b.amt<allocated-.005)return confirmBox('This may use goal savings',`${a.name} would have ${php(Math.max(0,a.bal-b.amt))} left while ${php(allocated)} is allocated to goals. Continue paying this bill?`,()=>confirmBillPay(id,k,true),'Continue')}
         window._paying = true;
         (b.paidOn = b.paidOn || []).push(k);
         b.paid = k.slice(0, 7); b.acct = a.id;
@@ -466,6 +497,7 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
         a.bal += a.type == "credit" ? b.amt : -b.amt;
         save();
         playPaymentConfirmation();
+        showPaymentSuccess(b.name,php(b.amt));
         const btn = document.querySelector('#sb button[onclick^="confirmBillPay"]'),
           done = () => { window._paying = false; closeS(); render(); toast("Paid · " + b.name, true); };
         if (btn && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -480,18 +512,85 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
 
 
 
-/* ---- credit card billing cycles */
-const BC={},dd=(y,m,d)=>new Date(y,m,Math.min(d,new Date(y,m+1,0).getDate()));
-function cyc(a,i){if(!a.stmt)return null;const t0=new Date(T.getFullYear(),T.getMonth(),T.getDate());let c=dd(T.getFullYear(),T.getMonth(),a.stmt);if(c<t0)c=dd(T.getFullYear(),T.getMonth()+1,a.stmt);
+/* ---- credit card billing cycles and per-card statement rules ------------- */
+const BC={},CPC={},CARD_PAY_LOCK={};let CARD_SNAPSHOT_BATCH=0;const dd=(y,m,d)=>new Date(y,m,Math.min(d,new Date(y,m+1,0).getDate()));
+const cardPaymentSources=()=>S.accts.filter(x=>x&&x.type!='credit');
+const cardPaymentSourceType=x=>x.type=='ewallet'?'E-wallet':x.type=='debit'?'Debit account':'Payment account';
+const n2=x=>Math.round((+x||0)*100)/100;
+function cardFees(a){
+  const f=a.fees||{},fee=(v,d)=>{const o=v&&typeof v=='object'?v:{};return{mode:['waived','none','na','fixed','percent'].includes(o.mode)?o.mode:d.mode,value:Number.isFinite(+o.value)?+o.value:d.value}};
+  return{annualFee:fee(f.annualFee,{mode:'waived',value:0}),financeRate:Number.isFinite(+f.financeRate)?+f.financeRate:3,
+    cashAdvanceRate:Number.isFinite(+f.cashAdvanceRate)?+f.cashAdvanceRate:3,cashAdvanceFee:fee(f.cashAdvanceFee,{mode:'fixed',value:200}),
+    latePaymentFee:fee(f.latePaymentFee,{mode:'fixed',value:1000}),overlimitFee:fee(f.overlimitFee,{mode:'fixed',value:750}),
+    foreignFee:fee(f.foreignFee,{mode:'percent',value:2}),annualRenew:{enabled:!!(f.annualRenew&&f.annualRenew.enabled),month:+(f.annualRenew&&f.annualRenew.month)||0,day:+(f.annualRenew&&f.annualRenew.day)||1},interestMethod:f.interestMethod=='average-daily'?'average-daily':'simple',
+    gracePeriodDays:Math.max(0,Math.min(90,Number.isFinite(+f.gracePeriodDays)?+f.gracePeriodDays:0)),compound:f.compound=='monthly'?'monthly':'simple'};
+}
+function cardFeeAmount(f,base){if(!f||f.mode=='none'||f.mode=='na'||f.mode=='waived')return 0;return n2(f.mode=='percent'?(+base||0)*(+f.value||0)/100:+f.value||0)}
+function cardMinConfig(a){const m=a.minimumPayment||{};return{mode:['fixed','percent','percent-or-fixed'].includes(m.mode)?m.mode:'percent-or-fixed',percent:Number.isFinite(+m.percent)?+m.percent:5,fixed:Number.isFinite(+m.fixed)?+m.fixed:500}}
+function cardMinimum(a,base){base=Math.max(0,+base||0);const m=cardMinConfig(a);if(!base)return 0;const v=m.mode=='fixed'?m.fixed:m.mode=='percent'?base*m.percent/100:Math.max(m.fixed,base*m.percent/100);return n2(Math.min(base,v))}
+function cardStatus(a){return a.cardStatus=='Inactive'?'Inactive':'Active'}
+function cardStatementStatus(s){if(!s||s.c.open)return'Current';if(s.due<=.005)return'Paid';if(s.c.due&&s.c.due<today)return'Overdue';if(s.paid>.005)return'Partially Paid';return'Unpaid'}
+function statementBalanceOn(a,s,key){
+  const sid=s.statementId,end=s.c.en;
+  const pay=S.xfer.filter(x=>x.to==a.id&&x.d>end&&x.d<=key&&(!x.statementId||x.statementId==sid)).reduce((v,x)=>v+(+x.amt||0),0);
+  const credits=S.tx.filter(t=>t.acct==a.id&&t.amt>0&&(t.pd||t.d)>end&&(t.pd||t.d)<=key).reduce((v,t)=>v+(+t.amt||0),0);
+  return Math.max(0,n2(s.close-pay-credits));
+}
+function statementAverageBalance(a,s,days,grace){
+  if(!days)return 0;const start=bDt(s.c.due);start.setDate(start.getDate()+1+grace);const end=bDt(today);let total=0,count=0;
+  for(const d=new Date(start);d<=end;d.setDate(d.getDate()+1)){total+=statementBalanceOn(a,s,iso(d));count++}
+  return count?total/count:0;
+}
+function estimateStatement(a,s){
+  if(!s)return{remaining:0,minRemaining:0,interest:0,lateFee:0,fees:0,total:0,status:'Unpaid',daysLate:0};
+  const remaining=Math.max(0,n2(s.due||0)),minRemaining=Math.max(0,n2((s.minimum||0)-Math.min(s.paid||0,s.minimum||0))),status=cardStatementStatus(s);
+  const daysLate=status=='Overdue'?Math.max(0,Math.round((bDt(today)-bDt(s.c.due))/864e5)):0,fees=s.feeConfig||cardFees(a);
+  const rate=Number.isFinite(+s.financeRate)?+s.financeRate:fees.financeRate,interestDays=Math.max(0,daysLate-fees.gracePeriodDays);
+  const purchases=(s.pur||[]).map(e=>e.t||e),cashTx=purchases.filter(t=>t.cashAdvance),cashPrincipal=cashTx.reduce((v,t)=>v+Math.max(0,-t.amt),0);
+  const cashRemaining=Math.min(remaining,cashPrincipal),purchaseRemaining=Math.max(0,remaining-cashRemaining);
+  const cashRate=Number.isFinite(+s.cashAdvanceRate)?+s.cashAdvanceRate:fees.cashAdvanceRate;
+  const principal=fees.interestMethod=='average-daily'?statementAverageBalance(a,s,interestDays,fees.gracePeriodDays):remaining;
+  const cashPrincipalNow=Math.min(principal,cashRemaining),purchasePrincipalNow=Math.max(0,principal-cashPrincipalNow),weighted= (purchasePrincipalNow*rate+cashPrincipalNow*cashRate)/100;
+  const periods=interestDays/30,interest=periods&&principal?n2(fees.compound=='monthly'?principal*(Math.pow(1+weighted/Math.max(principal,.01),periods)-1):weighted*periods):0;
+  const lateAlready=(S.tx||[]).some(t=>t.acct==a.id&&t.cardFee=='latePaymentFee'&&t.statementId==s.statementId);
+  const lateFee=daysLate&&!lateAlready?cardFeeAmount(s.lateFee||fees.latePaymentFee,remaining):0;
+  const over=Math.max(0,(+s.close||0)-(Number.isFinite(+s.limit)?+s.limit:(+a.lim||0))),overFee=over?cardFeeAmount(fees.overlimitFee,over):0;
+  const foreign=purchases.filter(t=>t.foreignCurrency&&!t.foreignFeeActual).reduce((v,t)=>v+(+t.foreignFeeEstimate||0),0);
+  const cashFee=cashTx.filter(t=>!t.cashAdvanceFeeActual).reduce((v,t)=>v+(+t.cashAdvanceFeeEstimate||0),0);
+  const estimatedFees=n2(lateFee+overFee+foreign+cashFee);
+  return{remaining,minRemaining,interest:n2(interest),lateFee,overFee,foreign:n2(foreign),cashFee:n2(cashFee),fees:estimatedFees,total:n2(remaining+interest+estimatedFees),status,daysLate,over};
+}
+function rawCycle(a,i){if(!a.stmt)return null;const t0=new Date(T.getFullYear(),T.getMonth(),T.getDate());let c=dd(T.getFullYear(),T.getMonth(),a.stmt);if(c<t0)c=dd(T.getFullYear(),T.getMonth()+1,a.stmt);
 const Y=c.getFullYear(),M=c.getMonth()-i,e=dd(Y,M,a.stmt),p=dd(Y,M-1,a.stmt);let u=null;
 if(a.dueN)u=new Date(e.getFullYear(),e.getMonth(),e.getDate()+a.dueN);else if(a.due){u=dd(e.getFullYear(),e.getMonth(),a.due);if(u<=e)u=dd(e.getFullYear(),e.getMonth()+1,a.due)}
 return{i,st:iso(new Date(p.getFullYear(),p.getMonth(),p.getDate()+1)),en:iso(e),pv:iso(p),due:u?iso(u):'',open:i==0}}
+function cyc(a,i){return cardCycles(a)[i]||null}
 const cev=a=>[...S.tx.filter(t=>t.acct==a.id).map(t=>({d:t.pd||t.d,o:-t.amt,t})),...S.xfer.filter(x=>x.to==a.id).map(x=>({d:x.d,o:-x.amt,x}))],
 balAt=(a,d)=>a.bal-sum(cev(a).filter(e=>e.d>d).map(e=>e.o));
-function cSum(a,i){const c=cyc(a,i);if(!c)return null;const all=cev(a),ev=all.filter(e=>e.d>=c.st&&e.d<=c.en).sort((x,y)=>y.d.localeCompare(x.d)),close=balAt(a,c.en);let paid=0;
-if(!c.open){const up=i<=1?today:cyc(a,i-1).en;paid=-sum(all.filter(e=>e.d>c.en&&e.d<=up&&e.o<0).map(e=>e.o))}
-return{c,pur:ev.filter(e=>e.t&&e.t.amt<0),pay:ev.filter(e=>e.x),cr:ev.filter(e=>e.t&&e.t.amt>0),close,open:balAt(a,c.pv),paid,due:c.open?null:Math.max(0,close-paid)}}
-function dueAmt(a){if(!a.stmt)return a.bal;for(const i of[1,0]){const s=cSum(a,i);if(!s||!s.c.due||s.c.due<today)continue;const v=i?s.due:Math.max(0,s.close);if(i&&!v)continue;return v}return a.bal}
+function cardCycles(a){
+  if(!a.stmt)return[];
+  const raw=[];for(let i=0;i<25;i++){const c=rawCycle(a,i);if(!c)break;raw.push(c)}
+  const hist=Array.isArray(a.statementHistory)?a.statementHistory:[],known=new Set(hist.map(x=>x.en)),latest=hist.slice().sort((x,y)=>y.en.localeCompare(x.en))[0];
+  const sameConfig=!latest||(latest.stmtDay==a.stmt&&latest.dueDay==a.due&&latest.dueN==a.dueN);
+  const generated=raw.slice(1).filter(c=>!known.has(c.en)&&(sameConfig||c.en>(latest&&latest.en||'')));
+  const saved=hist.slice().sort((x,y)=>y.en.localeCompare(x.en)).map(s=>({...s,open:false,snapshot:true}));
+  return[raw[0],...saved,...generated].slice(0,25);
+}
+function cSum(a,i){const cycles=cardCycles(a),c=cycles[i];if(!c)return null;const all=cev(a),ev=all.filter(x=>x.d>=c.st&&x.d<=c.en).sort((x,y)=>y.d.localeCompare(x.d));
+  let snap=c.snapshot?c:null,close=snap?snap.balance:n2(balAt(a,c.en)),opening=snap?snap.opening:n2(balAt(a,c.pv)),minimum=snap?snap.minimum:cardMinimum(a,close),key=`${a.id}:${c.en}`;
+  if(!c.open&&!snap){const fees=cardFees(a);snap={st:c.st,en:c.en,pv:c.pv,due:c.due,opening,balance:close,minimum,financeRate:fees.financeRate,cashAdvanceRate:fees.cashAdvanceRate,latePaymentFee:{...fees.latePaymentFee},feeConfig:JSON.parse(JSON.stringify(fees)),limit:+a.lim||0,stmtDay:a.stmt,dueDay:a.due,dueN:a.dueN};a.statementHistory=Array.isArray(a.statementHistory)?a.statementHistory:[];a.statementHistory=a.statementHistory.filter(x=>x.en!=snap.en).concat(snap).sort((x,y)=>y.en.localeCompare(x.en));if(!CARD_SNAPSHOT_BATCH)try{save()}catch(_){}}
+  const up=i<=1?today:(cycles[i-1]||{}).en||today;
+  const paidEvents=all.filter(e=>e.o<0&&(e.x&&e.x.statementId?e.x.statementId==key:e.d>c.en&&e.d<=up));
+  const paid=c.open?0:n2(-sum(paidEvents.map(e=>e.o)));
+  const statementPayments=[...new Map([...ev.filter(e=>e.x),...paidEvents.filter(e=>e.x)].map(e=>[e.x.id,e])).values()];
+  const due=c.open?null:Math.max(0,n2(close-paid));
+  const currentFees=cardFees(a);
+  const result={c,pur:ev.filter(e=>e.t&&e.t.amt<0),pay:statementPayments,cr:ev.filter(e=>e.t&&e.t.amt>0),close,open:opening,paid,due,minimum,financeRate:snap?snap.financeRate:currentFees.financeRate,cashAdvanceRate:snap?snap.cashAdvanceRate:currentFees.cashAdvanceRate,lateFee:snap?snap.latePaymentFee:currentFees.latePaymentFee,feeConfig:snap?snap.feeConfig:currentFees,limit:snap?snap.limit:(+a.lim||0),statementId:key};
+  result.status=cardStatementStatus(result);
+  return result;
+}
+function freezeCardStatements(a){if(!a||a.type!='credit')return;const cycles=cardCycles(a);CARD_SNAPSHOT_BATCH++;try{for(let i=1;i<cycles.length;i++)cSum(a,i)}finally{CARD_SNAPSHOT_BATCH--}}
+function dueAmt(a){if(!a.stmt)return a.bal;for(let i=1;i<25;i++){const s=cSum(a,i);if(!s)break;if(!s.c.due||s.c.due<today)continue;if(s.due>0)return s.due}return a.bal}
 /* ---- debit / e-wallet: transactions grouped per month */
 const DM={},mLbl=m=>new Date(m+'-01T00:00:00').toLocaleDateString('en-PH',{month:'long',year:'numeric'});
 function dMonths(id){const set=new Set([ym]);S.tx.filter(t=>t.acct==id).forEach(t=>set.add(t.d.slice(0,7)));return[...set].sort().reverse()}
@@ -499,22 +598,98 @@ function acctTxM(id){const ms=dMonths(id);if(!DM[id]||!ms.includes(DM[id]))DM[id
 return`<div class="eyebrow" style="margin:16px 0 6px">Transactions</div><div style="display:flex;gap:6px;align-items:center"><button class="pill" aria-label="Older month" onclick="dmStep(${id},1)">‹</button><select style="margin:0;flex:1;width:0;min-width:0" onchange="DM[${id}]=this.value;dmRef(${id})">${ms.map(m=>{return`<option value="${m}" ${DM[id]==m?'selected':''}>${mLbl(m)}</option>`}).join('')}</select><button class="pill" aria-label="Newer month" onclick="dmStep(${id},-1)">›</button></div><div id="dtx-${id}">${dmH(id)}</div>`}
 function dmStep(id,d){const ms=dMonths(id),i=ms.indexOf(DM[id]||ym)+d;if(i<0||i>=ms.length)return toast(d>0?'No older months':'No newer months');DM[id]=ms[i];const e=document.querySelector('#dtx-'+id);if(!e)return;const sel=e.previousElementSibling.querySelector('select');if(sel)sel.value=DM[id];dmRef(id)}
 function dmRef(id){const e=$('#dtx-'+id);e.innerHTML=dmH(id);e.classList.remove('pg');void e.offsetWidth;e.classList.add('pg')}
-function dmH(id){const m=DM[id]||ym,l=S.tx.filter(t=>t.acct==id&&t.d.startsWith(m)).sort((a,b)=>b.d.localeCompare(a.d)||b.id-a.id),
-out=-sum(l.filter(t=>t.amt<0).map(t=>t.amt)),inc=sum(l.filter(t=>t.amt>0).map(t=>t.amt)),pn=S.pend.filter(t=>t.acct==id).length;
+function dmH(id){const m=DM[id]||ym,txs=S.tx.filter(t=>t.acct==id&&t.d.startsWith(m)),xfs=S.xfer.filter(x=>(x.from==id||x.to==id)&&x.d.startsWith(m)).map(xfItem),l=[...txs,...xfs].sort((a,b)=>b.d.localeCompare(a.d)||b.id-a.id),
+ out=-sum(txs.filter(t=>t.amt<0).map(t=>t.amt)),inc=sum(txs.filter(t=>t.amt>0).map(t=>t.amt)),pn=S.pend.filter(t=>t.acct==id).length;
 const R=(k,v,c)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${k}</span><b class="${c||''}">${v}</b></div>`;
 if(!l.length)return`<p class="m" style="margin-top:10px">No transactions in ${mLbl(m)}.</p>`;
 const g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
-return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(acct(id).name)}</div>${R('Money Out',bv(php(out)),out?'r':'')}${R('Money In',bv(php(inc)),inc?'g':'')}${R('Net',bv((inc-out<0?'−':'+')+php(Math.abs(inc-out))))}${R('Transactions',l.length)}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
+return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(acct(id).name)}</div>${R('Money Out',bv(php(out)),out?'r':'')}${R('Money In',bv(php(inc)),inc?'g':'')}${R('Net',bv((inc-out<0?'−':'+')+php(Math.abs(inc-out))))}${R('Transactions',txs.length)}${xfs.length?R('Transfers',xfs.length):''}</div>`+Object.keys(g).sort().reverse().map(k=>{const tot=sum(g[k].map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),(tot<0?'−':'+')+php(Math.abs(tot)))}).join('')}
 function acctTx(id){const a=acct(id);if(a.type!='credit')return acctTxM(id);if(!a.stmt)return`<div class="eyebrow" style="margin:16px 0 6px">Billing cycles</div><p class="m" style="font-size:13px">Set this card’s statement closing date (⋯ › Rename / edit card) to view billing cycles.</p>${acctTx0(id)}`;
 return`<div class="eyebrow" style="margin:16px 0 6px">Transactions</div><select onchange="BC[${id}]=+this.value;billRef(${id})">${[0,1,2,3,4,5].map(i=>{const c=cyc(a,i);return`<option value="${i}" ${(BC[id]||0)==i?'selected':''}>${i?'Statement':'Current cycle'} · ${noteD(c.st)} – ${noteD(c.en)}</option>`}).join('')}</select><div id="bill-${id}">${billH(a)}</div>`}
 function billRef(id){const e=$('#bill-'+id);e.innerHTML=billH(acct(id));e.classList.remove('pg');void e.offsetWidth;e.classList.add('pg')}
-function billH(a){const i=BC[a.id]||0,s=cSum(a,i),c=s.c,pn=S.pend.filter(t=>t.acct==a.id),R=(l,v,k)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span class="m">${l}</span><b class="${k||''}">${v}</b></div>`,
-L=e=>e.t?rowT(e.t):`<div class="row"><div class="ico">💸</div><div class="f">Payment${e.x.from?' from '+esc(acct(e.x.from).name):''}<small>${noteD(e.x.d)}</small></div><b class="g">+${php(e.x.amt)}</b><button class="pill" onclick="sure(this,()=>delPay(${e.x.id}))">✕</button></div>`,
-G=(t,l)=>l.length?`<div class="eyebrow" style="margin:12px 0 4px">${t} · ${l.length}</div><div class="card" style="padding:2px 14px">${l.map(L).join('')}</div>`:'';
-return`<div class="card" style="margin-top:10px"><div class="cc-nm" style="font-weight:700;padding:0 0 6px">${esc(a.name)}</div>${R('Statement period',noteD(c.st)+' – '+noteD(c.en))}${R(c.open?'Balance so far':'Statement balance',bv(php(c.open?balAt(a,c.en):s.close)))}${R('Opening balance',bv(php(s.open)))}${R('Payment due date',c.due?noteD(c.due):'Not set')}${c.open?R('Amount due','Statement not closed yet','m'):R('Amount due',bv(php(s.due)),s.due?'r':'g')+(s.paid?R('Paid since closing',bv(php(s.paid)),'g'):'')}<button class="btn s" style="margin-top:8px" onclick="payCard(${a.id})">Record payment</button></div>${G('Posted purchases',s.pur)}${G('Payments',s.pay)}${G('Credits',s.cr)}${i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:'')}${s.pur.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>'}`}
-      function payCard(id,cycleIndex){const a=acct(id),i=cycleIndex==null?Math.max(1,BC[id]||0):cycleIndex,s=a.stmt?cSum(a,i):null,v=s?s.due:a.bal;openS(`<h2>Record payment · ${esc(a.name)}</h2><p class="m">Amount owed now ${bv(php(a.bal))}</p><input id="pa" type="number" min="0" step="0.01" value="${v||''}" placeholder="Amount (${CS()})"><select id="pf"><option value="0">Paid outside this app</option>${S.accts.filter(x=>x.type!='credit').map(x=>`<option value="${x.id}">${esc(x.name)} · ${bvTxt(php(x.bal))}</option>`).join('')}</select><input id="pdd" type="date" value="${today}"><input id="pc-note" maxlength="80" placeholder="Note (optional)"><button class="btn" onclick="payOk(${id})">Confirm payment</button> <button class="btn s" onclick="acctMenu(${id})">Cancel</button>`)}
-function payOk(id){const a=acct(id),m=+$('#pa').value,f=S.accts.find(z=>z.id==+$('#pf').value);if(!(m>0))return toast('Enter a payment amount');if(m>a.bal+.005)return toast('Payment is more than the amount owed');
-      S.xfer.push({id:uid(),d:$('#pdd').value||today,amt:m,from:f?f.id:0,to:id,due:(outstandingCardStatements().find(x=>x.a.id==id)||{}).due||"",note:(($('#pc-note')||{}).value||'').trim()});a.bal-=m;if(f)f.bal-=m;playPaymentConfirmation();render();acctMenu(id);toast('Payment recorded',true)}
+function billH(a){
+  const i=BC[a.id]||0,s=cSum(a,i),c=s.c,pn=S.pend.filter(t=>t.acct==a.id),calc=estimateStatement(a,s),
+    R=(l,v,k)=>`<div class="cc-sum-row"><span class="m">${l}</span><b class="${k||''}">${v}</b></div>`,
+    L=e=>e.t?rowT(e.t):`<div class="row"><div class="ico">💸</div><div class="f">Payment${e.x.from?' from '+esc(acct(e.x.from).name):''}<small>${noteD(e.x.d)}</small></div><b class="g">+${php(e.x.amt)}</b><button class="pill" onclick="sure(this,()=>delPay(${e.x.id}))">✕</button></div>`,
+    G=(t,l)=>l.length?`<div class="eyebrow" style="margin:12px 0 4px">${t} · ${l.length}</div><div class="card" style="padding:2px 14px">${l.map(L).join('')}</div>`:'',
+    stateClass=calc.status=='Paid'?'ok':calc.status=='Overdue'?'warn':'',feeTx=s.pur.filter(e=>(e.t||e).cardFee),purchaseTx=s.pur.filter(e=>!(e.t||e).cardFee),
+    lateRecorded=S.tx.some(t=>t.acct==a.id&&t.cardFee=='latePaymentFee'&&t.statementId==s.statementId),
+    overWarn=calc.over?`<div class="cc-fee-note warn"><b>Over limit by ${php(calc.over)}</b><span>Potential overlimit fee: ${feeLabel(cardFees(a).overlimitFee)}</span>${calc.overFee&&!S.tx.some(t=>t.acct==a.id&&t.cardFee=='overlimitFee'&&t.statementId==s.statementId)?`<button class="pill" onclick="recordCardFee(${a.id},'overlimitFee',${calc.overFee},'Overlimit fee','${s.statementId}')">Record as charged</button>`:''}</div>`:'',
+    estRows=(calc.interest?R('Estimated Interest',php(calc.interest),'warn'):'')+(calc.lateFee?R('Estimated Late Fee',php(calc.lateFee),'warn'):'')+(calc.overFee?R('Estimated Overlimit Charge',php(calc.overFee),'warn'):'')+(calc.foreign?R('Estimated FX Fees',php(calc.foreign),'warn'):'')+(calc.cashFee?R('Estimated Cash Advance Fee',php(calc.cashFee),'warn'):'');
+  return`<div class="card cc-statement" style="margin-top:10px"><div class="cc-statement-head"><b>${esc(a.nickname||a.name)}</b><span class="chip ${stateClass}">${calc.status}</span></div>`
+    +R('Statement period',noteD(c.st)+' – '+noteD(c.en))
+    +R(c.open?'Balance so far':'Statement balance',bv(php(s.close)))
+    +R('Opening balance',bv(php(s.open)))
+    +R('Payment due date',c.due?noteD(c.due):'Not set')
+    +R('Bill due amount',c.open?'Statement not closed yet':bv(php(s.due)),s.due?'r':'')
+    +R('Minimum due',bv(php(s.minimum)))
+    +R('Paid to date',bv(php(s.paid)),s.paid?'g':'')
+    +R('Remaining due',c.open?'—':bv(php(calc.remaining)),calc.remaining?'r':'g')
+    +(estRows?`<div class="cc-estimate"><div class="eyebrow">Estimated charges · not yet booked</div>${estRows}<small>Estimates only. Your bank may use a different method; these amounts are not added to your confirmed balance.</small>${calc.lateFee&&!lateRecorded?`<button class="pill" onclick="recordCardFee(${a.id},'latePaymentFee',${calc.lateFee},'Late payment fee','${s.statementId}')">Record late fee as charged</button>`:''}</div>`:'')
+    +overWarn
+     +`<div class="cc-statement-actions"><button class="btn" onclick="payCard(${a.id},${i})">Record Payment</button></div></div>`
+    +G('Posted purchases',purchaseTx.filter(t=>!t.cardFee))
+    +G('Card fees',feeTx)
+    +G('Payments',s.pay)
+    +G('Credits',s.cr)
+    +(i==0?G('Pending purchases · not in any statement',pn.map(t=>({t}))):(pn.length?`<p class="m" style="font-size:12px">${pn.length} pending purchase${pn.length>1?'s':''} not included — shown in the current cycle until posted.</p>`:''))
+    +(purchaseTx.length+feeTx.length+s.pay.length+s.cr.length?'':'<p class="m">No activity in this cycle.</p>');
+}
+function payCard(id,cycleIndex){
+  const a=acct(id);if(!a||a.type!='credit')return;
+  delete CARD_PAY_LOCK[id];
+  let i=cycleIndex==null?Math.max(1,BC[id]||0):+cycleIndex,s=a.stmt?cSum(a,i):null;
+  if(s&&s.c.open){i=1;s=cSum(a,1)}
+  if(s&&!s.c.open&&s.due<=.005){s=null;i=0}
+  const calc=s?estimateStatement(a,s):null,remain=calc?calc.remaining:+a.bal||0;
+  const min=calc?s.minimum:cardMinimum(a,remain),due=s&&s.c.due?s.c.due:nextCardDue(a),sid=s?s.statementId:'';
+  const sources=cardPaymentSources();
+  CPC[id]={i,statementId:sid,due};
+  const R=(label,value)=>`<div class="cp-summary-row"><span>${label}</span><b>${value}</b></div>`;
+  const latest=`<div class="card cp-latest"><div class="eyebrow">Your Latest Bill</div>${R('Card balance',bv(php(a.bal)))}${s?R('Statement balance',bv(php(s.close))):''}${R('Bill due amount',bv(php(remain)))}${R('Minimum due',bv(php(min)))}${R('Paid to date',bv(php(s?s.paid:0)))}${R('Remaining due',bv(php(remain)))}${R('Due date',due?noteD(due):'Not set')}</div>`;
+  const sourceControl=sources.length?`<select id="pf" aria-label="Payment source">${sources.map((x,i)=>`<option value="${x.id}" ${i==0?'selected':''}>${esc(x.name)} · ${cardPaymentSourceType(x)}${x.l4?' · •• '+esc(x.l4):''}</option>`).join('')}</select>`:`<div class="cp-no-source" role="status">No payment accounts available. Add a debit, bank, or e-wallet account first.</div>`;
+  navS(`<div class="sh-h"><h2>Record Payment · ${esc(a.nickname||a.name)}</h2></div>
+    <p class="m cp-sub">Choose a saved payment account. The card payment is linked to that source and is not counted as new spending.</p>
+    <div class="cp-owed"><span>Amount owed now</span><b>${bv(php(a.bal))}</b></div>
+    <label class="m" for="pa">Payment amount</label>
+    <div class="cp-entry"><span>${esc(CS())}</span><input id="pa" type="number" min="0.01" step="0.01" inputmode="decimal" value="${remain||''}" placeholder="0.00" oninput="syncCardPayment(${id})"></div>
+    <div class="cp-total"><span>You’ll pay</span><strong id="cp-total">${php(remain)}</strong></div>
+    <div id="cp-feedback" class="cp-feedback" aria-live="polite"></div>
+    <label class="m" for="pf">Payment source</label>
+    ${sourceControl}
+    ${latest}
+    <label class="m" for="pdd">Payment date</label><input id="pdd" type="date" value="${today}">
+    <input id="pc-note" maxlength="80" placeholder="Note (optional)">
+    <button class="btn cp-confirm" id="cc-pay-confirm" ${sources.length?'':'disabled'} onclick="payOk(${id})">Confirm Payment</button>
+    <button class="btn s" style="width:100%;margin-top:8px" onclick="acctMenu(${id})">Cancel</button>`, 'card-pay-'+id,{keep:1});
+  setTimeout(()=>syncCardPayment(id),260);
+}
+function syncCardPayment(id){
+  const ctx=CPC[id],a=acct(id),input=$('#pa'),total=$('#cp-total'),box=$('#cp-feedback');if(!ctx||!a||!input||!total||!box)return;
+  const amount=+input.value||0,s=ctx.statementId?cSum(a,ctx.i):null,calc=s?estimateStatement(a,s):null,remaining=calc?calc.remaining:+a.bal||0,min=calc?calc.minRemaining:cardMinimum(a,remaining);
+  total.textContent=php(amount);
+  let state='empty',heading='Enter an amount to preview this payment.',detail='';
+  if(amount>0){if(amount>=remaining-.005){state='full';heading='🎉 Paying the full bill';detail='This covers the remaining amount due on this statement.'}
+    else if(amount<min-.005){state='below';heading='Below minimum';detail=`This is below the minimum payment of ${php(min)}. You may still record it, but the bill will remain below minimum.`}
+    else if(Math.abs(amount-min)<.005){state='minimum';heading='Minimum payment';detail='This meets the minimum due. The remaining bill will stay unpaid.'}
+    else{state='partial';heading='Partial payment';detail=`${php(Math.max(0,remaining-amount))} will remain due after this payment.`}}
+  box.className='cp-feedback '+state;box.innerHTML=`<b>${heading}</b>${detail?`<small>${detail}</small>`:''}`;
+}
+function payOk(id,allowAllocationOverrun=false){
+  if(CARD_PAY_LOCK[id])return;
+  const a=acct(id),m=+($('#pa')||{}).value||0,ctx=CPC[id]||{},sources=cardPaymentSources(),f=sources.find(z=>z.id==+($('#pf')||{}).value);
+  if(!a||!(m>0))return toast('Enter a payment amount');
+  if(!f)return toast('No payment accounts available. Add a debit, bank, or e-wallet account first.');
+  if(m>a.bal+.005)return toast('Payment is more than the amount owed');
+  if(m>f.bal+.005)return toast('Payment is more than the selected account balance');
+  if(!allowAllocationOverrun){const allocated=sum(S.goals.filter(g=>+g.accountId==+f.id).map(g=>+g.saved||0));if(f.bal-m<allocated-.005)return confirmBox('This may use goal savings',`${f.name} would have ${php(Math.max(0,f.bal-m))} left while ${php(allocated)} is allocated to goals. Continue with this card payment?`,()=>payOk(id,true),'Continue')}
+  const payDate=$('#pdd').value||today;
+  CARD_PAY_LOCK[id]=true;const confirm=$('#cc-pay-confirm');if(confirm)confirm.disabled=true;
+  /* One linked transfer is the source-side record and the card payment. It updates both
+     balances but is deliberately not inserted into S.tx, so it never counts as spending. */
+  const paymentId=uid();S.xfer.push({id:paymentId,linkId:paymentId,paymentId,d:payDate,amt:m,from:f.id,to:id,due:ctx.due||'',statementId:ctx.statementId||'',kind:'card-payment',note:(($('#pc-note')||{}).value||'').trim()});
+  a.bal-=m;f.bal-=m;save();playPaymentConfirmation();showPaymentSuccess(a.nickname||a.name,php(m));render();acctMenu(id);toast('Payment recorded',true);
+}
 function delPay(id){const x=S.xfer.find(z=>z.id==id);if(!x)return;const c=S.accts.find(z=>z.id==x.to),f=S.accts.find(z=>z.id==x.from);if(c)c.bal+=x.amt;if(f)f.bal+=x.amt;S.xfer=S.xfer.filter(z=>z.id!=id);render();acctMenu(x.to);toast('Payment removed')}
 
 /* ---- bill payment history + undo ------------------------------------------
@@ -587,11 +762,11 @@ function unpayBillAsk(id){
   confirmBox('Mark this payment as unpaid?',b.name+' · '+php(last.amt)+' · '+noteD(last.d),()=>{undoBillPayment(b,last.tx,last.due);closeS();render();toast('Bill marked unpaid')});
 }
 /* ---- card menu (rename / edit hidden behind ⋯) */
-function acctMenu(id){const a=acct(id),cr=a.type=='credit';openS(`<div style="display:flex;justify-content:flex-end;position:relative;margin-bottom:6px"><button class="pill" aria-label="Card options" aria-haspopup="menu" onclick="event.stopPropagation();kebab()">⋯</button><div id="km" class="menu" role="menu"><button role="menuitem" onclick="kebab(1);showEd()">✎ Rename / edit card</button></div></div>${cardH(a,1,1)}${acctTx(id)}<div id="edc" style="display:none"><h2 style="margin:22px 0 8px">Edit · ${esc(a.name)}</h2><label class="m">Card name</label><input id="cnm" maxlength="40" value="${esc(a.name)}"><label class="m">${cr?'Amount owed':'Balance'}</label><input id="nb" type="number" value="${a.bal}"><label class="m">Last 4 digits</label><input id="l4e" maxlength="4" value="${esc(a.l4||'')}" placeholder="Optional">${cr?`<label class="m">Credit limit</label><input id="cl" type="number" value="${a.lim||''}" placeholder="Not set">${dpick('sd','Statement closing date',a.stmt)}${dueBox(a)}`:''}<button class="btn" onclick="saveCard(${id})">Save</button> <button class="btn s" onclick="sure(this,()=>{S.accts=S.accts.filter(x=>x.id!=${id});closeS();render()})">Remove</button></div>`)}
+function acctMenu(id){const a=acct(id),cr=a.type=='credit';openS(`<div style="display:flex;justify-content:flex-end;position:relative;margin-bottom:6px"><button class="pill" aria-label="Card options" aria-haspopup="menu" onclick="event.stopPropagation();kebab()">⋯</button><div id="km" class="menu" role="menu"><button role="menuitem" onclick="kebab(1);cardSettings(${id})">Card overview &amp; fees</button><button role="menuitem" onclick="kebab(1);${cr?`cardAbout(${id})`:`debitAbout(${id})`}">✎ Rename / edit card</button></div></div>${cardH(a,1,1)}${!cr?savingsInterestSummary(a):''}${acctTx(id)}<div id="edc" style="display:none"><h2 style="margin:22px 0 8px">Edit · ${a.name}</h2><label class="m">Card name</label><input id="cnm" maxlength="40" value="${esc(a.name)}"><label class="m">${cr?'Amount owed':'Balance'}</label><input id="nb" type="number" value="${a.bal}"><label class="m">Last 4 digits</label><input id="l4e" maxlength="4" value="${esc(a.l4||'')}" placeholder="Optional">${cr?`<label class="m">Credit limit</label><input id="cl" type="number" value="${a.lim||''}" placeholder="Not set">${dpick('sd','Statement closing date',a.stmt)}${dueBox(a)}`:interestSettingsMarkup(a,'si')}<button class="btn" onclick="saveCard(${id})">Save</button> <button class="btn s" onclick="sure(this,()=>{S.accts=S.accts.filter(x=>x.id!=${id});closeS();render()})">Remove</button></div>`)}
 function kebab(c){const m=$('#km');if(m)m.classList.toggle('open',!c&&!m.classList.contains('open'))}
 function showEd(){const e=$('#edc');e.style.display='block';e.classList.add('pg');e.scrollIntoView({behavior:'smooth',block:'start'})}
-function saveCard(id){const c=S.accts.find(x=>x.id==id);if(!c)return;const n=$('#cnm').value.trim(),b=+$('#nb').value;if(!n)return toast('Card name can’t be empty');if(!Number.isFinite(b))return toast('Enter a valid balance');
-c.name=n;c.bal=b;c.l4=$('#l4e').value.replace(/\D/g,'');if($('#cl'))c.lim=+$('#cl').value||0;if($('#sd')){c.stmt=+$('#sd').value||0;Object.assign(c,dueVals())}closeS();render();toast('Card updated')}
+function saveCard(id,allowOveralloc=false){const c=S.accts.find(x=>x.id==id);if(!c)return;const n=$('#cnm').value.trim(),b=+$('#nb').value;if(!n)return toast('Card name can’t be empty');if(!Number.isFinite(b)||b<0)return toast('Enter a valid balance');if(c.type!='credit'&&!allowOveralloc){const allocated=sum(S.goals.filter(g=>+g.accountId==+id).map(g=>+g.saved||0));if(b<allocated-.005)return confirmBox('Balance below goal allocations',`This account has ${php(allocated)} allocated to goals, but the new balance is ${php(b)}. Save and flag the difference for review?`,()=>saveCard(id,true),'Save anyway')}
+c.name=n;c.bal=b;c.l4=$('#l4e').value.replace(/\D/g,'');if($('#cl'))c.lim=+$('#cl').value||0;if($('#sd')){c.stmt=+$('#sd').value||0;Object.assign(c,dueVals())}if(c.type!='credit'&&$('#si-enabled')){const on=$('#si-enabled').value=='1',rate=+$('#si-rate').value;if(on&&(!Number.isFinite(rate)||rate<0||rate>100))return toast('Enter a valid annual interest rate');const was=!!c.interestEnabled;c.interestEnabled=on;if(on){c.interestRate=rate;c.interestCalc='daily';c.interestCreditFreq=$('#si-credit-freq').value;c.interestOtherDays=Math.max(1,Math.min(365,+$('#si-other-days').value||30));c.interestSimulation=$('#si-simulate').checked;c.goalInterestMode=$('#si-goal-mode').value;c.interestGoalId=+$('#si-goal-id').value||0;if(!was)c.interestLastCredited=today}else{c.interestSimulation=false}}save();closeS();render();toast('Account updated')}
 /* ---- bills: choose payment account */
 function billAcct(id){const b=S.bills.find(x=>x.id==id);if(!b)return;if(!S.accts.length)return toast('Add an account first');openS(`<h2>Pay ${esc(b.name)} with</h2><select id="bpa">${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)} · ${a.type=='credit'?'Credit card':a.type=='ewallet'?'E-wallet':'Bank account'}</option>`).join('')}</select><p class="m" style="font-size:12px">Used when you record the payment — that account’s balance updates then, not before.</p><button class="btn" onclick="billAcctOk(${id})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
 function billAcctOk(id){const b=S.bills.find(x=>x.id==id);if(b)b.acct=+$('#bpa').value;closeS();render();toast('Payment account saved')}

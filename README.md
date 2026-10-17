@@ -42,6 +42,17 @@ Long-press an account card to flip it and see recent transactions for that accou
 
 <p align="center"><sub>Account cards · shown with the app’s sample data.</sub></p>
 
+## Explore demo history
+
+Choose a sample backup to explore:
+
+- [Six-month demo](assets/demo/six-months-demo.json) — **166 fictional transactions** across three accounts, dated May–October 2026.
+- [14-month demo](assets/demo/fourteen-months-demo.json) — **726 fictional transactions** from September 2025 to October 17, 2026, across nine accounts: three debit cards, a GCash wallet, and five credit cards, including Maya Black, MariBank Credit, and UnionBank. It also includes card payments, budgets, bills, subscriptions, a free trial, goals, and debts.
+
+To add a demo alongside your own accounts, export a backup first, then choose **Merge** in **Settings → Import & Export**; the demo accounts and history are added without replacing your balances. For a clean demo-only view, use a separate browser profile and choose **Replace everything**. Cap saves a restore point before replacing data; use **Undo last import** in Backup & Restore to restore the previous data.
+
+<p><strong>Demo data only:</strong> the names, accounts, and amounts in this file are fictional.</p>
+
 ## Private by design
 
 In a regular browser, Cap saves financial data on your device and does not require an account. Optional cloud sync is available only in compatible host environments; without one, Cap remains local-only.

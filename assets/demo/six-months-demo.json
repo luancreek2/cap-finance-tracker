@@ -1,0 +1,1566 @@
+{
+  "app": "cap-finance-tracker",
+  "version": "1.01",
+  "exported": "2026-10-17T12:00:00.000Z",
+  "data": {
+    "_mt": 0,
+    "name": "Cap Demo",
+    "cur": "PHP",
+    "dec": 1,
+    "snd": 1,
+    "accts": [
+      {
+        "id": 1001,
+        "bank": "BDO",
+        "name": "BDO Everyday",
+        "type": "debit",
+        "net": "mc",
+        "img": "bdomc",
+        "g": [
+          "#25499a",
+          "#3481c9"
+        ],
+        "bal": 263450,
+        "l4": "1001"
+      },
+      {
+        "id": 1002,
+        "bank": "GCash",
+        "name": "GCash Wallet",
+        "type": "ewallet",
+        "net": "visa",
+        "img": "gcashg",
+        "g": [
+          "#0b2a7a",
+          "#2f6fe0"
+        ],
+        "bal": 8450,
+        "l4": "2002"
+      },
+      {
+        "id": 1003,
+        "bank": "UnionBank",
+        "name": "UnionBank Credit",
+        "type": "credit",
+        "net": "visa",
+        "g": [
+          "#f29b23",
+          "#d35d19"
+        ],
+        "bal": 22150,
+        "lim": 80000,
+        "stmt": 24,
+        "dueN": 20,
+        "l4": "3003"
+      }
+    ],
+    "tx": [
+      {
+        "id": 20001,
+        "d": "2026-05-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20017,
+        "d": "2026-05-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20010,
+        "d": "2026-05-03",
+        "amt": -1850,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20013,
+        "d": "2026-05-04",
+        "amt": -420,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20002,
+        "d": "2026-05-05",
+        "amt": 32000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20018,
+        "d": "2026-05-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20025,
+        "d": "2026-05-07",
+        "amt": -1350,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20027,
+        "d": "2026-05-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20019,
+        "d": "2026-05-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20003,
+        "d": "2026-05-10",
+        "amt": -2150,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20014,
+        "d": "2026-05-11",
+        "amt": -680,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20011,
+        "d": "2026-05-12",
+        "amt": -2420,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20020,
+        "d": "2026-05-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20004,
+        "d": "2026-05-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20005,
+        "d": "2026-05-15",
+        "amt": -950,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20021,
+        "d": "2026-05-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20006,
+        "d": "2026-05-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 20015,
+        "d": "2026-05-18",
+        "amt": -540,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 20028,
+        "d": "2026-05-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 20007,
+        "d": "2026-05-20",
+        "amt": 32000,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20022,
+        "d": "2026-05-21",
+        "amt": -195,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20026,
+        "d": "2026-05-22",
+        "amt": -2250,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Household supplies"
+      },
+      {
+        "id": 20008,
+        "d": "2026-05-23",
+        "amt": -520,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 20012,
+        "d": "2026-05-23",
+        "amt": -1740,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 20016,
+        "d": "2026-05-25",
+        "amt": -790,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 20023,
+        "d": "2026-05-26",
+        "amt": -130,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20029,
+        "d": "2026-05-27",
+        "amt": -1180,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Movie night"
+      },
+      {
+        "id": 20009,
+        "d": "2026-05-28",
+        "amt": 5200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 20024,
+        "d": "2026-05-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20030,
+        "d": "2026-05-30",
+        "amt": 250,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet cashback"
+      },
+      {
+        "id": 20031,
+        "d": "2026-06-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20047,
+        "d": "2026-06-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20040,
+        "d": "2026-06-03",
+        "amt": -1895,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20043,
+        "d": "2026-06-04",
+        "amt": -428,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20032,
+        "d": "2026-06-05",
+        "amt": 32350,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20048,
+        "d": "2026-06-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20055,
+        "d": "2026-06-07",
+        "amt": -1390,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20057,
+        "d": "2026-06-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20049,
+        "d": "2026-06-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20033,
+        "d": "2026-06-10",
+        "amt": -2205,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20044,
+        "d": "2026-06-11",
+        "amt": -688,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20041,
+        "d": "2026-06-12",
+        "amt": -2385,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20050,
+        "d": "2026-06-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20034,
+        "d": "2026-06-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20035,
+        "d": "2026-06-15",
+        "amt": -980,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20051,
+        "d": "2026-06-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20036,
+        "d": "2026-06-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 20045,
+        "d": "2026-06-18",
+        "amt": -548,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 20058,
+        "d": "2026-06-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 20037,
+        "d": "2026-06-20",
+        "amt": 32350,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20052,
+        "d": "2026-06-21",
+        "amt": -195,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20056,
+        "d": "2026-06-22",
+        "amt": -2190,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Household supplies"
+      },
+      {
+        "id": 20038,
+        "d": "2026-06-23",
+        "amt": -520,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 20042,
+        "d": "2026-06-23",
+        "amt": -1765,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 20046,
+        "d": "2026-06-25",
+        "amt": -798,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 20053,
+        "d": "2026-06-26",
+        "amt": -130,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20059,
+        "d": "2026-06-27",
+        "amt": -1205,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Movie night"
+      },
+      {
+        "id": 20039,
+        "d": "2026-06-28",
+        "amt": 5450,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 20054,
+        "d": "2026-06-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20060,
+        "d": "2026-06-30",
+        "amt": 250,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet cashback"
+      },
+      {
+        "id": 20061,
+        "d": "2026-07-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20077,
+        "d": "2026-07-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20070,
+        "d": "2026-07-03",
+        "amt": -1940,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20073,
+        "d": "2026-07-04",
+        "amt": -436,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20062,
+        "d": "2026-07-05",
+        "amt": 32700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20078,
+        "d": "2026-07-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20085,
+        "d": "2026-07-07",
+        "amt": -1430,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20087,
+        "d": "2026-07-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20079,
+        "d": "2026-07-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20063,
+        "d": "2026-07-10",
+        "amt": -2260,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20074,
+        "d": "2026-07-11",
+        "amt": -696,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20071,
+        "d": "2026-07-12",
+        "amt": -2350,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20080,
+        "d": "2026-07-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20064,
+        "d": "2026-07-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20065,
+        "d": "2026-07-15",
+        "amt": -1010,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20081,
+        "d": "2026-07-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20066,
+        "d": "2026-07-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 20075,
+        "d": "2026-07-18",
+        "amt": -556,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 20088,
+        "d": "2026-07-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 20067,
+        "d": "2026-07-20",
+        "amt": 32700,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20082,
+        "d": "2026-07-21",
+        "amt": -195,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20086,
+        "d": "2026-07-22",
+        "amt": -2130,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Household supplies"
+      },
+      {
+        "id": 20068,
+        "d": "2026-07-23",
+        "amt": -520,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 20072,
+        "d": "2026-07-23",
+        "amt": -1790,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 20076,
+        "d": "2026-07-25",
+        "amt": -806,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 20083,
+        "d": "2026-07-26",
+        "amt": -130,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20089,
+        "d": "2026-07-27",
+        "amt": -1230,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Movie night"
+      },
+      {
+        "id": 20069,
+        "d": "2026-07-28",
+        "amt": 5700,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 20084,
+        "d": "2026-07-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20090,
+        "d": "2026-07-30",
+        "amt": 250,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet cashback"
+      },
+      {
+        "id": 20091,
+        "d": "2026-08-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20107,
+        "d": "2026-08-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20100,
+        "d": "2026-08-03",
+        "amt": -1985,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20103,
+        "d": "2026-08-04",
+        "amt": -444,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20092,
+        "d": "2026-08-05",
+        "amt": 33050,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20108,
+        "d": "2026-08-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20115,
+        "d": "2026-08-07",
+        "amt": -1470,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20117,
+        "d": "2026-08-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20109,
+        "d": "2026-08-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20093,
+        "d": "2026-08-10",
+        "amt": -2315,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20104,
+        "d": "2026-08-11",
+        "amt": -704,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20101,
+        "d": "2026-08-12",
+        "amt": -2315,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20110,
+        "d": "2026-08-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20094,
+        "d": "2026-08-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20095,
+        "d": "2026-08-15",
+        "amt": -1040,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20111,
+        "d": "2026-08-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20096,
+        "d": "2026-08-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 20105,
+        "d": "2026-08-18",
+        "amt": -564,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 20118,
+        "d": "2026-08-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 20097,
+        "d": "2026-08-20",
+        "amt": 33050,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20112,
+        "d": "2026-08-21",
+        "amt": -195,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20116,
+        "d": "2026-08-22",
+        "amt": -2070,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Household supplies"
+      },
+      {
+        "id": 20098,
+        "d": "2026-08-23",
+        "amt": -520,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 20102,
+        "d": "2026-08-23",
+        "amt": -1815,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 20106,
+        "d": "2026-08-25",
+        "amt": -814,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 20113,
+        "d": "2026-08-26",
+        "amt": -130,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20119,
+        "d": "2026-08-27",
+        "amt": -1255,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Movie night"
+      },
+      {
+        "id": 20099,
+        "d": "2026-08-28",
+        "amt": 5950,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 20114,
+        "d": "2026-08-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20120,
+        "d": "2026-08-30",
+        "amt": 250,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet cashback"
+      },
+      {
+        "id": 20121,
+        "d": "2026-09-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20137,
+        "d": "2026-09-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20130,
+        "d": "2026-09-03",
+        "amt": -2030,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20133,
+        "d": "2026-09-04",
+        "amt": -452,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20122,
+        "d": "2026-09-05",
+        "amt": 33400,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20138,
+        "d": "2026-09-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20145,
+        "d": "2026-09-07",
+        "amt": -1510,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20147,
+        "d": "2026-09-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20139,
+        "d": "2026-09-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20123,
+        "d": "2026-09-10",
+        "amt": -2370,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20134,
+        "d": "2026-09-11",
+        "amt": -712,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20131,
+        "d": "2026-09-12",
+        "amt": -2280,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20140,
+        "d": "2026-09-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20124,
+        "d": "2026-09-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20125,
+        "d": "2026-09-15",
+        "amt": -1070,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20141,
+        "d": "2026-09-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20126,
+        "d": "2026-09-18",
+        "amt": -1599,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Home internet"
+      },
+      {
+        "id": 20135,
+        "d": "2026-09-18",
+        "amt": -572,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Dinner out"
+      },
+      {
+        "id": 20148,
+        "d": "2026-09-19",
+        "amt": -279,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Video subscription"
+      },
+      {
+        "id": 20127,
+        "d": "2026-09-20",
+        "amt": 33400,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20142,
+        "d": "2026-09-21",
+        "amt": -195,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20146,
+        "d": "2026-09-22",
+        "amt": -2010,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Household supplies"
+      },
+      {
+        "id": 20128,
+        "d": "2026-09-23",
+        "amt": -520,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Water bill"
+      },
+      {
+        "id": 20132,
+        "d": "2026-09-23",
+        "amt": -1840,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Fresh produce"
+      },
+      {
+        "id": 20136,
+        "d": "2026-09-25",
+        "amt": -822,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Weekend meal"
+      },
+      {
+        "id": 20143,
+        "d": "2026-09-26",
+        "amt": -130,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20149,
+        "d": "2026-09-27",
+        "amt": -1280,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Movie night"
+      },
+      {
+        "id": 20129,
+        "d": "2026-09-28",
+        "amt": 6200,
+        "cat": "Other",
+        "acct": 1001,
+        "note": "Freelance project"
+      },
+      {
+        "id": 20144,
+        "d": "2026-09-30",
+        "amt": -160,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20150,
+        "d": "2026-09-30",
+        "amt": 250,
+        "cat": "Other",
+        "acct": 1002,
+        "note": "Wallet cashback"
+      },
+      {
+        "id": 20151,
+        "d": "2026-10-01",
+        "amt": -14500,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Apartment rent"
+      },
+      {
+        "id": 20160,
+        "d": "2026-10-02",
+        "amt": -95,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      },
+      {
+        "id": 20156,
+        "d": "2026-10-03",
+        "amt": -2075,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Market groceries"
+      },
+      {
+        "id": 20158,
+        "d": "2026-10-04",
+        "amt": -460,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Coffee & pastry"
+      },
+      {
+        "id": 20152,
+        "d": "2026-10-05",
+        "amt": 33750,
+        "cat": "Salary",
+        "acct": 1001,
+        "note": "Paycheck"
+      },
+      {
+        "id": 20161,
+        "d": "2026-10-06",
+        "amt": -180,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20165,
+        "d": "2026-10-07",
+        "amt": -1550,
+        "cat": "Shopping",
+        "acct": 1003,
+        "note": "Online marketplace"
+      },
+      {
+        "id": 20166,
+        "d": "2026-10-08",
+        "amt": -199,
+        "cat": "Entertainment",
+        "acct": 1003,
+        "note": "Music subscription"
+      },
+      {
+        "id": 20162,
+        "d": "2026-10-09",
+        "amt": -120,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Train fare"
+      },
+      {
+        "id": 20153,
+        "d": "2026-10-10",
+        "amt": -2425,
+        "cat": "Bills",
+        "acct": 1001,
+        "note": "Electric bill"
+      },
+      {
+        "id": 20159,
+        "d": "2026-10-11",
+        "amt": -720,
+        "cat": "Food",
+        "acct": 1002,
+        "note": "Lunch with friends"
+      },
+      {
+        "id": 20157,
+        "d": "2026-10-12",
+        "amt": -2245,
+        "cat": "Groceries",
+        "acct": 1001,
+        "note": "Weekly groceries"
+      },
+      {
+        "id": 20163,
+        "d": "2026-10-13",
+        "amt": -145,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Ride share"
+      },
+      {
+        "id": 20154,
+        "d": "2026-10-14",
+        "amt": -899,
+        "cat": "Bills",
+        "acct": 1002,
+        "note": "Mobile plan"
+      },
+      {
+        "id": 20155,
+        "d": "2026-10-15",
+        "amt": -1100,
+        "cat": "Health",
+        "acct": 1001,
+        "note": "Pharmacy"
+      },
+      {
+        "id": 20164,
+        "d": "2026-10-16",
+        "amt": -100,
+        "cat": "Transport",
+        "acct": 1002,
+        "note": "Jeepney fare"
+      }
+    ],
+    "pend": [],
+    "xfer": [],
+    "bills": [
+      {
+        "id": 3001,
+        "name": "Apartment rent",
+        "amt": 14500,
+        "due": 1,
+        "freq": "monthly",
+        "start": "2026-05-01",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2026-05-01",
+          "2026-06-01",
+          "2026-07-01",
+          "2026-08-01",
+          "2026-09-01",
+          "2026-10-01"
+        ]
+      },
+      {
+        "id": 3002,
+        "name": "Electric bill",
+        "amt": 2150,
+        "due": 10,
+        "freq": "monthly",
+        "start": "2026-05-10",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2026-05-10",
+          "2026-06-10",
+          "2026-07-10",
+          "2026-08-10",
+          "2026-09-10",
+          "2026-10-10"
+        ]
+      },
+      {
+        "id": 3003,
+        "name": "Home internet",
+        "amt": 1599,
+        "due": 18,
+        "freq": "monthly",
+        "start": "2026-05-18",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2026-05-18",
+          "2026-06-18",
+          "2026-07-18",
+          "2026-08-18",
+          "2026-09-18"
+        ]
+      },
+      {
+        "id": 3004,
+        "name": "Water bill",
+        "amt": 520,
+        "due": 23,
+        "freq": "monthly",
+        "start": "2026-05-23",
+        "acct": 1001,
+        "cat": "Bills",
+        "paidOn": [
+          "2026-05-23",
+          "2026-06-23",
+          "2026-07-23",
+          "2026-08-23",
+          "2026-09-23"
+        ]
+      },
+      {
+        "id": 3005,
+        "name": "Mobile plan",
+        "amt": 899,
+        "due": 14,
+        "freq": "monthly",
+        "start": "2026-05-14",
+        "acct": 1002,
+        "cat": "Bills",
+        "paidOn": [
+          "2026-05-14",
+          "2026-06-14",
+          "2026-07-14",
+          "2026-08-14",
+          "2026-09-14",
+          "2026-10-14"
+        ]
+      },
+      {
+        "id": 3006,
+        "name": "Music subscription",
+        "amt": 199,
+        "due": 8,
+        "freq": "monthly",
+        "start": "2026-05-08",
+        "acct": 1003,
+        "cat": "Entertainment",
+        "paidOn": [
+          "2026-05-08",
+          "2026-06-08",
+          "2026-07-08",
+          "2026-08-08",
+          "2026-09-08",
+          "2026-10-08"
+        ]
+      },
+      {
+        "id": 3007,
+        "name": "Video subscription",
+        "amt": 279,
+        "due": 19,
+        "freq": "monthly",
+        "start": "2026-05-19",
+        "acct": 1003,
+        "cat": "Entertainment",
+        "paidOn": [
+          "2026-05-19",
+          "2026-06-19",
+          "2026-07-19",
+          "2026-08-19",
+          "2026-09-19"
+        ]
+      },
+      {
+        "id": 3008,
+        "name": "Cloud Plus free trial",
+        "amt": 299,
+        "due": 29,
+        "freq": "monthly",
+        "start": "2026-10-29",
+        "acct": 1003,
+        "cat": "Entertainment",
+        "isFreeTrial": true,
+        "trialStartDate": "2026-10-01",
+        "trialEndDate": "2026-10-29",
+        "firstBillingDate": "2026-10-29",
+        "priceAfterTrial": 299
+      }
+    ],
+    "budgets": {
+      "Food": 8500,
+      "Groceries": 10500,
+      "Transport": 4500,
+      "Shopping": 9000,
+      "Entertainment": 3500,
+      "Health": 2500,
+      "Bills": 21000
+    },
+    "goals": [
+      {
+        "id": 4001,
+        "name": "Emergency fund",
+        "icon": "🛟",
+        "target": 150000,
+        "saved": 64500
+      },
+      {
+        "id": 4002,
+        "name": "Weekend getaway",
+        "icon": "🌴",
+        "target": 45000,
+        "saved": 18500
+      }
+    ],
+    "debts": [
+      {
+        "id": 5001,
+        "who": "Sam",
+        "note": "Trip tickets split",
+        "amt": 2400,
+        "dir": "in",
+        "due": "2026-11-05"
+      }
+    ],
+    "notes": "Demo data only — fictional transactions from May through October 17, 2026.\nUse this backup in a separate profile or replace only after exporting your own backup."
+  }
+}
