@@ -422,11 +422,14 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       };
       let S,
         tab = "Home",
+        navTab = "",
         filt = "All",
+        actTab = "",
         q = "",
         cm = 0,
         sel = "",
         pt = "Upcoming",
+        planTab = "",
         rg = "1M",
         goalIndex = 0,
         goalTouchX = null,
@@ -672,7 +675,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         return next;
       }
       function acctBackHtml(a, art, on) {
-        const kind = a.type === "credit" ? "Credit" : a.type === "ewallet" ? "E-wallet" : "Debit";
+        const kind = a.img === "cash" ? "Cash" : a.type === "credit" ? "Credit" : a.type === "ewallet" ? "E-wallet" : "Debit";
         const recent = (S.tx || [])
           .filter((t) => String(t.acct) === String(a.id) && !(S.pend || []).some((p) => p.id == t.id) && t.d <= today)
           .sort((x, y) => y.d.localeCompare(x.d) || (+y.id || 0) - (+x.id || 0))
@@ -715,7 +718,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
             ? `<div class="pb"><b style="width:${Math.max(used, 2)}%"></b></div><div class="pr"><span>${used}% used</span><span>Limit ${bv(php(lim))}</span></div>`
             : "";
         if (art) {
-          const front = `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}</div>`;
+          const front = `<div class="cc art${det ? " detail" : ""}${a.img == "securitydebit" ? " lt" : a.img == "unionplay" ? " lt ltt" : ""}" style="background-image:url(${art})${a.photo ? ';background-size:cover' : ''}" ${oc}>${a.bank == "GCash" && !a.photo ? '<img class="gl" alt="GCash" src="assets/media/media-c556353f406c.png">' : ""}<div class="tr">${a.img == "cash" ? "CASH" : cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}</div>`;
           return full && !det ? accountCardMarkup(a, art, front) : front;
         }
         const n =
@@ -731,13 +734,17 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         applyHide();
         ensureCats();
         $("#tabs").innerHTML = ["Home", "Activity", "Plan", "Accounts"]
-          .map(
-            (t) =>
-              `<button class="${t == tab ? "on" : ""}" onclick="tab='${t}';trendM=null;${t == "Plan" ? "pt='Upcoming';" : ""}render()">${t}</button>`,
-          )
+          .map((t) => {
+            const on = t == tab,
+              pop = on && navTab && navTab !== tab;
+            return `<button class="${on ? "on" : ""}${pop ? " pop" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render()">${t}</button>`;
+          })
           .join("");
+        navTab = tab;
         $("#app").innerHTML = { Home, Activity, Plan, Accounts, Notes }[tab]();
         initAccountCarousels();
+        spendReelInit();
+        if(typeof animateNetBalance==='function')animateNetBalance();
         pageAnim();
         save();
       }
@@ -830,8 +837,8 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         return `<div class="eyebrow">${T.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}</div><div class="m">${greet()},</div><h1>${esc(S.name || "Your money")}</h1>
 <p class="m">You spent <b class="bv" style="color:var(--tx)">${php(td)}</b> today.${due.length ? ` <b style="color:var(--tx)">${due.length} bill${due.length > 1 ? "s" : ""}</b> coming up soon.` : ""}</p>
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
-<div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g bv">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r bv">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"} bv">${php(inc - out)}</b></div></div>
-  <div class="grid" style="margin-top:14px"><div>${spendingChart()}</div>
+<div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g bv home-balance-stat" data-home-stat="${inc}" data-stat-prefix="+">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r bv home-balance-stat" data-home-stat="${out}">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"} bv home-balance-stat" data-home-stat="${inc-out}">${php(inc - out)}</b></div></div>
+  <div class="grid home-spend-grid" style="margin-top:14px"><div style="min-width:0">${spendingChart()}</div>
 <div><div class="card"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${bv(php(spent(c) - S.budgets[c]))}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
 <div class="card"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map(upRow).join("")}</div></div></div>`;
       }
@@ -848,7 +855,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         if (!CH) return;
         const w = $("#chw");
         if (!w) return;
-        const r = w.getBoundingClientRect(),
+         const r = w.getBoundingClientRect(),
           f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
           i = Math.round(f * (CH.N - 1)),
           v = CH.pts[i],
@@ -897,8 +904,9 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           i = Math.round(f * (CH.N - 1)),
           v = CH.pts[i],
           dy = i ? v - CH.pts[i - 1] : 0,
-          x = (i / (CH.N - 1)) * 100,
-          yy = (CH.Y(v) / 180) * 100;
+           x = (i / (CH.N - 1)) * 100,
+           yy = (CH.Y(v) / 180) * 100,
+           changed = CH.hoverIndex !== i;
         w.classList.add("t");
         $("#chl").style.cssText = `display:block;left:${x}%;top:${yy}%`;
         $("#chd").style.cssText = `display:block;left:${x}%;top:${yy}%`;
@@ -908,17 +916,22 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         const t = $("#cht");
         t.style.display = "block";
         t.textContent = CH.labs[i];
-        $("#chv").textContent = php(v);
-        const c = $("#chc");
-        c.className = !dy ? "m" : dy > 0 ? "g" : "r";
-        c.innerHTML = dy
-          ? `${dy > 0 ? "\u2197 +" : "\u2198 "}${bv(php(dy))}${CH.nm[i] ? " · " + esc(CH.nm[i]) : ""}`
-          : i
-            ? "No change"
-            : "Start of range";
+        if(changed){
+          CH.hoverIndex=i;
+          $("#chv").textContent = php(v);
+          const c = $("#chc");
+          c.className = !dy ? "m ch-change neutral live" : dy > 0 ? "g ch-change up live" : "r ch-change down live";
+          c.innerHTML = dy
+            ? `<span class="ch-change-arrow" aria-hidden="true"></span><span class="ch-change-copy">${dy > 0 ? "+" : ""}${bv(`<span data-ch-hover-delta="${dy}">${php(dy)}</span>`)}${CH.nm[i] ? " · " + esc(CH.nm[i]) : ""}</span>`
+            : i
+              ? "No change"
+              : "Start of range";
+          if(dy&&typeof animateNetHoverChange==='function')animateNetHoverChange(c,dy);
+        }
       }
       function chUp() {
         if (!CH) return;
+        CH.hoverIndex=-1;
         const w = $("#chw");
         if (w) w.classList.remove("t");
         ["#chl", "#chd", "#chn", "#cht"].forEach((s) => {
@@ -929,7 +942,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           c = $("#chc");
         if (v) v.textContent = CH.top;
         if (c) {
-          c.className = CH.cls;
+          c.className = `${CH.cls} ch-change ${CH.delta >= 0 ? "up" : "down"}`;
           c.innerHTML = CH.sub;
         }
       }
@@ -996,9 +1009,9 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
             YTD: "this year",
             "1Y": "in 1 year",
           }[r],
-          sub = `${dl >= 0 ? "\u2197 +" : "\u2198 "}${bv(php(dl))} ${ph}`,
+          sub = `<span class="ch-change-arrow" aria-hidden="true"></span><span class="ch-change-copy">${dl >= 0 ? "+" : ""}${bv(`<span data-ch-delta="${dl}">${php(dl)}</span>`)} ${ph}</span>`,
           cls = dl >= 0 ? "g" : "r";
-        CH = { N: N2, pts, labs, nm, Y, top: php(nn), sub, cls };
+        CH = { N: N2, pts, labs, nm, Y, top: php(nn), sub, cls, delta: dl, hoverIndex: -1 };
         const dots = false
           ? pts
               .map((v, i) =>
@@ -1036,9 +1049,9 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
                 `<span class="ylb" style="top:${(y / 180) * 100}%">${bv(php(Math.round(mn + ((168 - y) / 144) * (mx - mn))))}</span>`,
             )
             .join("");
-        return `<div><div class="eyebrow">Net balance</div><div style="display:flex;align-items:center;gap:2px"><div class="big bv" id="chv">${php(nn)}</div>${bvEye()}</div><div class="${cls}" id="chc" style="font-size:13px">${sub}</div></div>
-<div class="rts">${R.map((x) => `<button class="rt ${x == r ? "on" : ""}" onclick="rg='${x}';render()">${x}</button>`).join("")}</div>
-<div id="chw" class="ch" style="position:relative;height:180px;touch-action:pan-y;cursor:crosshair;user-select:none;-webkit-user-select:none;border-bottom:1px solid var(--mut)" onpointermove="chMove(event)" onpointerdown="chMove(event)" onpointerup="chUp()" onpointerleave="chUp()" onpointercancel="chUp()"><svg viewBox="0 0 600 180" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".35"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>${hl}${vl}<path d="${ln} L600 180 L0 180Z" fill="url(#ag)"/><path d="${ln}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>${yl}${dots}<i id="chl" class="cl"></i><i id="chd" class="cd s"></i><span id="chn" class="cv"></span><span id="cht" class="cdt"></span></div>
+        return `<div><div class="eyebrow">Net balance</div><div class="ch-balance-row" style="display:flex;align-items:center;gap:2px"><div class="big bv ch-balance" id="chv" data-ch-balance="${nn}">${php(nn)}</div>${bvEye()}</div><div class="${cls} ch-change ${dl >= 0 ? "up" : "down"}" id="chc" style="font-size:13px">${sub}</div></div>
+<div class="rts ch-ranges">${R.map((x) => `<button class="rt ch-range ${x == r ? "on" : ""}" onclick="rg='${x}';render()">${x}</button>`).join("")}</div>
+<div id="chw" class="ch" style="position:relative;height:180px;touch-action:pan-y;cursor:crosshair;user-select:none;-webkit-user-select:none;border-bottom:1px solid var(--mut)" onpointermove="chMove(event)" onpointerdown="chMove(event)" onpointerup="chUp()" onpointerleave="chUp()" onpointercancel="chUp()"><svg viewBox="0 0 600 180" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".35"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient><filter id="chGlow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${hl}${vl}<path class="ch-area" d="${ln} L600 180 L0 180Z" fill="url(#ag)"/><path class="ch-line-base" d="${ln}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><path class="ch-line" d="${ln}" pathLength="1" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><path class="ch-sweep" d="${ln}" pathLength="1" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke" filter="url(#chGlow)"/></svg>${yl}${dots}<i id="chl" class="cl"></i><i id="chd" class="cd s"></i><span id="chn" class="cv"></span><span id="cht" class="cdt"></span></div>
 <div class="xl" style="position:relative;height:18px;margin-top:4px">${xl}</div><div class="m" style="margin-top:8px;font-size:12px">Cash & e-wallets ${bv(php(cash))} · Credit owed ${bv(php(owed))}</div>`;
       }
       function netChartOld3(cash, owed) {
@@ -1368,7 +1381,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
             .slice(0, mx)
             .map(
               (x, j) =>
-                `<span class="ap ${x[0]}" onclick="event.stopPropagation();evDetail('${k}',${j})">${x[1]}</span>`,
+                `<span class="ap ${x[0]}" onclick="calendarEventPopup(event,'${k}',${j})">${x[1]}</span>`,
             )
             .join(
               "",
@@ -1385,7 +1398,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           )
           .join(
             "",
-          )}${sel ? `<span>Showing ${new Date(sel + "T00:00:00").toLocaleDateString("en-PH", { month: "short", day: "numeric" })} · <a href="#" onclick="sel='';render();return false">clear</a></span>` : ""}</p></div>`;
+          )}</p></div>`;
       }
       function calOld() {
         const f = new Date(T.getFullYear(), T.getMonth() + cm, 1),
@@ -1431,7 +1444,9 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
                 : pt == "Notes"
                   ? Notes2()
                   : Debts();
-        return `<h1>Plan</h1><p style="display:flex;gap:6px;overflow:auto">${["Upcoming", "Budgets", "Goals", "Debts", "Notes"].map((t) => `<button class="pill ${t == pt ? "on" : ""}" style="flex:1" onclick="pt='${t}';render()">${t}</button>`).join("")}</p>${body}`;
+        const pop = planTab && planTab !== pt;
+        planTab = pt;
+        return `<h1>Plan</h1><p class="plan-tabs" style="display:flex;gap:6px">${["Upcoming", "Budgets", "Goals", "Debts", "Notes"].map((t) => `<button class="pill ${t == pt ? "on" : ""}${t == pt && pop ? " pop" : ""}" style="flex:1" onclick="pt='${t}';render()">${t}</button>`).join("")}</p>${body}`;
       }
       /* Cloud sync + offline persistence live in the #cap-offline module (CapOff). */
       async function dbInit() {
@@ -1573,7 +1588,8 @@ const XBR=[
  {r:'\\bsss\\b|social security',s:_bd('#0B3D91',_tx('SSS',8.5,'#fff',13.5)+'<rect x="5" y="16" width="14" height="2" rx="1" fill="#F5C518"/>')},
  {r:'pag-?ibig|hdmf',s:_bd('#D71920',_tx('PI',10,'#fff',16)+'<rect x="6" y="18" width="12" height="1.6" rx=".8" fill="#FFD100"/>')},
  {r:'philhealth',s:_bd('#00A651',_tx('+',17,'#fff',18))},
- {r:'maynilad|manila water',s:_bd('#0A8FD6',_em('💧'))},
+  {r:'maynilad|manila water',s:_bd('#0A8FD6',_em('💧'))},
+  {r:'\\bwater\\b',s:_bd('#168BD2','<path d="M12 4C9.4 8 6.5 11.1 6.5 14.8a5.5 5.5 0 0 0 11 0C17.5 11.1 14.6 8 12 4Z" fill="#fff"/><path d="M9.5 15.5c.3 1.4 1.1 2 2.5 2.2" fill="none" stroke="#168BD2" stroke-width="1.2" stroke-linecap="round"/>')},
  {r:'\\bglobe\\b',s:_bd('#1E5AFF','<circle cx="12" cy="12" r="6.5" fill="none" stroke="#fff" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="2.8" ry="6.5" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M5.5 12h13" stroke="#fff" stroke-width="1.2"/>')},
  {r:'\\bsmart\\b|converge|\\bdito\\b',s:_bd('#16A34A',_em('📶'))},
  {r:'gcash|g-cash',s:_bd('#0070E0',_tx('G',15,'#fff',17.5))},
@@ -1605,7 +1621,7 @@ const XBR=[
 ];
 XBR.forEach(b=>b.re=new RegExp(b.r,'i'));
 const xb=s=>{s=String(s||'');const b=XBR.find(x=>x.re.test(s));return b?b.s:''};
-const bnd=s=>bi(s)||xb(s);
+const bnd=s=>xb(s)||bi(s);
 
 /* mini credit-card logos that mimic each card's real artwork */
 const _cd=(id,a,b)=>`<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs>`;
@@ -1617,6 +1633,10 @@ function cardLogo(a){
   const nm=String(a.name),bk=String(a.bank||''),id='cl'+(nm+bk).replace(/[^a-z0-9]/gi,'').slice(0,18),W='<svg viewBox="0 0 40 26" class="xcl" aria-hidden="true">',E='</svg>';
   if(/maya/i.test(nm+bk)&&/black|visa|platinum|credit/i.test(nm))
     return W+_cd(id,'#3b3b3d','#070708')+`<pattern id="${id}d" width="2.4" height="2.4" patternUnits="userSpaceOnUse"><circle cx="1.2" cy="1.2" r=".55" fill="#fff" fill-opacity=".16"/></pattern><rect width="40" height="26" rx="4.5" fill="url(#${id})"/><rect width="40" height="26" rx="4.5" fill="url(#${id}d)"/><text x="4.5" y="8.6" font-family="-apple-system,system-ui,Arial,sans-serif" font-weight="700" font-size="6.6" fill="#fff">maya</text>${_chip(4.5,11,'#c4c7cc')}${_visa(35.5,22,5.4)}`+E;
+  if(/gcash/i.test(nm+bk))
+    return W+_cd(id,'#0876E8','#0646A8')+`<rect width="40" height="26" rx="4.5" fill="url(#${id})"/><path d="M0 21c9-5 22-6 40-1v6H0z" fill="#fff" fill-opacity=".12"/><text x="4.5" y="9" font-family="-apple-system,system-ui,Arial,sans-serif" font-weight="800" font-size="6.2" fill="#fff">GCash</text>${_chip(4.5,12,'#d6e5ee')}${_visa(35.5,22,5.4)}`+E;
+  if(/\bbdo\b/i.test(nm+bk))
+    return W+_cd(id,'#064A9B','#002B68')+`<rect width="40" height="26" rx="4.5" fill="url(#${id})"/><path d="M0 20c10-5 24-6 40-1v7H0z" fill="#fff" fill-opacity=".12"/><text x="4.5" y="9" font-family="-apple-system,system-ui,Arial,sans-serif" font-weight="900" font-size="6.5" fill="#FFD500">BDO</text>${_chip(4.5,12,'#e5c979')}${a.net==='visa'?_visa(35.5,22,5.4):a.net==='mc'?_mc(30,20.2,3,'#eb001b','#f79e1b'):''}`+E;
   if(/mari/i.test(nm+bk))
     return W+_cd(id,'#f26522','#ff9a5c')+`<rect width="40" height="26" rx="4.5" fill="url(#${id})"/><path d="M18 26c3-9 12-12 22-9v9z" fill="#fff" fill-opacity=".22"/><circle cx="7.2" cy="7.2" r="3.4" fill="none" stroke="#fff" stroke-width="1"/><text x="7.2" y="9" text-anchor="middle" font-family="-apple-system,system-ui,Arial,sans-serif" font-weight="800" font-size="4.6" fill="#fff">M</text><text x="12.2" y="8.6" font-family="-apple-system,system-ui,Arial,sans-serif" font-weight="800" font-size="5" fill="#fff">MariBank</text>${_chip(4.5,12,'#e3c176')}${_mc(29,20.2,3,'#eb001b','#f79e1b')}`+E;
   const g=a.g||['#3a3a3c','#6b6b70'],net=a.net,init=(bk||nm).replace(/[^A-Za-z0-9]/g,'').slice(0,4);
@@ -1751,6 +1771,13 @@ function navS(html,key,opts){
   window._navBusy=1;
   window._nt=setTimeout(commit,SV_OUT);
 }
+function billKind(b){
+  const kind=String(b&&b.kind||'').toLowerCase();
+  if(kind==='bill'||kind==='subscription')return kind;
+  const cat=String(b&&b.cat||'').toLowerCase();
+  if(isTrial(b)||b&&b.subscriptionStatus||cat==='entertainment'||cat==='subscription'||cat==='subscriptions')return 'subscription';
+  return 'bill';
+}
 function editBillSheet(id){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
   const nd=bIso(nextDue(b)),fq=b.freq||'monthly',pays=billPayments(b),last=pays[0];
@@ -1771,7 +1798,7 @@ function editBillSheet(id){
   const hint=trial?`No charge until ${fbY} — then ${php(b.amt)}${subFreqTail(b)}, ${subFreqWord(b)}`
     :gone?`Nothing is scheduled and no further renewals will be made.`
     :`Next due ${bDt(nd).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}`;
-  navS(`<div class="sh-h"><h2>Edit bill</h2>${subChip(b)}</div>${trialCard}<label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">${T&&pre?'Price after trial':'Amount'} (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}">${trialStart}<label class="m">${pre?'First billing date':'Due date'}</label><input id="eb-d" type="date" value="${dsh}" data-o="${dsh}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">${hint}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):`<div class="empty"><div class="e-ic">🧾</div><p class="m">${trial?'No charge yet — the free trial ends '+noteD(subFirstBill(b))+'.':'No payments recorded yet.'}</p></div>`}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}${trialActions}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id},this)">Save changes</button></div>`,'bill'+id);
+  navS(`<div class="sh-h"><h2>Edit bill</h2>${subChip(b)}</div>${trialCard}<label class="m">Name</label><input id="eb-n" maxlength="60" value="${esc(b.name)}"><label class="m">Category</label><select id="eb-kind"><option value="bill" ${billKind(b)==="bill"?"selected":""}>Bill</option><option value="subscription" ${billKind(b)==="subscription"?"selected":""}>Subscription</option></select><label class="m">${T&&pre?'Price after trial':'Amount'} (${CS()})</label><input id="eb-a" type="number" inputmode="decimal" step="0.01" min="0" value="${b.amt}">${trialStart}<label class="m">${pre?'First billing date':'Due date'}</label><input id="eb-d" type="date" value="${dsh}" data-o="${dsh}"><label class="m">Repeats</label><select id="eb-r">${Object.keys(BF).map(k=>`<option value="${k}" ${fq==k?'selected':''}>${k=='once'?'Never (one-time)':BF[k]}</option>`).join('')}</select><p class="hint">${hint}</p><label class="m">Pay from</label><select id="eb-p" aria-label="Pay from"><option value="0">Choose later</option>${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)}</option>`).join('')}</select><div class="logo-row"><span class="ico">${bIc(b)}</span><span class="f"><b>Logo</b><small>${b.logo?'Your uploaded logo':'Automatic, from the bill name'}</small></span><label class="pill" style="cursor:pointer">${b.logo?'Replace':'Upload'}<input type="file" accept="image/*" hidden onchange="billLogo(${id},this)"></label>${b.logo?`<button class="pill" onclick="billNoLogo(${id})">Remove</button>`:''}</div><div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml(last,{bill:b}):`<div class="empty"><div class="e-ic">🧾</div><p class="m">${trial?'No charge yet — the free trial ends '+noteD(subFirstBill(b))+'.':'No payments recorded yet.'}</p></div>`}<button class="ph-row" onclick="billHistory(${id})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button>${paidNow(b)?`<button class="btn s" style="margin-top:10px;width:100%" onclick="unpayBillAsk(${id})">Mark as unpaid</button>`:''}${trialActions}<button class="btn s danger-t" style="margin-top:10px;width:100%" onclick="delBillAsk(${id})">Delete bill</button><div class="sf"><button class="btn s" onclick="closeS()">Cancel</button><button class="btn" onclick="saveBillEdit(${id},this)">Save changes</button></div>`,'bill'+id);
 }
 /* ---- payment history: year filter + month groups (shared by bills and cards) ---- */
 const PH={},PHC={};
@@ -1800,32 +1827,49 @@ function phSwap(box,html){
   svGlide(sb,paint,220);
 }
 function billHistBody(b){
-  return payHistHtml(billPayments(b).map(p=>({d:p.d,amt:p.amt,acct:p.acct,acctName:p.acctName,due:p.due,logoHtml:bIc(b,'🧾'),onclick:`payDetail(${p.tx.id})`})),{year:PH[b.id],fn:'phY',id:b.id});
+  return payHistHtml(billPayments(b).map(p=>({d:p.d,amt:p.amt,acct:p.acct,acctName:p.acctName,due:p.due,logoHtml:bIc(b,'🧾'),onclick:`payDetail(${p.tx.id},'billHistory(${b.id})')`})),{year:PH[b.id],fn:'phY',id:b.id});
 }
 function phY(id,y){PH[id]=+y;phSwap($('#ph-body'),billHistBody(S.bills.find(x=>x.id==id)))}
 function cardHistBody(a){
   return payHistHtml(S.xfer.filter(x=>x.to==a.id).sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.id-x.id)
-    .map(x=>({d:x.d,amt:x.amt,acct:x.from,due:x.due||'',logoHtml:cardLogo(a),onclick:`cardPayDetail(${x.id},${a.id})`})),{year:PHC[a.id],fn:'phcY',id:a.id});
+    .map(x=>({d:x.d,amt:x.amt,acct:x.from,due:x.due||'',logoHtml:cardLogo(a),onclick:`cardPayDetail(${x.id},${a.id},'cardPaymentHistory(${a.id})')`})),{year:PHC[a.id],fn:'phcY',id:a.id});
 }
 function phcY(id,y){PHC[id]=+y;phSwap($('#ph-body'),cardHistBody(acct(id)))}
-function billBack(id){return `<button class="btn s" style="margin-top:10px;width:100%" onclick="editBillSheet(${id})">‹ Back to bill</button>`}
-function billHistory(id){
-  const b=S.bills.find(x=>x.id==id);if(!b)return;
-  const pays=billPayments(b),head=`<div class="sh-h"><button class="pill" aria-label="Back to bill" onclick="editBillSheet(${id})">‹</button><h2>Payment history</h2></div><p class="m ph-sub">${esc(b.name)}</p>`;
-  if(!pays.length)return navS(head+'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'+billBack(id),'hist'+id,{keep:1});
-  navS(head+`<div id="ph-body">${billHistBody(b)}</div>`+(paidNow(b)?`<button class="btn s" style="margin-top:14px;width:100%" onclick="unpayBillAsk(${id})">Mark the latest payment as unpaid</button>`:'')+billBack(id),'hist'+id,{keep:1});
+function paymentHistoryCount(kind,id){
+  if(kind==='card')return S.xfer.filter(x=>x.to==id).length;
+  const b=S.bills.find(x=>x.id==id);return b?billPayments(b).length:0;
 }
-function payDetail(txId){
+function openPaymentHistory(kind,id,backAction){
+  const pop=document.getElementById('calendar-event-popup');
+  if(pop&&window.closeCalendarEventPopup)window.closeCalendarEventPopup(true);
+  if(kind==='card')cardPaymentHistory(id,backAction);else billHistory(id,backAction);
+}
+function billBack(id){return `<button class="btn s" style="margin-top:10px;width:100%" onclick="editBillSheet(${id})">‹ Back to bill</button>`}
+function billHistory(id,backAction){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  const back=backAction||`editBillSheet(${id})`,pays=billPayments(b),head=`<div class="sh-h"><button class="pill" aria-label="Back" onclick="${back}">‹</button><h2>Payment history</h2></div><p class="m ph-sub">${esc(b.name)}</p>`;
+  if(!pays.length)return navS(head+'<div class="empty"><div class="e-ic">🧾</div><p class="m">No payments recorded yet.</p></div>'+`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back</button>`,'hist'+id,{keep:1});
+  navS(head+`<div id="ph-body">${billHistBody(b)}</div>`+(paidNow(b)?`<button class="btn s" style="margin-top:14px;width:100%" onclick="unpayBillAsk(${id})">Mark the latest payment as unpaid</button>`:'')+`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back</button>`,'hist'+id,{keep:1});
+}
+function cardPaymentHistory(cid,backAction){
+  const a=S.accts.find(x=>x.id==cid);if(!a)return;
+  const pays=S.xfer.filter(x=>x.to==cid).sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.id-x.id);
+  const back=backAction||`cardPayInfo(${cid})`,head=`<div class="sh-h"><button class="pill" aria-label="Back" onclick="${back}">‹</button><h2>Payment history</h2></div><p class="m ph-sub">${esc(a.nickname||a.name)}</p>`;
+  if(!pays.length)return navS(head+'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'+`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back</button>`,'cardhist'+cid,{keep:1});
+  navS(head+`<div id="ph-body">${cardHistBody(a)}</div><button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back</button>`,'cardhist'+cid,{keep:1});
+}
+function payDetail(txId,backAction){
   const t=S.tx.find(x=>x.id==txId);if(!t)return;
   const bill=billForTx(t),due=bill?billDueShown(bill,t):(t.billDue||''),n=payDiff(due,t.d);
-  const paidName=t.note||(bill?bill.name:t.cat),renamed=bill&&t.note&&t.note!==bill.name,back=bill?`billHistory(${bill.id})`:'closeS()';
+  const paidName=t.note||(bill?bill.name:t.cat),renamed=bill&&t.note&&t.note!==bill.name,back=backAction||'closeS()';
   const R=(l,v)=>`<div class="pd-r"><span class="m">${l}</span><b>${v}</b></div>`;
   navS(`<div class="sh-h"><button class="pill" aria-label="Back" onclick="${back}">‹</button><h2>Payment details</h2></div>`
-    +`<div class="pd-hero"><div class="pd-h"><span class="ico">${bill?bIc(bill,'🧾'):'🧾'}</span><div class="pd-tt"><b>${esc(paidName)}</b><small>${esc(t.cat)}${renamed?` · now called ${esc(bill.name)}`:''}</small></div></div><div class="pd-amt"><span class="pd-v">${php(Math.abs(t.amt))}</span><span class="chip ok">✓ Paid</span></div>${n==null?'':`<div class="pd-tm"><span class="chip ${n<0?'warn':'ok'}">${payTimingLabel(n)}</span></div>`}</div>`
+    +`<div class="pd-hero"><div class="pd-h"><span class="ico">${bill?bIc(bill,'🧾'):'🧾'}</span><div class="pd-tt"><b>${esc(paidName)}</b><small>Bill Payment${renamed?` · now called ${esc(bill.name)}`:''}</small></div></div><div class="pd-amt"><span class="pd-v">${php(Math.abs(t.amt))}</span><span class="chip ok paid-chip"><svg class="paid-checkmark" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3.2 3.2L13 4.5"/></svg>Paid</span></div>${n==null?'':`<div class="pd-tm"><span class="chip ${n<0?'warn':'ok'}">${payTimingLabel(n)}</span></div>`}</div>`
     +`<div class="card" style="margin:0 0 12px">${R('Paid on',noteD(t.d))}${due?R('Original due date',noteD(due)):''}${R('Paid with',paySrcHtml(t.acct,t.acctName))}${t.desc?R('Note',esc(t.desc)):''}</div>`
+    +(bill?`<button class="ph-row" onclick="billHistory(${bill.id},'payDetail(${t.id})')"><span>Payment history</span><span class="ph-n">${paymentHistoryCount('bill',bill.id)} ›</span></button>`:'')
     +`<button class="btn s" style="width:100%" onclick="editTx(${t.id})">Open in Activity</button>`
     +`${bill?`<button class="btn s dng" onclick="unpayFromDetail(${bill.id},${t.id})">Mark as unpaid</button>`:''}`
-    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="${back}">‹ Back to payments</button>`,'pd'+t.id);
+     ,'pd'+t.id);
 }
 function unpayFromDetail(bid,tid){
   const b=S.bills.find(x=>x.id==bid),t=S.tx.find(x=>x.id==tid);
@@ -1834,12 +1878,13 @@ function unpayFromDetail(bid,tid){
 }
 function saveBillEdit(id,btn){
   const b=S.bills.find(x=>x.id==id);if(!b)return;
-  const n=$('#eb-n').value.trim(),a=parseFloat($('#eb-a').value),dEl=$('#eb-d'),f=$('#eb-r').value;
+  const n=$('#eb-n').value.trim(),a=parseFloat($('#eb-a').value),dEl=$('#eb-d'),f=$('#eb-r').value,kind=isTrial(b)?'subscription':($('#eb-kind')||{}).value;
   if(!n)return toast('Enter a name');
   if(!(a>=0))return toast('Enter a valid amount');
+  if(kind!='bill'&&kind!='subscription')return toast('Choose Bills or Subscriptions');
   const dateChanged=dEl.value&&dEl.value!==dEl.dataset.o,freqChanged=f!==(b.freq||'monthly');
   const before=subStatus(b);
-  b.name=n;b.amt=a;b.acct=+$('#eb-p').value||0;
+  b.name=n;b.amt=a;b.acct=+$('#eb-p').value||0;b.kind=kind;
   if(isTrial(b)){
     b.priceAfterTrial=a;                                   /* the trial always quotes the post-trial price */
     if(before!='active'){
@@ -1886,19 +1931,19 @@ function billLogo(id,inp){const b=S.bills.find(x=>x.id==id);if(!b)return;imgPick
 function billNoLogo(id){const b=S.bills.find(x=>x.id==id);if(!b)return;delete b.logo;save();render();editBillSheet(id);toast('Logo removed')}
 function cardPayInfo(cid){
   const a=S.accts.find(x=>x.id==cid);if(!a)return;
-  const open=outstandingCardStatements().find(x=>x.a.id==cid),latest=a.stmt?cSum(a,1):null,calc=latest?estimateStatement(a,latest):null,nd=open?bDt(open.due):nextCardDue(a),amount=latest&&latest.due>0?latest.due:dueAmt(a),R=(l,v,k)=>`<div class="cc-sum-row"><span class="m">${l}</span><b class="${k||''}" style="text-align:right">${v}</b></div>`;
-  const pays=S.xfer.filter(x=>x.to==cid);
-   navS(`<div class="sh-h"><h2>${esc(a.nickname||a.name)} · Credit Card</h2></div><p class="m" style="font-size:13px">Review your latest bill, payment status, and card payment history.</p><div class="card cc-latest-summary" style="margin:0 0 12px"><div class="eyebrow">Your Latest Bill</div>${R('Card balance',bv(php(a.bal)))}${latest?R('Statement period',noteD(latest.c.st)+' – '+noteD(latest.c.en)):''}${latest?R('Statement balance',bv(php(latest.close))):''}${R('Bill due amount',bv(php(amount)))}${R('Minimum due',bv(php(latest?latest.minimum:cardMinimum(a,amount))))}${R('Paid to date',bv(php(latest?latest.paid:0)))}${R('Remaining due',bv(php(calc?calc.remaining:amount)),calc&&calc.remaining?'r':'g')}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}${R('Payment status',calc?calc.status:'Unpaid')}${calc&&calc.interest?R('Estimated Interest · not booked',bv(php(calc.interest))):''}${calc&&calc.fees?R('Estimated Fees · not booked',bv(php(calc.fees))):''}</div>${amount>0?`<button class="btn" onclick="payCard(${a.id},1)">Record Payment</button> `:''}${pays.length?`<div id="ph-body">${cardHistBody(a)}</div>`:'<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>'}<button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
+   const open=outstandingCardStatements().find(x=>x.a.id==cid),latest=a.stmt?cSum(a,1):null,calc=latest?estimateStatement(a,latest):null,nd=open?bDt(open.due):nextCardDue(a),amount=latest&&latest.due>0?latest.due:dueAmt(a),R=(l,v,k)=>`<div class="cc-sum-row"><span class="m">${l}</span><b class="${k||''}" style="text-align:right">${v}</b></div>`,pays=S.xfer.filter(x=>x.to==cid).sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.id-x.id),last=pays[0];
+     navS(`<div class="sh-h"><h2>${esc(a.nickname||a.name)} · Credit Card</h2></div><p class="m" style="font-size:13px">Review your latest bill, payment status, and card payment history.</p><div class="card cc-latest-summary" style="margin:0 0 12px"><div class="eyebrow">Your Latest Bill</div>${R('Card balance',bv(php(a.bal)))}${latest?R('Statement period',noteD(latest.c.st)+' – '+noteD(latest.c.en)):''}${latest?R('Statement balance',bv(php(latest.close))):''}${R('Bill due amount',bv(php(amount)))}${R('Minimum due',bv(php(latest?latest.minimum:cardMinimum(a,amount))))}${R('Paid to date',bv(php(latest?latest.paid:0)))}${R('Remaining due',bv(php(calc?calc.remaining:amount)),calc&&calc.remaining?'r':'g')}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}${R('Payment status',calc?calc.status:'Unpaid')}${calc&&calc.interest?R('Estimated Interest · not booked',bv(php(calc.interest))):''}${calc&&calc.fees?R('Estimated Fees · not booked',bv(php(calc.fees))):''}</div>${amount>0?`<button class="btn" onclick="payCard(${a.id},1)">Record Payment</button> `:''}<div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml({d:last.d,amt:last.amt,acct:last.from,due:last.due||'',logoHtml:cardLogo(a),onclick:`cardPayDetail(${last.id},${a.id},'cardPayInfo(${a.id})')`}):`<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>`}<button class="ph-row" onclick="cardPaymentHistory(${cid})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
 }
-function cardPayDetail(xid,cid){
+function cardPayDetail(xid,cid,backAction){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;
   const c=S.accts.find(z=>z.id==cid)||S.accts.find(z=>z.id==x.to),f=S.accts.find(z=>z.id==x.from),n=payDiff(x.due,x.d);
   const R=(l,v)=>`<div class="pd-r"><span class="m">${l}</span><b>${v}</b></div>`;
-  navS(`<div class="sh-h"><button class="pill" aria-label="Back" onclick="cardPayInfo(${cid})">‹</button><h2>Payment details</h2></div>`
-    +`<div class="pd-hero"><div class="pd-h"><span class="ico">${c?cardLogo(c):'💳'}</span><div class="pd-tt"><b>${esc(c?c.name:'Card')}</b><small>Card payment</small></div></div><div class="pd-amt"><span class="pd-v">${php(x.amt)}</span><span class="chip ok">✓ Paid</span></div>${n==null?'':`<div class="pd-tm"><span class="chip ${n<0?'warn':'ok'}">${payTimingLabel(n)}</span></div>`}</div>`
+  const timing=n==null?'':n===0?`<span class="chip ok">✓ On time</span>`:`<span class="chip pd-timing ${n>0?'early ok':'late warn'}"><i class="pd-timing-arrow" aria-hidden="true"></i><span class="pd-timing-copy">${Math.abs(n)} day${Math.abs(n)>1?'s':''} ${n>0?'early':'late'}</span></span>`;
+  navS(`<div class="sh-h"><button class="pill" aria-label="Back" onclick="${backAction||'closeS()'}">‹</button><h2>Payment details</h2></div>`
+     +`<div class="pd-hero"><div class="pd-h"><span class="ico">${c?cardLogo(c):'💳'}</span><div class="pd-tt"><b>${esc(c?c.name:'Card')}</b><small>Card Payment</small></div></div><div class="pd-amt"><span class="pd-v">${php(x.amt)}</span><span class="chip ok paid-chip"><svg class="paid-checkmark" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3.2 3.2L13 4.5"/></svg>Paid</span></div>${timing?`<div class="pd-tm">${timing}</div>`:''}</div>`
     +`<div class="card" style="margin:0 0 12px">${R('Paid on',noteD(x.d))}${x.due?R('Statement due',noteD(x.due)):''}${R('Paid from',f?paySrcHtml(f.id):'Outside this app')}${x.note?R('Note',esc(x.note)):''}</div>`
-    +`<button class="btn s dng" onclick="undoCardPay(${x.id},${cid})">Mark as unpaid</button>`
-    +`<button class="btn s" style="margin-top:10px;width:100%" onclick="cardPayInfo(${cid})">‹ Back to payments</button>`,'cpd'+x.id);
+     +`<button class="ph-row" onclick="cardPaymentHistory(${cid},'cardPayDetail(${x.id},${cid})')"><span>Payment history</span><span class="ph-n">${paymentHistoryCount('card',cid)} ›</span></button>`
+     +`<button class="btn s dng" onclick="undoCardPay(${x.id},${cid})">Mark as unpaid</button>`,'cpd'+x.id);
 }
 function undoCardPay(xid,cid){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;
@@ -1919,7 +1964,11 @@ function catAdd(){const n=$('#ncn').value.trim();if(!n||S.cats.some(x=>x.n==n))r
 function catDel(i){S.cats.splice(i,1);ensureCats();render();catMgr()}
 function catNoLogo(i){delete S.cats[i].l;render();catMgr()}
 function catLogo(i,inp){imgPick(inp,64,'png',u=>{S.cats[i].l=u;render();catMgr()})}
-const SPX=['#3d7a5a','#6b9a80','#91b09f','#b4c7bb','#4f6f5f','#7fa391'],SPB={Food:"#165b3a",Groceries:"#2f855a",Transport:"#75a987",Bills:"#a9b9ae",Shopping:"#214f3b",Health:"#8fb996",Entertainment:"#5d7f6c",Other:"#c8d4cc"};
+/* Sage-to-forest spending ramp — one green family for every category, from
+   pale stone through moss to deep forest, so the donut reads as a single
+   chart instead of a rainbow. */
+const SPX=['#22462f','#2a523c','#335c45','#3c6a4e','#4f7f5f','#628f70','#7ea88b','#9dc0a4','#bcd3c1','#c9d5c8','#dde4dc','#6d9078'],
+SPB={Bills:'#c9d5c8',Shopping:'#2a523c',Groceries:'#4f7f5f',Transport:'#9dc0a4',Other:'#dde4dc',Food:'#22462f',Health:'#a9ccb0',Entertainment:'#6d9078',Salary:'#3c6a4e','Interest Earned':'#bcd3c1'};
 function spendCol(c){if(SPB[c])return SPB[c];let k=0;for(const ch of String(c))k=(k*31+ch.charCodeAt(0))%997;return SPX[k%SPX.length]}
 
 const DOTS = '<svg width="4" height="16" viewBox="0 0 4 16" fill="currentColor" aria-hidden="true"><circle cx="2" cy="2" r="1.8"/><circle cx="2" cy="8" r="1.8"/><circle cx="2" cy="14" r="1.8"/></svg>';
@@ -2136,18 +2185,339 @@ function goalDone(id){const g=S.goals.find(x=>x.id==id);if(!g)return;g.done=g.do
 function goalDel(id){S.goals=S.goals.filter(x=>x.id!=id);save();render();toast('Goal deleted')}
 function goalSheet(id,m){if(m=='add')return goalAddSheet(id);if(m=='out')return goalWithdrawSheet(id);goalManageSheet(id)}
 function gMove(id,s){if(s>0)goalAddSheet(id);else goalWithdrawSheet(id)}
-/* ---- spending: clickable monthly bars */
-let trendM=null;const mName=k=>new Date(+k.slice(0,4),+k.slice(5,7)-1,1).toLocaleDateString('en-PH',{month:'long'});
-function spendTop(key){const tx=S.tx.filter(t=>t.d.startsWith(key)&&t.amt<0),gr={};tx.forEach(t=>{const c=CATS[t.cat]?t.cat:'Other';gr[c]=(gr[c]||0)-t.amt});
+/* ---- spending: infinite month reel, donut breakdown, clickable trend bars.
+   spendY = the selected year, spendM = 0-11, or null for the whole year.
+   The reel repeats the 12 month names so it never shows an edge, and the year
+   dropdown is a separate axis — looping Dec -> Jan never changes the year. */
+let trendM=null,spendY=null,spendM=null;
+let spendScroll=null;                       /* remembered reel offset, survives re-render */
+const SP_REPS=5,SP_MID=2,SP_LEAD=12;        /* cycles drawn, canonical cycle, lead gap (px) */
+const spendNowYear=()=>T.getFullYear();
+function spendReset(){spendY=spendNowYear();spendM=T.getMonth();trendM=null}
+const spendRM=()=>matchMedia('(prefers-reduced-motion: reduce)').matches||S.rm==1||S.anim==0;
+const SPM=Array.from({length:12},(_,m)=>new Date(2000,m,1).toLocaleDateString('en-PH',{month:'short'}));
+const mName=k=>String(k).length===4?String(k):new Date(+String(k).slice(0,4),+String(k).slice(5,7)-1,1).toLocaleDateString('en-PH',{month:'long'});
+/* '' key is the whole year: dates are stored YYYY-MM-DD, so startsWith('2025') scopes the year. */
+function spendKey(){if(spendY==null)spendReset();return spendM==null?String(spendY):`${spendY}-${String(spendM+1).padStart(2,'0')}`}
+const spendHas=k=>S.tx.some(t=>String(t.d).startsWith(k)&&t.amt<0);
+function spendYears(){const s=new Set([spendNowYear()]);S.tx.forEach(t=>{const y=+String(t.d).slice(0,4);if(y)s.add(y)});return [...s].sort((a,b)=>b-a)}
+function spendMonthsWithData(y){const o=[];for(let m=0;m<12;m++)if(spendHas(`${y}-${String(m+1).padStart(2,'0')}`))o.push(m);return o}
+function spendLastMonth(y){const l=spendMonthsWithData(y);return l.length?l[l.length-1]:(y==spendNowYear()?T.getMonth():11)}
+function spendAnchor(key){if(String(key).length===4){const y=+key;return [y,spendLastMonth(y)]}return [+String(key).slice(0,4),+String(key).slice(5,7)-1]}
+function spendRangeLabel(key){const ms=spendMonthsWithData(+String(key).slice(0,4));return ms.length?`${SPM[ms[0]]} – ${SPM[ms[ms.length-1]]}`:`${SPM[0]} – ${SPM[11]}`}
+const spendBar=()=>document.getElementById('sp-months');
+const spendPad=m=>`${spendY}-${String(m+1).padStart(2,'0')}`;
+/* The reel always starts at the real current month, then keeps counting up. */
+const spendOrder=()=>Array.from({length:12},(_,i)=>(T.getMonth()+i)%12);
+const spendPillFor=m=>document.querySelector(`#sp-months .spend-month-tab[data-m="${m}"][data-c="${SP_MID}"]`);
+
+/* Width of one 12-month cycle — the period we silently jump by when wrapping. */
+function spendPeriod(){
+  const bar=spendBar();if(!bar)return 0;
+  const p=bar.querySelectorAll('.spend-month-tab');
+  return p.length<13?0:p[12].offsetLeft-p[0].offsetLeft;
+}
+/* Keep the offset inside the middle cycle: shifting by exactly one period is invisible. */
+function spendRecenter(){
+  const bar=spendBar();if(!bar)return;
+  const P=spendPeriod();if(!P)return;
+  const base=bar.querySelectorAll('.spend-month-tab')[12*SP_MID];
+  if(!base)return;
+  const rel=bar.scrollLeft-base.offsetLeft;
+  const wraps=Math.round(rel/P);
+  if(wraps)bar.scrollLeft-=wraps*P;
+  spendScroll=bar.scrollLeft;
+}
+/* Snap to the nearest pill once the reel has stopped. The animation is ours, so a
+   running snap can never be restarted by its own scroll events (that would flip
+   direction forever and wedge the tab). */
+let spendSettleT=0,spendSnapping=0,spendSnapId=0;
+function spendCancelSnap(){spendSnapId++;spendSnapping=0}
+function spendSnapTo(left){
+  const bar=spendBar();if(!bar)return;
+  const from=bar.scrollLeft,dist=left-from;
+  if(spendRM()||Math.abs(dist)<.5){bar.scrollLeft=left;spendScroll=left;return}
+  const dur=Math.min(320,90+Math.abs(dist)*1.5),t0=performance.now(),id=++spendSnapId;
+  spendSnapping=1;
+  const finish=()=>{spendSnapping=0;spendScroll=bar.scrollLeft};
+  const step=()=>{
+    if(id!==spendSnapId)return;
+    const t=Math.min(1,(performance.now()-t0)/dur),e=1-Math.pow(1-t,3);
+    bar.scrollLeft=from+dist*e;
+    if(t<1)requestAnimationFrame(step);else finish();
+  };
+  requestAnimationFrame(step);
+  /* rAF is paused in a hidden tab; land on the pill anyway. */
+  setTimeout(()=>{if(id===spendSnapId&&spendSnapping){bar.scrollLeft=left;finish()}},dur+150);
+}
+function spendSettle(){
+  const bar=spendBar();if(!bar||bar.classList.contains('dragging')||spendSnapping)return;
+  spendRecenter();
+  let best=null,bd=1e9;
+  bar.querySelectorAll('.spend-month-tab').forEach(p=>{
+    const d=Math.abs(p.offsetLeft-SP_LEAD-bar.scrollLeft);
+    if(d<bd){bd=d;best=p}
+  });
+  if(best&&bd>1)spendSnapTo(best.offsetLeft-SP_LEAD);
+}
+function spendReelScroll(){
+  const bar=spendBar();if(!bar)return;
+  spendScroll=bar.scrollLeft;
+  if(spendSnapping)return;
+  clearTimeout(spendSettleT);
+  if(!bar.classList.contains('dragging'))spendSettleT=setTimeout(spendSettle,120);
+}
+function spendScrollPill(pill,behavior){
+  const bar=spendBar();if(!bar||!pill)return;
+  const left=pill.offsetLeft-SP_LEAD;
+  spendScroll=left;                       /* remember even if scroll events are deferred */
+  if(behavior==='smooth'&&!spendRM())spendSnapTo(left);
+  else{spendCancelSnap();bar.scrollLeft=left;spendScroll=left}
+}
+/* Place the reel and restore the previous offset after a full re-render. */
+function spendReelInit(){
+  const bar=spendBar();if(!bar)return;
+  spendCancelSnap();clearTimeout(spendSettleT);
+  const pills=bar.querySelectorAll('.spend-month-tab');
+  if(pills.length<12*SP_MID+1)return;
+  const base=pills[12*SP_MID];
+  bar.scrollLeft=spendScroll==null?base.offsetLeft-SP_LEAD:spendScroll;
+  spendRecenter();
+  spendInk(false);
+}
+/* Fade out the months with no expenses in the selected year (12 lookups, not 60). */
+function spendDim(){
+  if(spendY==null)spendReset();
+  const has=[];for(let m=0;m<12;m++)has[m]=!spendHas(spendPad(m));
+  const bar=spendBar();if(bar)bar.querySelectorAll('.spend-month-tab').forEach(p=>p.classList.toggle('dim',has[+p.dataset.m]));
+}
+/* Reflect the selected year without touching the reel's scroll offset. */
+function spendSyncYear(){
+  if(spendY==null)spendReset();
+  const b=document.getElementById('sp-year-btn');
+  if(b){
+    if(b.childNodes[0])b.childNodes[0].nodeValue=String(spendY);
+    b.setAttribute('aria-label',`Spending year, ${spendY}`);
+    b.classList.toggle('on',spendM==null);
+  }
+  document.querySelectorAll('#sp-year-menu .spend-year-opt').forEach(o=>{
+    const on=+o.querySelector('span').textContent===spendY;
+    o.classList.toggle('on',on);o.setAttribute('aria-selected',String(on));
+  });
+}
+/* Move the green underline; m=null hides it (whole-year mode). */
+function spendMark(m){
+  const bar=spendBar();if(!bar)return;
+  const fb=m==null?bar.querySelector(`.spend-month-tab[data-m="${T.getMonth()}"][data-c="${SP_MID}"]`):null;
+  bar.querySelectorAll('.spend-month-tab').forEach(p=>{
+    const on=m!=null&&+p.dataset.m===m&&+p.dataset.c===SP_MID;
+    p.classList.toggle('on',on);
+    p.setAttribute('aria-selected',String(on));
+    p.tabIndex=(on||p===fb)?0:-1;
+  });
+  spendInk(true);
+}
+function spendMonthsBar(){
+  const y=spendY,isYear=spendM==null,years=spendYears(),order=spendOrder(),dim=[];
+  for(let m=0;m<12;m++)dim[m]=!spendHas(`${y}-${String(m+1).padStart(2,'0')}`);
+  let pills="";
+  for(let c=0;c<SP_REPS;c++)for(const m of order){
+    const on=!isYear&&m===spendM&&c===SP_MID,fb=isYear&&m===T.getMonth()&&c===SP_MID;
+    pills+=`<button type="button" role="tab" class="spend-month-tab${on?' on':''}${dim[m]?' dim':''}" data-m="${m}" data-c="${c}" aria-selected="${on}" tabindex="${on||fb?0:-1}" aria-label="${SPM[m]} ${y}" onclick="pickSpendMonth(${m})">${SPM[m]}</button>`;
+  }
+  return `<div class="spend-months">
+    <div class="spend-year-wrap">
+      <button type="button" class="spend-year-btn${isYear?' on':''}" id="sp-year-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Spending year, ${y}" onclick="spendYearMenu()">${y}<svg class="spend-caret" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="spend-year-menu" id="sp-year-menu" role="listbox" aria-label="Spending year">${years.map(v=>`<button type="button" role="option" aria-selected="${v===y}" class="spend-year-opt${v===y?' on':''}" onclick="pickSpendYear(${v})"><span>${v}</span><svg class="spend-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5l3.2 3.2L11 1.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`).join("")}</div>
+    </div>
+    <div class="spend-months-inner" id="sp-months" role="tablist" aria-label="Spending month in ${y}" onkeydown="spendTabKeys(event)" onscroll="spendReelScroll()" onwheel="spendCancelSnap()" ontouchstart="spendCancelSnap()" onpointerdown="spendPanDown(event)" onpointermove="spendPanMove(event)" onpointerup="spendPanUp(event)" onpointercancel="spendPanUp(event)">
+      ${pills}
+      <span class="spend-months-ink${isYear?' off':''}" aria-hidden="true"></span>
+    </div>
+  </div>`;
+}
+function spendYearMenu(){
+  const m=document.getElementById('sp-year-menu'),b=document.getElementById('sp-year-btn');
+  if(!m)return;
+  const open=!m.classList.contains('open');
+  m.classList.toggle('open',open);
+  if(b)b.setAttribute('aria-expanded',String(open));
+  if(open){const on=m.querySelector('.spend-year-opt.on');if(on)on.scrollIntoView({block:'nearest'})}
+}
+function spendYearClose(){
+  const m=document.getElementById('sp-year-menu');if(m)m.classList.remove('open');
+  const b=document.getElementById('sp-year-btn');if(b)b.setAttribute('aria-expanded','false');
+}
+function pickSpendYear(v){
+  spendYearClose();
+  if(spendY===v&&spendM==null)return;
+  const dir=v>spendY?-1:1;
+  spendY=v;spendM=null;trendM=null;
+  spendDim();spendSyncYear();spendMark(null);
+  spendSwap(dir);
+}
+/* Mouse-only drag with a little inertia; touch already gets native momentum. */
+let spendPan=null;
+function spendPanDown(e){
+  if(e.pointerType!=='mouse'||e.button)return;
+  /* A press on a month/year control is a click, not a reel drag. Do not take
+     pointer capture here or the captured parent can swallow the button's
+     follow-up click (especially in Chromium). Blank reel space remains
+     draggable as before. */
+  if(e.target.closest&&e.target.closest('button,a,input,select,textarea'))return;
+  const bar=spendBar();if(!bar)return;
+  spendCancelSnap();
+  spendPan={x:e.clientX,y:e.clientY,left:bar.scrollLeft,moved:0,vx:0,lastX:null,t:performance.now()};
+  bar.classList.add('dragging');
+  try{bar.setPointerCapture(e.pointerId)}catch(_){}
+}
+function spendPanMove(e){
+  if(!spendPan)return;
+  const bar=spendBar();if(!bar)return;
+  const dx=e.clientX-spendPan.x;
+  if(!spendPan.moved&&(Math.abs(dx)<=4||Math.abs(dx)<=Math.abs(e.clientY-spendPan.y)))return;
+  spendPan.moved=1;e.preventDefault();
+  const now=performance.now();
+  if(spendPan.lastX!=null){
+    const dt=Math.max(1,now-spendPan.t);
+    spendPan.vx=spendPan.vx*.55+(-(e.clientX-spendPan.lastX)/dt)*.45;
+  }
+  spendPan.lastX=e.clientX;spendPan.t=now;
+  bar.scrollLeft=spendPan.left-dx;
+  spendRecenter();
+}
+function spendGlide(bar,v){
+  v=Math.max(-3,Math.min(3,v));
+  spendCancelSnap();
+  let last=performance.now();
+  const step=()=>{
+    const now=performance.now(),dt=Math.min(32,now-last);last=now;
+    bar.scrollLeft+=v*dt;
+    spendRecenter();
+    v*=Math.pow(.995,dt);
+    if(Math.abs(v)>.05)requestAnimationFrame(step);
+    else{bar.classList.remove('dragging');spendSettle()}
+  };
+  requestAnimationFrame(step);
+}
+function spendPanUp(){
+  const bar=spendBar();
+  if(!bar){spendPan=null;return}
+  if(spendPan&&spendPan.moved){
+    const stop=ev=>{ev.stopPropagation();ev.preventDefault()};
+    bar.addEventListener('click',stop,{capture:true,once:true});
+    setTimeout(()=>bar.removeEventListener('click',stop,true),60);
+    const v=spendPan.vx||0;
+    if(!spendRM()&&Math.abs(v)>.6){spendPan=null;spendGlide(bar,v);return}
+  }
+  bar.classList.remove('dragging');
+  spendPan=null;
+  spendSettle();
+}
+/* Arrow keys walk the reel, skipping months with no data; Home returns to today. */
+function spendTabKeys(e){
+  if(!["ArrowLeft","ArrowRight","Home"].includes(e.key))return;
+  if(!spendBar())return;
+  e.preventDefault();
+  const cur=spendM==null?T.getMonth():spendM;
+  const step=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;
+  if(!step){pickSpendMonth(T.getMonth());const p=spendPillFor(T.getMonth());if(p)p.focus();return}
+  for(let i=1;i<=12;i++){
+    const m=(cur+step*i+120)%12,p=spendPillFor(m);
+    if(p&&!p.classList.contains('dim')){pickSpendMonth(m);p.focus();return}
+  }
+}
+/* Slide the shared ink under the active pill (measured, so it stays crisp on any width). */
+function spendInk(animate){
+  const bar=spendBar();if(!bar)return;
+  const on=bar.querySelector('.spend-month-tab.on'),ink=bar.querySelector('.spend-months-ink');
+  if(!ink)return;
+  if(!on){ink.classList.add('off');return}
+  ink.classList.remove('off');
+  ink.style.transition=(animate&&!spendRM()?'transform .44s cubic-bezier(.2,.9,.25,1.15),width .44s cubic-bezier(.2,.9,.25,1.15),':'')+'opacity .2s ease';
+  ink.style.width=on.offsetWidth+'px';
+  ink.style.transform=`translate3d(${on.offsetLeft}px,0,0)`;
+}
+/* Two-phase fade + slide for the panes. The reel is never rebuilt, so it keeps its
+   exact scroll offset when the year or the month changes. */
+function spendSwap(dir){
+  const key=spendKey(),top=document.getElementById('sp-top'),tc=document.getElementById('sp-trend');
+  const paint=()=>{if(top)top.innerHTML=spendTop(key);if(tc)tc.innerHTML=spendTrend(key)};
+  if(spendRM()){paint();return}
+  if(top){top.style.transition='opacity .16s ease,transform .16s ease';top.style.opacity='0';top.style.transform=`translate3d(${dir*20}px,0,0)`}
+  if(tc)tc.style.opacity='.3';
+  setTimeout(()=>{
+    paint();
+    if(top){top.style.transition='none';top.style.transform=`translate3d(${-dir*20}px,0,0)`;void top.offsetWidth;top.style.transition='opacity .32s cubic-bezier(.2,.85,.25,1),transform .32s cubic-bezier(.2,.85,.25,1)';top.style.opacity='1';top.style.transform='translate3d(0,0,0)'}
+    if(tc){tc.style.transition='opacity .3s ease';tc.style.opacity='1'}
+  },150);
+}
+/* Drill into one month of the selected year. */
+function pickSpendMonth(m){
+  m=+m;
+  if(spendM===m){spendScrollPill(spendPillFor(m),spendRM()?'auto':'smooth');return}
+  const prev=spendM==null?null:spendPillFor(spendM),next=spendPillFor(m);
+  const dir=prev&&next&&next.offsetLeft<prev.offsetLeft?1:-1;
+  spendM=m;trendM=spendPad(m);
+  spendMark(m);spendSyncYear();
+  spendScrollPill(next,spendRM()?'auto':'smooth');
+  spendSwap(dir);
+}
+/* Jump from a trend bar: takes a YYYY-MM key and may move the year with it. */
+function pickSpend(k){
+  if(!k)return;
+  const y=+String(k).slice(0,4),m=+String(k).slice(5,7)-1;
+  if(!y||m<0||m>11)return;
+  const prevY=spendY==null?spendNowYear():spendY;
+  const prevPill=spendM==null?null:spendPillFor(spendM),next=spendPillFor(m);
+  spendY=y;spendM=m;trendM=k;
+  if(y!==prevY)spendDim();
+  spendMark(m);spendSyncYear();
+  spendScrollPill(next,spendRM()?'auto':'smooth');
+  spendSwap(prevPill&&next&&next.offsetLeft<prevPill.offsetLeft?1:(y<prevY?1:-1));
+}
+/* ---- category spotlight. Tapping a legend row enlarges its donut arc and
+   steps the other categories back. Purely presentational: it never touches S,
+   the totals, or the transaction list. The current pick is read back off the
+   DOM, so a re-render (month change, tab change) simply clears it. ---- */
+function focusSpendCat(i){
+  const box=document.querySelector('#sp-top .spend-overview')||document.querySelector('.spend-overview');
+  if(!box)return;
+  const cur=box.querySelector('.spend-legend-row.on');
+  const next=cur&&+cur.dataset.i===+i?-1:+i;   /* tap the same row again to clear */
+  box.classList.toggle('focus',next>=0);
+  box.querySelectorAll('.spend-legend-row').forEach(r=>{
+    const on=+r.dataset.i===next;
+    r.classList.toggle('on',on);
+    r.setAttribute('aria-pressed',String(on));
+  });
+  box.querySelectorAll('.spend-arc').forEach(a=>a.classList.toggle('on',+a.dataset.i===next));
+}
+function spendTop(key){const yk=String(key).length===4,tx=S.tx.filter(t=>t.d.startsWith(key)&&t.amt<0),gr={};tx.forEach(t=>{const c=CATS[t.cat]?t.cat:'Other';gr[c]=(gr[c]||0)-t.amt});
 const total=sum(Object.values(gr)),items=Object.entries(gr).sort((a,b)=>b[1]-a[1]),circ=2*Math.PI*74;let off=0;
-const arcs=items.map(([c,v])=>{const len=total?circ*v/total:0,dash=Math.max(0,len-3),r=`<circle cx="100" cy="100" r="74" fill="none" stroke="${spendCol(c)}" stroke-width="19" stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${-off}"/>`;off+=len;return r}).join(''),
-lg=items.length?items.map(([c,v])=>`<div class="spend-legend-row"><i class="spend-dot" style="background:${spendCol(c)}"></i><span class="spend-legend-name">${esc(c)}</span><b class="spend-legend-pct">${total?Math.round(v/total*100):0}%</b><span class="spend-legend-amt">${php(v)}</span></div>`).join(''):`<p class="m" style="font-size:13px">No expenses recorded in ${mName(key)}.</p>`,
-bu=Object.values(S.budgets||{}).reduce((a,v)=>a+(+v||0),0),un=bu-total,
-ins=bu?un>=0?{t:`You’re ${Math.round(un/bu*100)}% under budget`,b:`${bv(php(un))} of your ${bv(php(bu))} monthly budget remains.`,i:'🌱'}:{t:`You’re ${Math.round(Math.abs(un)/bu*100)}% over budget`,b:`You spent ${bv(php(Math.abs(un)))} beyond your ${bv(php(bu))} monthly budget.`,i:'📈'}:{t:'Set a monthly budget',b:'Add category budgets in Plan to see how you’re tracking.',i:'🌱'};
-return`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h2 style="margin:2px 0 0">Your Spending — ${mName(key)}</h2><span class="m" style="font-size:13px;white-space:nowrap">${key.slice(0,4)} · ${tx.length} ${tx.length==1?'expense':'expenses'}</span></div><div class="spend-overview"><div class="spend-donut-wrap"><svg class="spend-donut" viewBox="0 0 200 200" role="img" aria-label="Spending by category donut chart"><circle cx="100" cy="100" r="74" fill="none" stroke="var(--line)" stroke-width="19"/>${arcs}</svg><div class="spend-center"><b>${php(total)}</b><span>Total spent</span></div></div><div class="spend-legend" aria-label="Spending categories">${lg}</div></div></div><div class="spend-insight"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:25px" aria-hidden="true">${ins.i}</span><div><b>${ins.t}</b><div class="m" style="font-size:13px;margin-top:3px">${ins.b}</div></div>${bu?'':`<button class="pill" style="margin-left:auto;flex:none" onclick="tab='Plan';pt='Budgets';render()" aria-label="Set a budget">›</button>`}</div></div>`}
-function spendingChart(){const key=trendM||ym,tr=Array.from({length:6},(_,i)=>{const d=new Date(T.getFullYear(),T.getMonth()-5+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return{k,label:d.toLocaleDateString('en-PH',{month:'short'}),value:-sum(S.tx.filter(t=>t.d.startsWith(k)&&t.amt<0).map(t=>t.amt)),now:i==5}}),mx=Math.max(...tr.map(x=>x.value),1);
-return`<div id="sp-top">${spendTop(key)}</div><div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Spending trend</h2><span class="m" style="font-size:12px">Last 6 months</span></div><div class="spend-bars" role="group" aria-label="Monthly spending trend">${tr.map((x,i)=>`<div class="spend-bar-col ${x.k==key?'sel':''}" data-k="${x.k}" role="button" tabindex="0" aria-pressed="${x.k==key}" aria-label="${mName(x.k)} ${php(x.value)}" onclick="pickTrend('${x.k}')" onkeydown="if(event.key=='Enter'||event.key==' '){event.preventDefault();pickTrend('${x.k}')}"><span class="spend-total-label">${php(x.value)}</span><i class="spend-bar ${x.now?'now':''}" style="height:${Math.max(3,x.value/mx*76)}%;--delay:${i*55}ms"></i><span class="spend-month">${x.label}</span></div>`).join('')}</div></div>`}
-function pickTrend(k){trendM=k==ym?null:k;const t=$('#sp-top');if(!t)return;t.innerHTML=spendTop(k);t.classList.remove('pg');void t.offsetWidth;t.classList.add('pg');document.querySelectorAll('.spend-bar-col').forEach(e=>{const on=e.dataset.k==k;e.classList.toggle('sel',on);e.setAttribute('aria-pressed',on)})}
+const arcs=items.map(([c,v],i)=>{const len=total?circ*v/total:0,dash=Math.max(0,len-3),o=-off,col=spendCol(c),pc=total?Math.round(v/total*100):0,lab=esc(c)+', '+pc+' percent, '+php(v),r=`<circle class="spend-arc" data-i="${i}" role="button" tabindex="0" aria-label="${lab}" onclick="focusSpendCat(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusSpendCat(${i})}" cx="100" cy="100" r="74" fill="none" stroke="${col}" stroke-width="19" stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${o}" style="--o:${o};--i:${i};--c:${col}"/>`;off+=len;return r}).join(''),
+/* each legend row is a button: tapping it spotlights that arc (focusSpendCat) */
+lg=items.length?items.map(([c,v],i)=>{const p=total?Math.round(v/total*100):0,col=spendCol(c);return `<button type="button" class="spend-legend-row" data-i="${i}" aria-pressed="false" aria-label="${esc(c)}, ${p} percent, ${php(v)}" onclick="focusSpendCat(${i})" style="--p:${p}%;--c:${col};--i:${i}"><i class="spend-dot" style="background:${col}"></i><span class="spend-legend-name">${esc(c)}</span><b class="spend-legend-pct">${p}%</b><span class="spend-legend-amt">${php(v)}</span></button>`}).join(''):`<p class="m spend-empty">No expenses recorded in ${mName(key)}.</p>`,
+bu=Object.values(S.budgets||{}).reduce((a,v)=>a+(+v||0),0),
+mons=yk?Math.max(1,spendMonthsWithData(+String(key).slice(0,4)).length):1,cap=bu*mons,un=cap-total,
+ins=bu?(un>=0?{t:`You’re ${Math.round(un/cap*100)}% under budget`,b:`${bv(php(un))} of your ${bv(php(cap))} ${yk?mons+'-month':'monthly'} budget remains.`,i:'🌱'}:{t:`You’re ${Math.round(Math.abs(un)/cap*100)}% over budget`,b:`You spent ${bv(php(Math.abs(un)))} beyond your ${bv(php(cap))} ${yk?mons+'-month':'monthly'} budget.`,i:'📈'}):{t:'Set a monthly budget',b:'Add category budgets in Plan to see how you’re tracking.',i:'🌱'};
+return`<div class="card spend-card"><div class="spend-head"><h2>Your Spending — ${mName(key)}</h2><span class="spend-meta">${yk?spendRangeLabel(key):String(key).slice(0,4)} · ${tx.length} ${tx.length==1?'expense':'expenses'}</span></div><div class="spend-overview"><div class="spend-donut-wrap"><svg class="spend-donut" viewBox="0 0 200 200" role="img" aria-label="Spending by category donut chart"><circle cx="100" cy="100" r="74" fill="none" stroke="var(--line)" stroke-width="19"/>${arcs}</svg><div class="spend-center"><b>${php(total)}</b><span>Total spent</span></div></div><div class="spend-legend${items.length>=5?' cols2':''}" aria-label="Spending categories">${lg}</div></div></div><div class="spend-insight"><span class="spend-insight-ico" aria-hidden="true">${ins.i}</span><div class="spend-insight-txt"><b>${ins.t}</b><div class="m">${ins.b}</div></div>${bu?'':`<button class="pill" style="margin-left:auto;flex:none" onclick="tab='Plan';pt='Budgets';render()" aria-label="Set a budget">›</button>`}</div>`}
+function spendTrend(key){
+  const [ay,am]=spendAnchor(key),yk=String(key).length===4;
+  const tr=Array.from({length:6},(_,i)=>{const d=new Date(ay,am-5+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return{k,label:d.toLocaleDateString('en-PH',{month:'short'}),value:-sum(S.tx.filter(t=>t.d.startsWith(k)&&t.amt<0).map(t=>t.amt))}}),
+  mx=Math.max(...tr.map(x=>x.value),1),a=tr[0],b=tr[5],y1=String(a.k).slice(0,4),y2=String(b.k).slice(0,4),
+  span=y1===y2?`${a.label} – ${b.label} ${y2}`:`${a.label} ${y1} – ${b.label} ${y2}`;
+  return `<div class="spend-trend-head"><h2 style="margin:0">Spending trend</h2><span class="m" style="font-size:12px;white-space:nowrap">${span}</span></div><div class="spend-bars" role="group" aria-label="Monthly spending trend">${tr.map((x,i)=>{const sel=yk?i===5:x.k===key;return `<div class="spend-bar-col${sel?' sel':''}" data-k="${x.k}" role="button" tabindex="0" aria-pressed="${sel}" aria-label="${mName(x.k)} ${php(x.value)}" onclick="pickSpend('${x.k}')" onkeydown="if(event.key=='Enter'||event.key==' '){event.preventDefault();pickSpend('${x.k}')}"><span class="spend-total-label">${php(x.value)}</span><i class="spend-bar" style="height:${Math.max(3,x.value/mx*90)}%;--delay:${i*55}ms"></i><span class="spend-month">${x.label}</span></div>`}).join('')}</div>`;
+}
+function spendingChart(){
+  const key=spendKey();
+  return `<section class="spend-hero">${spendMonthsBar()}<div id="sp-top">${spendTop(key)}</div></section><div class="card" id="sp-trend">${spendTrend(key)}</div>`;
+}
+function pickTrend(k){pickSpend(k)}
+/* Close the year popover on any outside press or Escape; keep the ink aligned on resize. */
+document.addEventListener('pointerdown',e=>{if(!(e.target&&e.target.closest&&e.target.closest('.spend-year-wrap')))spendYearClose()},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')spendYearClose()});
+addEventListener('resize',()=>{clearTimeout(window._spRs);window._spRs=setTimeout(()=>{spendRecenter();spendInk(false)},140)});
 /* ---- activity calendar: swipe between months */
 let calBusy=0,calS=null,calAcc=0,calT=0,calWt;
 function calGo(d){if(calBusy)return;const w=$('#calwrap');if(!w){cm+=d;render();return}calBusy=1;const tr='transform .22s ease,opacity .22s ease';w.style.transition=tr;w.style.transform=`translateX(${-d*48}px)`;w.style.opacity=0;
@@ -2162,7 +2532,7 @@ function calWheel(e){if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.2||Math.abs(e.d
    Every page renders through stSheet() -> navS(), so the modal, its backdrop
    and its scroll position stay stable while pages slide/fade in and out.
    ========================================================================== */
-const APP_VERSION='1.0.2.5',APP_VER=APP_VERSION;
+const APP_VERSION='1.0.3',APP_VER=APP_VERSION;
 const LOCK_KEY='cap_lock',BIO_KEY='cap_bio',NOTIF_SEEN='cap_notif_seen',BK_KEY='cap_lastbackup';
 const ST_IC={
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.4"/><path d="M4.9 20c.7-3.5 3.6-5.6 7.1-5.6s6.4 2.1 7.1 5.6"/></svg>',
@@ -2185,7 +2555,14 @@ const APP_REPOSITORY_URL='https://github.com/luancreek2/cap-finance-tracker',WHA
 /* Auto-present the release note once per version, after the launch animation. */
 const WHATS_NEW_AUTO=true;
 let WHATS_NEW_MEMORY_SEEN='';
-const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.2.5 is all about the Accounts tab: a new options menu, Grid and Carousel views, sorting, and drag-to-reorder with multi-card selection.',changes:[
+const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.3 brings clearer payment details, separate bill and subscription planning, and more useful debit, e-wallet, and cash accounts.',changes:[
+  {category:'New',icon:'💵',title:'Cash wallet account',description:'Add a Cash account with a transparent, card-sized wallet design based on your image, plus deposit and transfer actions.'},
+  {category:'New',icon:'⇄',title:'Deposit and transfer',description:'Add money to debit cards and e-wallets, or transfer money between eligible accounts with balances and activity updated automatically.'},
+  {category:'Improved',icon:'🧾',title:'Bills and subscriptions',description:'Choose a required category when adding an item; Upcoming now groups Bills and Subscriptions separately.'},
+  {category:'Improved',icon:'💳',title:'Payment details and history',description:'Paid bills, subscriptions, and card payments open consistent details with latest-payment and history access; Back returns to the view you came from.'},
+  {category:'Design',icon:'✅',title:'Payment feedback',description:'A looping draw-and-erase Paid checkmark, polished payment confirmation effects, and a clear red insufficient-funds warning.'},
+  {category:'Design',icon:'✨',title:'Cap identity and interactions',description:'Updated Cap branding, install icons, animated launch experience, and refined account, calendar, and Activity interactions.'}
+]},{version:'1.0.2.5',releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.2.5 is all about the Accounts tab: a new options menu, Grid and Carousel views, sorting, and drag-to-reorder with multi-card selection.',changes:[
   {category:'New',icon:'🧭',title:'Accounts options menu',description:'A compact ⋯ menu gives you Grid or Carousel view plus sorting by Recent, Name, Balance, or Manual.'},
   {category:'New',icon:'🎠',title:'Carousel view',description:'Swipe through credit and debit/e-wallet cards side by side with 3D tilt, shine, and smooth momentum.'},
   {category:'New',icon:'✅',title:'Selection mode',description:'Tap Select All or pick cards with the circle, then drag a card — or a whole selected group — into the position you want.'},

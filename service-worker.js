@@ -1,12 +1,15 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v83";
+const VERSION = "cap-shell-v172";
 const CORE = [
   "./index.html",
   "./manifest.json",
   "./css/styles.css",
   "./css/animations.css",
   "./css/brand.css",
+  "./css/spending.css",
+  "./css/activity-scope.css",
+  "./css/calendar-popup.css",
   "./js/brand.js",
   "./js/account-carousel.js",
   "./js/account-options.js",
@@ -15,13 +18,22 @@ const CORE = [
   "./js/cards.js",
   "./js/app.js",
   "./js/transactions.js",
+  "./js/activity-scope.js",
+  "./js/calendar-popup.js",
   "./js/credit.js",
   "./js/animations.js",
 ];
 const MEDIA = [
-  "./assets/icons/icon-192.png",
-  "./assets/icons/icon-512.png",
-  "./assets/icons/icon-512-maskable.png",
+  "./assets/icons/cap-16.png",
+  "./assets/icons/cap-32.png",
+  "./assets/icons/cap-48.png",
+  "./assets/icons/cap-180.png",
+  "./assets/icons/cap-192.png",
+  "./assets/icons/cap-512.png",
+  "./assets/icons/cap-512-maskable.png",
+  "./assets/branding/cap-default.png",
+  "./assets/branding/cap-dark.png",
+  "./assets/media/cash-wallet-transparent.png",
   "./assets/media/payment-confirm.mp3",
   "./assets/media/media-01bcd366ea16.webp",
   "./assets/media/media-068255fe1779.png",

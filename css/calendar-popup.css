@@ -1,0 +1,333 @@
+/* Calendar event detail popover — Cap's take on the reference event card:
+   a compact frosted-glass surface, category accent bar, large title/amount,
+   rounded option rows, and an arrow pointing back at the selected chip.
+   The blur lives on its own layer and is masked around that chip, so the
+   event the user tapped stays crisp while the rest of the calendar frosts. */
+
+.cep-backdrop{
+  position:fixed;z-index:90;inset:0;display:block;
+  opacity:0;transition:opacity .25s ease;
+}
+.cep-backdrop.open{opacity:1}
+.cep-backdrop.closing{opacity:0;transition-duration:.2s}
+
+/* Every layer of the calendar behind the card is dimmed and frosted. The
+   selected chip is re-created as a floating clone above these layers, so no
+   neighbouring date text can leak through a cut-out. */
+.cep-dim,.cep-frost{position:absolute;inset:0;pointer-events:none}
+.cep-dim{background:color-mix(in srgb,#04060a 44%,transparent)}
+.cep-frost{
+  backdrop-filter:blur(11px) saturate(.92);
+  -webkit-backdrop-filter:blur(11px) saturate(.92);
+}
+
+/* the tapped calendar chip, lifted above the blur. It is a wrapper, not the
+   chip itself: the wrapper carries the calendar's own surface colour, so the
+   chip's translucent fill composites exactly as it does in place. It adds no
+   ring, glow or drop shadow — the chip keeps the colour it had. */
+.cep-float{
+  position:fixed;z-index:1;margin:0;pointer-events:none;
+  transform-origin:50% 50%;
+  opacity:0;transform:scale(.9);
+  will-change:transform,opacity;
+}
+/* the cloned chip fills the wrapper's box */
+.cep-float>*{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;max-width:none}
+.cep-backdrop.open .cep-float{opacity:1;transform:scale(1.12);transition:none;animation:cepFloatPop .7s cubic-bezier(.2,.9,.24,1) both}
+/* tapping a transaction is a bounce: the chip jumps past its resting size twice
+   before it settles, so the selection feels physical rather than mechanical */
+@keyframes cepFloatPop{
+  0%{opacity:0;transform:scale(.5)}
+  30%{opacity:1;transform:scale(1.31)}
+  50%{transform:scale(1.02)}
+  68%{transform:scale(1.2)}
+  84%{transform:scale(1.08)}
+  100%{opacity:1;transform:scale(1.12)}
+}
+.cep-backdrop.closing .cep-float{opacity:0;transform:scale(1.04);animation:none;transition:transform .2s ease,opacity .2s ease}
+/* a clipped label runs inside the floating pill, leaving its dot in place */
+.cep-float-clip{display:block;flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+.cep-float-clip.fmq{
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 9px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 9px),transparent);
+}
+.cep-float-run{display:inline-block;will-change:transform}
+.cep-float-run.fmq{animation:cepMarquee var(--mq-dur,8s) ease-in-out .45s infinite}
+
+.cep-panel{
+  position:fixed;z-index:2;
+  width:min(372px,calc(100vw - 28px));
+  max-height:calc(100dvh - 24px);
+  padding:13px 13px 15px;
+  border-radius:30px;
+  border:1px solid color-mix(in srgb,var(--tx) 11%,transparent);
+  background:linear-gradient(162deg,color-mix(in srgb,var(--card) 91%,transparent),color-mix(in srgb,var(--bg) 93%,transparent));
+  box-shadow:0 28px 72px #0007,inset 0 1px 0 color-mix(in srgb,var(--tx) 8%,transparent);
+  backdrop-filter:blur(36px) saturate(1.35);
+  -webkit-backdrop-filter:blur(36px) saturate(1.35);
+  opacity:0;
+  /* reference motion: the card enters from 0.85 with a springy rise of 30px;
+     the fade is a separate, quicker 300ms. Only the tapped chip bounces (see
+     cepFloatPop) — the card itself keeps this smooth spring. */
+  transform:translateY(30px) scale(.85);
+  transform-origin:var(--cep-origin,50% 50%);
+  transition:transform .6s cubic-bezier(.18,1.16,.3,1),opacity .3s ease;
+  will-change:transform,opacity;
+}
+/* soft glass sheen, kept under the content */
+.cep-panel::after{
+  content:'';position:absolute;inset:1px;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(135% 85% at 18% -12%,color-mix(in srgb,var(--tx) 10%,transparent),transparent 58%);
+  opacity:.55;
+}
+/* the arrow sits on the edge facing the selected event */
+.cep-panel::before{
+  content:'';position:absolute;width:18px;height:18px;border-radius:3px;
+  background:inherit;transform:rotate(45deg);pointer-events:none;
+}
+.cep-panel[data-side="right"]::before{left:-8px;top:calc(var(--cep-arrow,50%) - 9px)}
+.cep-panel[data-side="left"]::before{right:-8px;top:calc(var(--cep-arrow,50%) - 9px)}
+.cep-panel[data-side="below"]::before{top:-8px;left:calc(var(--cep-arrow-x,50%) - 9px)}
+.cep-panel[data-side="above"]::before{bottom:-8px;left:calc(var(--cep-arrow-x,50%) - 9px)}
+
+.cep-backdrop.open .cep-panel{opacity:1;transform:translateY(0) scale(1)}
+.cep-backdrop.closing .cep-panel{
+  opacity:0;transform:translateY(0) scale(.85);
+  transition:transform .2s cubic-bezier(.4,0,.6,1),opacity .2s ease;
+}
+
+.cep-view{
+  position:relative;z-index:1;
+  max-height:calc(100dvh - 56px);
+  overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  transition:opacity .14s ease,transform .14s ease;
+}
+.cep-view.out{opacity:0;transform:translateX(-11px) scale(.985)}
+.cep-view.in{animation:cepFormIn .24s cubic-bezier(.2,.82,.25,1) both}
+@keyframes cepFormIn{from{opacity:0;transform:translateX(11px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ---- top controls ---- */
+.cep-top,.cep-form-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cep-top{margin-bottom:7px;padding:2px 2px 0}
+.cep-icon,.cep-edit{
+  border:1px solid color-mix(in srgb,var(--tx) 8%,transparent);
+  background:color-mix(in srgb,var(--tx) 8%,transparent);
+  color:var(--tx);font:inherit;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.cep-icon{width:40px;height:40px;flex:none;padding:0;border-radius:50%;font-size:16px;font-weight:800;line-height:1}
+.cep-edit{min-height:40px;padding:0 18px;border-radius:99px;font-size:14px}
+.cep-icon:active,.cep-edit:active{transform:scale(.94)}
+.cep-form-head{padding:2px 2px 6px}
+.cep-form-head h2{margin:0 auto 0 9px;font-size:18px;letter-spacing:-.01em}
+.cep-form-head .cep-icon{font-size:22px;font-weight:500}
+
+/* ---- title block ---- */
+.cep-main{
+  display:grid;grid-template-columns:8px minmax(0,1fr);gap:14px;
+  padding:8px 11px 4px 10px;
+}
+.cep-accent{
+  width:8px;border-radius:99px;align-self:stretch;margin:3px 0 1px;
+  background:var(--cep-col,var(--g));
+  box-shadow:0 0 18px color-mix(in srgb,var(--cep-col,var(--g)) 46%,transparent);
+}
+.cep-copy{min-width:0}
+.cep-title{
+  margin:0;font-size:25px;line-height:1.1;font-weight:800;
+  letter-spacing:-.02em;white-space:nowrap;overflow:hidden;
+}
+.cep-title-run{display:inline-block;will-change:transform}
+/* long titles scroll like a small running sign, with soft edges */
+.cep-title.mq{
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 10px,#000 calc(100% - 10px),transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 10px,#000 calc(100% - 10px),transparent);
+}
+.cep-title.mq .cep-title-run{animation:cepMarquee var(--mq-dur,8s) ease-in-out infinite}
+@keyframes cepMarquee{
+  0%,12%{transform:translateX(0)}
+  46%,54%{transform:translateX(var(--mq,0px))}
+  88%,100%{transform:translateX(0)}
+}
+.cep-date{margin:6px 0 0;font-size:13.5px;line-height:1.3;color:var(--tx);opacity:.92}
+.cep-meta-line{
+  display:flex;align-items:center;gap:7px;margin:5px 0 0;
+  font-size:13.5px;line-height:1.3;color:var(--tx);opacity:.86;
+}
+.cep-meta-ico{display:grid;place-items:center;width:24px;height:20px;flex:none;font-size:16px;line-height:1}
+.cep-meta-ico img{max-width:100%;max-height:100%;object-fit:contain}
+.cep-meta-ico .xcl{width:24px;height:15.6px;display:block;vertical-align:0;filter:drop-shadow(0 1px 2px #0006)}
+.cep-amount{display:block;margin-top:8px;font-size:23px;line-height:1.12;font-weight:800;letter-spacing:-.01em}
+.cep-repeat{display:flex;align-items:center;gap:5px;margin:6px 0 0;font-size:13px;color:var(--mut)}
+.cep-note{margin:6px 0 0;font-size:13px;line-height:1.35;color:var(--mut);overflow-wrap:anywhere}
+.cep-repeat svg{width:15px;height:15px;flex:none;opacity:.72}
+
+/* ---- payment details: the card/bill payment view ---- */
+.cep-pay{color:var(--tx)}
+.cep-pay-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 10px}
+.cep-pay-head h2{margin:0;font-size:23px;line-height:1.1;font-weight:800;letter-spacing:-.025em;text-align:right}
+.cep-pay-head .cep-icon{font-size:22px;font-weight:500;line-height:1}
+.cep-pay-hero{
+  padding:15px 16px 16px;border:1px solid #ffffff12;border-radius:22px;
+  background:linear-gradient(145deg,#111114,#050506 72%);color:#fff;
+  box-shadow:inset 0 1px 0 #ffffff10;
+}
+.cep-pay-id{display:flex;align-items:center;gap:11px;min-width:0}
+.cep-pay-logo{
+  display:grid;place-items:center;width:42px;height:42px;flex:none;overflow:hidden;
+  border-radius:12px;background:#1b1b1f;font-size:22px;line-height:1;
+}
+.cep-pay-logo .xcl{width:36px;height:auto;display:block}
+.cep-pay-logo img{max-width:36px;max-height:30px;object-fit:contain}
+.cep-pay-logo .ci,.cep-pay-logo .lg{max-width:34px;max-height:30px}
+.cep-pay-id>div{min-width:0}
+.cep-pay-id b{display:block;font-size:15px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cep-pay-id small{display:block;margin-top:3px;color:#a1a1aa;font-size:12.5px}
+.cep-pay-amtline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:15px}
+.cep-pay-amt{font-size:30px;line-height:1;font-weight:800;letter-spacing:-.025em}
+.cep-pay-paid{
+  display:inline-flex;align-items:center;gap:4px;padding:4px 9px;
+  border:1px solid #30d15855;border-radius:99px;background:#30d15812;
+  color:#30d158;font-size:12px;font-weight:700;
+}
+.cep-pay-times{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.cep-pay-time{
+  display:inline-flex;align-items:center;gap:4px;padding:4px 9px;
+  border:1px solid #ffd60a50;border-radius:99px;background:#ffd60a10;
+  color:#ffd60a;font-size:12px;font-weight:700;
+}
+.cep-pay-time.late{color:#ff453a;border-color:#ff453a55;background:#ff453a12}
+.cep-pay-time.early,.cep-pay-time.on{color:#30d158;border-color:#30d15855;background:#30d15812}
+.cep-pay-details{
+  margin-top:12px;padding:0 14px;border:1px solid color-mix(in srgb,var(--tx) 8%,transparent);
+  border-radius:20px;background:color-mix(in srgb,var(--tx) 5%,transparent);
+}
+.cep-pay-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:46px;border-top:1px solid color-mix(in srgb,var(--tx) 7%,transparent);
+  font-size:13.5px;line-height:1.3;
+}
+.cep-pay-row:first-child{border-top:0}
+.cep-pay-row>span{color:var(--mut)}
+.cep-pay-row>b{margin-left:auto;min-width:0;text-align:right;font-weight:700;overflow-wrap:anywhere}
+.cep-pay-row .psrc{display:inline-flex;justify-content:flex-end;align-items:center;gap:6px;color:var(--tx);font-size:13.5px}
+.cep-pay-row .psrc .xcl{width:27px;height:auto;flex:none}
+.cep-pay-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.cep-pay-act{
+  width:100%;min-height:48px;padding:0 14px;
+  border:1px solid color-mix(in srgb,var(--tx) 8%,transparent);border-radius:17px;
+  background:color-mix(in srgb,var(--tx) 6%,transparent);color:var(--tx);
+  font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;
+}
+.cep-pay-act.unpaid{color:var(--r)}
+.cep-pay-act:active{transform:scale(.987);background:color-mix(in srgb,var(--tx) 10%,transparent)}
+.cep-pay .ph-row{
+  display:flex;align-items:center;justify-content:space-between;width:100%;margin:12px 0 0;
+  padding:13px 14px;border:1px solid color-mix(in srgb,var(--tx) 9%,transparent);border-radius:16px;
+  background:color-mix(in srgb,var(--tx) 5%,transparent);color:var(--tx);font:inherit;font-size:14px;
+  font-weight:650;text-align:left;cursor:pointer;
+}
+.cep-pay .ph-row .ph-n{color:var(--mut)}
+
+/* ---- option rows ---- */
+.cep-options{margin-top:14px}
+.cep-options-h{margin:0 0 6px 12px;font-size:13.5px;font-weight:800;color:var(--mut)}
+.cep-tile{
+  display:flex;align-items:center;gap:10px;min-height:52px;
+  padding:8px 14px 8px 10px;margin-top:7px;
+  border:1px solid color-mix(in srgb,var(--tx) 5%,transparent);
+  border-radius:19px;background:color-mix(in srgb,var(--tx) 7%,transparent);
+}
+/* symbols sit directly on the row — no chip/square behind them */
+.cep-tile-ico{
+  display:grid;place-items:center;width:26px;height:30px;flex:none;
+  font-size:18px;line-height:1;
+}
+.cep-tile-ico img{max-width:100%;max-height:100%;object-fit:contain}
+.cep-tile-label{font-size:14px;font-weight:600;color:var(--tx);white-space:nowrap}
+.cep-tile-value{
+  display:flex;align-items:center;gap:6px;margin-left:auto;min-width:0;
+  color:var(--mut);font-size:13.5px;font-weight:600;text-align:right;
+  overflow-wrap:anywhere;
+}
+.cep-dot{width:8px;height:8px;flex:none;border-radius:50%;box-shadow:0 0 8px #fff2}
+
+/* ---- delete ---- */
+.cep-delete{
+  width:100%;min-height:52px;margin-top:13px;padding:0 16px;
+  border:1px solid color-mix(in srgb,var(--r) 14%,transparent);
+  border-radius:19px;background:color-mix(in srgb,var(--tx) 7%,transparent);
+  color:var(--r);font:inherit;font-size:15px;font-weight:700;cursor:pointer;
+}
+.cep-delete:active{transform:scale(.985);background:color-mix(in srgb,var(--r) 10%,transparent)}
+
+/* ---- forms share the same glass surface ---- */
+.cep-form{display:flex;flex-direction:column;gap:7px;padding:2px 3px 3px}
+.cep-form label{margin-top:5px;color:var(--mut);font-size:12.5px;font-weight:700}
+.cep-form input,.cep-form select,.cep-form textarea{
+  margin:0;padding:11px 13px;border-radius:14px;
+  border:1px solid color-mix(in srgb,var(--tx) 8%,transparent);
+  background:color-mix(in srgb,var(--tx) 6%,transparent);
+  color:var(--tx);
+}
+.cep-form textarea{min-height:110px}
+.cep-form .btn{
+  min-height:46px;margin-top:10px;border-radius:15px;
+  background:var(--tx);color:var(--bg);font-weight:800;
+}
+.cep-form .btn.s{background:color-mix(in srgb,var(--tx) 8%,transparent);color:var(--tx)}
+.cep-form .btn.s.dng{color:var(--r)}
+.cep-form .card{border-radius:17px;background:color-mix(in srgb,var(--tx) 6%,transparent)}
+.cep-form #sv{display:contents}
+.cep-form h2{display:none}
+
+@media(max-width:560px){
+  .cep-panel{
+    left:12px!important;right:12px;width:auto;
+    top:auto!important;bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    max-height:calc(100dvh - 24px);border-radius:28px;
+    transform:translateY(26px) scale(.85);transform-origin:50% 100%;
+  }
+  .cep-panel::before{display:none}
+  .cep-backdrop.closing .cep-panel{transform:translateY(22px) scale(.85)}
+  .cep-view{max-height:calc(100dvh - 62px)}
+  .cep-main{grid-template-columns:7px minmax(0,1fr);gap:12px;padding:6px 8px 4px}
+  .cep-accent{width:7px}
+  .cep-title{font-size:23px}
+  .cep-amount{font-size:21px}
+}
+@media(prefers-reduced-motion:reduce){
+  .cep-backdrop,.cep-panel,.cep-view,.cep-float,
+  .cep-backdrop.open .cep-float{transition:none;animation:none}
+  .cep-panel{transform:none;opacity:1}
+  .cep-backdrop{opacity:1}
+  .cep-float{transform:scale(1.12);opacity:1}
+  .cep-title{white-space:normal;overflow:visible}
+  .cep-title.mq{-webkit-mask-image:none;mask-image:none}
+  .cep-title.mq .cep-title-run,.cep-float-run{animation:none}
+}
+/* the app's own motion switch (Settings → animations) */
+html.rm .cep-panel,
+html.rm .cep-view,
+html.rm .cep-backdrop,
+html.rm .cep-float,
+html.noanim .cep-panel,
+html.noanim .cep-view,
+html.noanim .cep-backdrop,
+html.noanim .cep-float{transition:none;animation:none}
+html.rm .cep-backdrop.open .cep-float,
+html.noanim .cep-backdrop.open .cep-float{transition:none;animation:none}
+html.rm .cep-panel,
+html.noanim .cep-panel{transform:none;opacity:1}
+html.rm .cep-backdrop,
+html.noanim .cep-backdrop{opacity:1}
+html.rm .cep-float,
+html.noanim .cep-float{transform:scale(1.12);opacity:1}
+html.rm .cep-title,
+html.noanim .cep-title{white-space:normal;overflow:visible}
+html.rm .cep-title.mq,
+html.noanim .cep-title.mq{-webkit-mask-image:none;mask-image:none}
+html.rm .cep-title-run,
+html.noanim .cep-title-run,
+html.rm .cep-float-run,
+html.noanim .cep-float-run{animation:none}

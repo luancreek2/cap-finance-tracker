@@ -115,6 +115,65 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 .spend-donut circle+circle{animation:arcIn .5s ease both}
 #app.fx .bar b{transform-origin:left;animation:barIn .6s cubic-bezier(.2,.7,.2,1) both}
 .spend-bar{transition:filter .25s ease,box-shadow .25s ease}
+/* Net-balance chart: a restrained stock-chart draw, sweep, and data-point reveal.
+   Pointer inspection remains on .ch, so none of these visual layers intercept it. */
+@keyframes chAreaIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes chLineIn{to{stroke-dashoffset:0}}
+@keyframes chSweep{from{stroke-dashoffset:1}to{stroke-dashoffset:-.16}}
+.ch .ch-area{opacity:0;transform-origin:bottom;animation:chAreaIn .7s cubic-bezier(.2,.8,.2,1) .18s both}
+.ch .ch-line-base{opacity:.78}
+.ch .ch-line{stroke-dasharray:1;stroke-dashoffset:1;animation:chLineIn 1.25s cubic-bezier(.2,.82,.25,1) .12s both}
+.ch .ch-sweep{pointer-events:none;opacity:.24;stroke-linecap:round;stroke-dasharray:.008 .992;stroke-dashoffset:1;animation:chSweep 6s linear 1.45s infinite}
+@media(prefers-reduced-motion:reduce){.ch .ch-area,.ch .ch-line,.ch .ch-sweep{animation:none;opacity:1;stroke-dashoffset:0}.ch .ch-sweep{display:none}}
+html.noanim .ch .ch-area,html.noanim .ch .ch-line,html.noanim .ch .ch-sweep,html.rm .ch .ch-area,html.rm .ch .ch-line,html.rm .ch .ch-sweep{animation:none;opacity:1;stroke-dashoffset:0}html.noanim .ch .ch-sweep,html.rm .ch .ch-sweep{display:none}
+/* Balance header enters in the same quiet sequence as the chart, without
+   changing the existing type scale, colours, range selection, or eye control. */
+@keyframes chBalanceIn{from{opacity:0;transform:translateX(-14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes chHeaderFade{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+@keyframes chChangeIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes chRangeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.ch-balance{display:inline-block;animation:chBalanceIn .62s cubic-bezier(.2,.88,.25,1) both}
+.home-balance-stat{display:inline-block;animation:chChangeIn .46s cubic-bezier(.2,.82,.25,1) both}
+.ch-balance-row .bve{opacity:0;animation:chHeaderFade .38s cubic-bezier(.2,.88,.25,1) .32s both}
+.ch-change{animation:chChangeIn .46s cubic-bezier(.2,.82,.25,1) .24s both}
+.ch-ranges .ch-range{animation:chRangeIn .34s cubic-bezier(.2,.82,.25,1) both}
+.ch-ranges .ch-range:nth-child(1){animation-delay:.3s}.ch-ranges .ch-range:nth-child(2){animation-delay:.35s}.ch-ranges .ch-range:nth-child(3){animation-delay:.4s}.ch-ranges .ch-range:nth-child(4){animation-delay:.45s}.ch-ranges .ch-range:nth-child(5){animation-delay:.5s}.ch-ranges .ch-range:nth-child(6){animation-delay:.55s}.ch-ranges .ch-range:nth-child(7){animation-delay:.6s}
+@keyframes chArrowUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes chArrowDown{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+@keyframes chGrowthPulse{0%,100%{opacity:0;transform:translate(-50%,-50%) scale(.95)}50%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.ch-change{position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:6px;margin-left:-8px;padding:4px 8px;border-radius:8px}
+.ch-change-copy{white-space:nowrap}
+.ch-change-arrow{width:0;height:0;flex:none;position:relative;z-index:1}
+.ch-change.up .ch-change-arrow{border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid currentColor;animation:chArrowUp 1.5s ease-in-out 1.15s infinite}
+.ch-change.down .ch-change-arrow{border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid currentColor;animation:chArrowDown 1.5s ease-in-out 1.15s infinite}
+.ch-change.up::before,.ch-change.down::before{content:'';position:absolute;z-index:-1;pointer-events:none;top:50%;left:50%;width:calc(100% + 10px);height:calc(100% + 6px);border-radius:8px;opacity:0;animation:chGrowthPulse 2s ease-in-out 1.55s infinite}
+.ch-change.up::before{background:color-mix(in srgb,var(--g) 12%,transparent)}
+.ch-change.down::before{background:color-mix(in srgb,var(--r) 12%,transparent)}
+.ch-change.live{animation:chChangeLiveIn .22s cubic-bezier(.2,.82,.25,1) both}
+.ch-change.live.up .ch-change-arrow,.ch-change.live.down .ch-change-arrow{animation-delay:0s}
+.ch-change.live::before{animation-delay:.08s}
+@keyframes chChangeLiveIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.ch-balance,.ch-balance-row .bve,.ch-change,.ch-ranges .ch-range{animation:none;opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.home-balance-stat{animation:none;opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.ch-change-arrow{animation:none!important}.ch-change::before{animation:none!important;opacity:0}}
+html.noanim .ch-balance,html.noanim .ch-balance-row .bve,html.noanim .ch-change,html.noanim .ch-ranges .ch-range,html.rm .ch-balance,html.rm .ch-balance-row .bve,html.rm .ch-change,html.rm .ch-ranges .ch-range{animation:none;opacity:1;transform:none}
+html.noanim .home-balance-stat,html.rm .home-balance-stat{animation:none;opacity:1;transform:none}
+html.noanim .ch-change-arrow,html.rm .ch-change-arrow{animation:none!important}html.noanim .ch-change::before,html.rm .ch-change::before{animation:none!important;opacity:0}
+/* Payment-detail timing chip: the same directional cue as the balance change,
+   scoped to this one small status chip so its existing layout stays intact. */
+@keyframes pdTimingUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes pdTimingDown{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+@keyframes pdTimingPulse{0%,100%{opacity:0;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}
+.pd-timing{position:relative;isolation:isolate;overflow:visible;gap:6px}
+.pd-timing-arrow{width:0;height:0;flex:none;position:relative;z-index:1}
+.pd-timing-copy{position:relative;z-index:1}
+.pd-timing.early .pd-timing-arrow{border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid currentColor;animation:pdTimingUp 1.5s ease-in-out .45s infinite}
+.pd-timing.late .pd-timing-arrow{border-left:4px solid transparent;border-right:4px solid transparent;border-top:7px solid currentColor;animation:pdTimingDown 1.5s ease-in-out .45s infinite}
+.pd-timing::before{content:'';position:absolute;inset:-3px -5px;border-radius:99px;z-index:0;pointer-events:none;opacity:0;animation:pdTimingPulse 2s ease-in-out .72s infinite}
+.pd-timing.early::before{background:color-mix(in srgb,var(--g) 13%,transparent)}
+.pd-timing.late::before{background:color-mix(in srgb,var(--ud) 13%,transparent)}
+@media(prefers-reduced-motion:reduce){.pd-timing-arrow,.pd-timing::before{animation:none!important;opacity:0}.pd-timing-arrow{opacity:1}}
+html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::before,html.rm .pd-timing::before{animation:none!important}html.noanim .pd-timing::before,html.rm .pd-timing::before{opacity:0}
 .menu{transform-origin:top right;transition:opacity .18s ease,transform .18s ease}
 .toast{animation:toastIn .25s ease;transition:opacity .3s ease}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}}
@@ -197,6 +256,14 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 /* payment details + tappable payment rows */
 #sb .pd-hero{animation:pgIn .24s cubic-bezier(.22,.61,.36,1) backwards}
 .pd-r{animation:pgRe .2s cubic-bezier(.22,.61,.36,1) backwards}
+.paid-chip{position:relative;animation:paidBadgeLoop 2.25s .62s ease-in-out infinite}
+.paid-checkmark{display:block;width:13px;height:13px;flex:none;overflow:visible;fill:none;stroke:currentColor;
+  stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.paid-checkmark path{stroke-dasharray:18;stroke-dashoffset:18;transform-box:fill-box;transform-origin:center;
+  animation:paidCheckCycle 2.35s .12s ease-in-out infinite,paidMarkGlow 2.35s .12s ease-in-out infinite}
+@keyframes paidBadgeLoop{0%,100%{transform:scale(1);box-shadow:0 0 0 0 transparent}50%{transform:scale(1.045);box-shadow:0 0 11px 1px color-mix(in srgb,var(--g) 26%,transparent)}}
+@keyframes paidCheckCycle{0%,10%{stroke-dashoffset:18;opacity:.16}38%{stroke-dashoffset:0;opacity:1}68%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:18;opacity:.16}}
+@keyframes paidMarkGlow{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 3px color-mix(in srgb,var(--g) 72%,transparent))}}
 .pcard[role=button]{transition:transform .12s ease}
 .pcard[role=button]:active{transform:scale(.994)}
 #sb .ph-row{transition:transform .12s ease}
@@ -205,8 +272,12 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 .ph-years .pill:active{transform:scale(.95)}
 @media (prefers-reduced-motion:reduce){
   #sb .pd-hero,.pd-r{animation:none}
+  .paid-chip,.paid-checkmark,.paid-checkmark path{animation:none!important;transform:none;box-shadow:none}
+  .paid-checkmark path{stroke-dashoffset:0}
   .pcard[role=button],#sb .ph-row,.ph-years .pill{transition:none}
 }
+html.noanim .paid-chip,html.noanim .paid-checkmark,html.noanim .paid-checkmark path,html.rm .paid-chip,html.rm .paid-checkmark,html.rm .paid-checkmark path{animation:none!important;transform:none;box-shadow:none}
+html.noanim .paid-checkmark path,html.rm .paid-checkmark path{stroke-dashoffset:0}
 
 /* Settings rows arrive with a small stagger, the way a native list settles in. */
 .st-row{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards;animation-delay:calc(var(--i,0)*16ms)}
@@ -234,9 +305,12 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 .pt-spin{width:42px;height:42px;border-radius:50%;border:3px solid rgba(59,130,246,.22);border-top-color:#3b82f6;
   animation:ptSpin 1s linear infinite}
 @keyframes ptSpin{to{transform:rotate(1turn)}}
-.pt-check{display:none;width:52px;height:52px;fill:none;stroke:var(--g);
-  stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.pt-check{position:relative;z-index:2;display:none;width:56px;height:56px;overflow:visible;fill:none;stroke:var(--g);
+  stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;transform-box:fill-box;transform-origin:center}
+.pt-check-ring{stroke-dasharray:63;stroke-dashoffset:63;opacity:.92}
 .pt-check path{stroke-dasharray:26;stroke-dashoffset:26}
+.pt-ripple{position:absolute;z-index:1;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;
+  border:2px solid color-mix(in srgb,var(--g) 72%,transparent);border-radius:50%;opacity:0;pointer-events:none}
 .pt-slot{position:relative;width:118px;height:12px;overflow:hidden;border-radius:6px;
   background:linear-gradient(90deg,color-mix(in srgb,var(--tx) 14%,var(--card)),color-mix(in srgb,var(--tx) 6%,var(--card)),color-mix(in srgb,var(--tx) 14%,var(--card)))}
 .pt-card{position:absolute;top:-3px;left:0;width:34px;height:18px;border-radius:4px;opacity:0;
@@ -253,16 +327,27 @@ button,.pill,.btn,.rt,.aib,.row{transition:transform .15s ease,background-color 
 
 /* confirmed: the screen ticks, the terminal warms to green */
 .pt-wrap.done .pt-spin{display:none}
-.pt-wrap.done .pt-check{display:block;animation:ptTickIn .5s cubic-bezier(.2,.8,.2,1) both}
-.pt-wrap.done .pt-check path{animation:ckDraw .42s .1s cubic-bezier(.2,.7,.2,1) forwards}
-.pt-wrap.done .pt-term{box-shadow:0 14px 34px color-mix(in srgb,var(--g) 26%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}
+.pt-wrap.done .pt-check{display:block;animation:ptTickIn .82s cubic-bezier(.18,.9,.24,1.12) both}
+.pt-wrap.done .pt-check-ring{animation:ptRingDraw .48s .08s cubic-bezier(.2,.75,.25,1) forwards}
+.pt-wrap.done .pt-check path{animation:ckDraw .4s .27s cubic-bezier(.2,.7,.2,1) forwards}
+.pt-wrap.done .pt-ripple{animation:ptRipple .7s cubic-bezier(.16,.75,.25,1) both}
+.pt-wrap.done .pt-term{animation:ptGlowPulse 1.45s .55s ease-in-out 2;box-shadow:0 14px 34px color-mix(in srgb,var(--g) 26%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}
+.pt-wrap.done .pt-screen{box-shadow:inset 0 2px 10px rgba(0,0,0,.4),0 0 24px color-mix(in srgb,var(--g) 24%,transparent)}
 .pt-wrap.done .pt-title{color:var(--g)}
-@keyframes ptTickIn{0%{transform:scale(.55)}60%{transform:scale(1.07)}100%{transform:scale(1)}}
+@keyframes ptTickIn{0%{opacity:0;transform:scale(.28) rotate(-35deg)}55%{opacity:1;transform:scale(1.18) rotate(375deg)}76%{transform:scale(.92) rotate(350deg)}100%{opacity:1;transform:scale(1) rotate(360deg)}}
+@keyframes ptRingDraw{to{stroke-dashoffset:0}}
+@keyframes ptRipple{0%{opacity:.58;transform:scale(.55)}72%{opacity:.2}100%{opacity:0;transform:scale(2.35)}}
+@keyframes ptGlowPulse{0%,100%{box-shadow:0 14px 34px color-mix(in srgb,var(--g) 22%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}50%{box-shadow:0 14px 44px color-mix(in srgb,var(--g) 40%,transparent),0 0 22px color-mix(in srgb,var(--g) 22%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 25%,transparent)}}
 @media (prefers-reduced-motion:reduce){
-  .pt-wrap,.pt-check,.pt-check path,.pt-spin{animation:none}
+  .pt-wrap,.pt-check,.pt-check path,.pt-check-ring,.pt-ripple,.pt-spin,.pt-term{animation:none!important;transition:none!important}
   .pt-card{display:none}
-  .pt-check path{stroke-dashoffset:0}
+  .pt-check path,.pt-check-ring{stroke-dashoffset:0}
+  .pt-ripple{display:none}
 }
+html.noanim .pt-wrap,html.noanim .pt-check,html.noanim .pt-check path,html.noanim .pt-check-ring,html.noanim .pt-ripple,html.noanim .pt-spin,html.noanim .pt-term,
+html.rm .pt-wrap,html.rm .pt-check,html.rm .pt-check path,html.rm .pt-check-ring,html.rm .pt-ripple,html.rm .pt-spin,html.rm .pt-term{animation:none!important;transition:none!important}
+html.noanim .pt-check path,html.noanim .pt-check-ring,html.rm .pt-check path,html.rm .pt-check-ring{stroke-dashoffset:0}
+html.noanim .pt-ripple,html.rm .pt-ripple{display:none}
 
 /* Loading dots that replace the pay button's label while the confirmation starts. The label is
    gone from the DOM, so the button keeps an aria-label; currentColor keeps the dots on the

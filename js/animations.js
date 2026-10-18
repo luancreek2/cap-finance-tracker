@@ -1,6 +1,81 @@
-function toast(m,ok){document.querySelectorAll('.toast').forEach(x=>x.remove());const e=document.createElement('div');e.className='toast';e.setAttribute('role','status');if(ok)e.insertAdjacentHTML('beforeend','<svg class="tk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>');e.appendChild(document.createTextNode(m));document.body.appendChild(e);setTimeout(()=>e.classList.add('x'),2000);setTimeout(()=>e.remove(),2350)}
+function toast(m,ok,tone){document.querySelectorAll('.toast').forEach(x=>x.remove());const e=document.createElement('div');e.className='toast'+(tone?' toast-'+tone:'');e.setAttribute('role','status');if(ok)e.insertAdjacentHTML('beforeend','<svg class="tk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>');e.appendChild(document.createTextNode(m));document.body.appendChild(e);setTimeout(()=>e.classList.add('x'),2000);setTimeout(()=>e.remove(),2350)}
 function fx(){const a=$('#app');a.classList.add('fx');clearTimeout(window._fx);window._fx=setTimeout(()=>a.classList.remove('fx'),800)}
 function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;const sn=window._seen=window._seen||{},re=sn[k];sn[k]=1;a.classList.remove('pg','pg2');void a.offsetWidth;a.classList.add(re?'pg2':'pg');if(!re)fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
+/* Net-balance count-up: visual only. The formatted values, balance masking, chart
+   data, range controls, and pointer inspection continue to use their existing code. */
+function animateNetBalance(){
+  const balance=document.getElementById('chv'),delta=document.querySelector('[data-ch-delta]');
+  if(!balance)return;
+  const reduce=document.documentElement.classList.contains('noanim')||document.documentElement.classList.contains('rm')||matchMedia('(prefers-reduced-motion:reduce)').matches||S.hide==1;
+  const count=(el,end,duration,delay)=>{
+    if(!el)return;
+    if(el._countRaf)cancelAnimationFrame(el._countRaf);
+    const final=php(end);
+    if(reduce){el.textContent=final;return}
+    el.textContent=php(0);
+    const start=()=>{
+      const t0=performance.now(),tick=t=>{
+        const p=Math.min(1,(t-t0)/duration),ease=1-Math.pow(1-p,3);
+        const value=p===1?end:Math.round((end*ease)*100)/100;
+        el.textContent=php(value);
+        if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
+      };
+      el._countRaf=requestAnimationFrame(tick);
+    };
+    if(delay)setTimeout(start,delay);else start();
+  };
+  count(balance,+balance.dataset.chBalance||0,1200,90);
+  count(delta,+delta.dataset.chDelta||0,900,380);
+  animateHomeBalanceStats(reduce);
+}
+/* The IN / OUT / NET cards mirror the balance count-up while retaining their
+   exact signs, colours, balance masking, and responsive stat-card layout. */
+function animateHomeBalanceStats(reduce){
+  document.querySelectorAll('[data-home-stat]').forEach((el,i)=>{
+    if(el._countRaf)cancelAnimationFrame(el._countRaf);
+    if(el._countTimer)clearTimeout(el._countTimer);
+    const end=+el.dataset.homeStat||0,prefix=el.dataset.statPrefix||'',final=prefix+php(end);
+    if(reduce){el.textContent=final;return}
+    el.textContent=prefix+php(0);
+    el._countTimer=setTimeout(()=>{
+      const t0=performance.now(),tick=t=>{
+        const p=Math.min(1,(t-t0)/720),ease=1-Math.pow(1-p,3);
+        el.textContent=prefix+(p===1?php(end):php(Math.round(end*ease*100)/100));
+        if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
+      };
+      el._countRaf=requestAnimationFrame(tick);
+    },220+i*95);
+  });
+}
+/* Hovering a new graph date gets a short, immediate count rather than the
+   delayed landing animation used by the range summary. */
+let netHoverChangeRaf=0;
+function animateNetHoverChange(change,end){
+  const value=change&&change.querySelector('[data-ch-hover-delta]');
+  if(!value)return;
+  if(netHoverChangeRaf)cancelAnimationFrame(netHoverChangeRaf);
+  const reduce=document.documentElement.classList.contains('noanim')||document.documentElement.classList.contains('rm')||matchMedia('(prefers-reduced-motion:reduce)').matches||S.hide==1;
+  const final=php(end);
+  if(reduce){value.textContent=final;return}
+  value.textContent=php(0);
+  const t0=performance.now(),tick=t=>{
+    if(!value.isConnected)return;
+    const p=Math.min(1,(t-t0)/360),ease=1-Math.pow(1-p,3);
+    value.textContent=p===1?final:php(Math.round(end*ease*100)/100);
+    if(p<1)netHoverChangeRaf=requestAnimationFrame(tick);else netHoverChangeRaf=0;
+  };
+  netHoverChangeRaf=requestAnimationFrame(tick);
+}
+/* A normal Home render starts the animation. These hooks cover the other two
+   ways someone can revisit the installed app: resuming its tab/PWA, or a
+   browser back-forward cache restore. */
+let netBalanceVisitTimer=0;
+function replayNetBalanceOnVisit(){
+  clearTimeout(netBalanceVisitTimer);
+  netBalanceVisitTimer=setTimeout(()=>{if(tab==='Home')animateNetBalance()},100);
+}
+addEventListener('pageshow',e=>{if(e.persisted)replayNetBalanceOnVisit()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')replayNetBalanceOnVisit()});
 const flash=id=>{window._fl=id};
 /* ---- One stable modal shell: #sheet (dimmed backdrop + blur) > #sb (the container) > #sv (the
    animated view). The backdrop and the container are built once. Moving between screens only
@@ -150,8 +225,8 @@ function payTerminalView(name,amount){
   return `<div class="pt-wrap" role="status">`
     +`<div class="pt-amt">${amount||''}</div>`
     +`<div class="pt-name">${nm}</div>`
-    +`<div class="pt-term"><div class="pt-screen"><div class="pt-spin"></div>`
-    +`<svg class="pt-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`
+    +`<div class="pt-term"><div class="pt-screen"><div class="pt-spin"></div><span class="pt-ripple" aria-hidden="true"></span>`
+    +`<svg class="pt-check" viewBox="0 0 24 24" aria-hidden="true"><circle class="pt-check-ring" cx="12" cy="12" r="10"/><path d="M5 12.5l4.5 4.5L19 7"/></svg>`
     +`</div><div class="pt-slot"><span class="pt-card"></span></div></div>`
     +`<div class="pt-title">Processing payment</div>`
     +`<div class="pt-sub">Please wait while we confirm</div>`
@@ -402,6 +477,7 @@ CapOff.init({ get: () => S, set: (value) => (S = value) });
 CapOff.boot();
 initUiEnhancements();
 initTransactionV2();
+initActivityScope();
 initCardAnimations();
 initTransactionNoSelection();
 initGlobalNoSelection();

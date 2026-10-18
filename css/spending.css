@@ -1,0 +1,196 @@
+/* ==========================================================================
+   Spending — infinite month reel, donut breakdown, legend bars.
+   Owned by js/app.js: spendMonthsBar() / spendReelScroll() / spendSettle().
+   The reel repeats the 12 month names, so there is no visible start or end;
+   the row has a fixed height, so nothing here can reflow the page.
+   ========================================================================== */
+.spend-hero{margin-bottom:12px}
+
+/* ---- the row: year dropdown + infinite month reel ---- */
+.spend-months{display:flex;align-items:center;gap:7px;height:44px;margin:0 0 8px}
+
+/* year dropdown — also the active scope in whole-year mode */
+.spend-year-wrap{position:relative;flex:none}
+.spend-year-btn{
+  display:flex;align-items:center;gap:6px;height:32px;padding:0 11px;
+  border:1px solid var(--line);border-radius:11px;
+  background:color-mix(in srgb,var(--card) 80%,transparent);
+  color:var(--tx);font:inherit;font-size:13px;font-weight:700;letter-spacing:.01em;
+  font-variant-numeric:tabular-nums;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:border-color .22s ease,background .22s ease,box-shadow .22s ease;
+}
+.spend-year-btn.on,
+.spend-year-btn[aria-expanded=true]{
+  border-color:color-mix(in srgb,var(--g) 45%,var(--line));
+  background:color-mix(in srgb,var(--g) 14%,var(--card));
+  box-shadow:0 6px 16px color-mix(in srgb,var(--g) 18%,transparent);
+}
+.spend-year-btn:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.spend-caret{width:9px;height:5.4px;opacity:.65;transition:transform .22s ease}
+.spend-year-btn[aria-expanded=true] .spend-caret{transform:rotate(180deg)}
+.spend-year-menu{
+  position:absolute;left:0;top:calc(100% + 6px);z-index:40;
+  min-width:104px;max-height:214px;overflow:auto;
+  padding:5px;border-radius:14px;border:1px solid var(--line);
+  background:var(--card);box-shadow:0 14px 34px #0006;
+  opacity:0;pointer-events:none;transform:translateY(-5px) scale(.97);
+  transform-origin:top left;transition:opacity .18s ease,transform .18s ease;
+}
+.spend-year-menu.open{opacity:1;pointer-events:auto;transform:none}
+.spend-year-opt{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;
+  padding:8px 10px;border:0;border-radius:9px;background:none;color:var(--tx);
+  font:inherit;font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;
+}
+@media(hover:hover){.spend-year-opt:hover{background:var(--line)}}
+.spend-year-opt:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+.spend-year-opt.on{font-weight:700}
+.spend-tick{width:12px;height:10px;color:var(--g);opacity:0;transition:opacity .16s ease}
+.spend-year-opt.on .spend-tick{opacity:1}
+
+/* infinite month reel — clipped at both edges, scrollbar hidden, no CSS snap
+   (the reel snaps itself once it settles, so wrapping stays perfectly silent) */
+.spend-months-inner{
+  position:relative;flex:1;min-width:0;height:100%;
+  display:flex;align-items:center;gap:6px;
+  padding:0 1px;overflow-x:auto;overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%);
+}
+.spend-months-inner::-webkit-scrollbar{display:none;width:0;height:0}
+.spend-months-inner.dragging{cursor:grabbing}
+@media(hover:hover){.spend-months-inner{cursor:grab}}
+
+.spend-month-tab{
+  position:relative;flex:none;display:inline-flex;align-items:center;height:32px;
+  padding:0 12px;border:1px solid var(--line);border-radius:11px;
+  background:color-mix(in srgb,var(--card) 80%,transparent);
+  color:var(--mut);font:inherit;font-size:12px;font-weight:600;letter-spacing:.01em;
+  white-space:nowrap;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:color .22s ease,background .22s ease,border-color .22s ease,box-shadow .22s ease,opacity .22s ease;
+}
+@media(hover:hover){.spend-month-tab:hover{color:var(--tx)}}
+.spend-month-tab:active{transform:scale(.96)}
+.spend-month-tab.on{
+  color:var(--tx);
+  background:color-mix(in srgb,var(--g) 16%,var(--card));
+  border-color:color-mix(in srgb,var(--g) 38%,var(--line));
+  box-shadow:0 6px 16px color-mix(in srgb,var(--g) 18%,transparent);
+}
+.spend-month-tab.dim{opacity:.4}
+@media(hover:hover){.spend-month-tab.dim:hover{opacity:.72}}
+.spend-month-tab:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+
+.spend-months-ink{
+  position:absolute;left:0;bottom:2px;width:0;height:3px;border-radius:3px;
+  background:linear-gradient(90deg,var(--g),color-mix(in srgb,var(--g) 45%,#8ff0c0));
+  box-shadow:0 0 12px color-mix(in srgb,var(--g) 45%,transparent);
+  will-change:transform,width;pointer-events:none;opacity:1;
+  transition:opacity .18s ease;
+}
+.spend-months-ink.off{opacity:0}
+
+/* ---- spending card ---- */
+.spend-card{padding:15px 16px;margin-bottom:10px;container-type:inline-size}
+.spend-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.spend-card h2{font-size:17px;margin:0;letter-spacing:-.01em}
+.spend-meta{font-size:11.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.spend-empty{margin:0;font-size:12.5px}
+
+/* Two columns only when this card itself is wide enough. A viewport query caused
+   the amount columns to collide when Spending shared a narrow Home grid column. */
+@container (min-width:700px){
+  .spend-legend.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+}
+
+.spend-insight-ico{font-size:20px;line-height:1;flex:none}
+.spend-insight-txt{min-width:0}
+.spend-insight-txt b{font-size:13.5px}
+.spend-insight-txt .m{font-size:12px;margin-top:1px;color:var(--mut)}
+.spend-trend-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+
+/* ---- the donut and the breakdown animate in on every change ---- */
+#sp-top .spend-donut-wrap{animation:spendPop .52s cubic-bezier(.2,.85,.25,1) both}
+#sp-top .spend-center b{animation:spendPop .6s cubic-bezier(.2,.85,.25,1) both}
+#sp-top .spend-center span{animation:spendPop .6s .04s cubic-bezier(.2,.85,.25,1) both}
+#sp-top .spend-arc{animation:spendArc .8s cubic-bezier(.22,.9,.3,1) both;animation-delay:calc(var(--i,0) * 45ms)}
+@keyframes spendPop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@keyframes spendArc{from{stroke-dashoffset:465}to{stroke-dashoffset:var(--o)}}
+
+.spend-legend-row{
+  position:relative;isolation:isolate;
+  animation:spendRowIn .42s cubic-bezier(.2,.85,.25,1) backwards;
+  animation-delay:calc(var(--i,0) * 45ms);
+}
+.spend-legend-row::before{
+  content:'';position:absolute;left:0;top:3px;bottom:3px;width:var(--p,0%);
+  border-radius:9px;background:var(--c,var(--g));opacity:.13;z-index:-1;
+  transition:width .5s cubic-bezier(.2,.85,.25,1);
+}
+@keyframes spendRowIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+.spend-insight{animation:spendRowIn .42s .09s cubic-bezier(.2,.85,.25,1) both}
+
+/* ---- category spotlight: the legend rows are the chart's controls ---- */
+/* (a real button, so the row is focusable and Enter/Space work) */
+button.spend-legend-row{
+  width:100%;margin:0;border:0;border-bottom:1px solid var(--line);
+  background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform .3s cubic-bezier(.2,.85,.25,1),opacity .26s ease;
+}
+.spend-legend-row:focus-visible{outline:2px solid var(--g);outline-offset:2px;border-radius:8px}
+.spend-legend-row.on{transform:scale(1.03)}
+.spend-legend-row.on::before{opacity:.28}
+.spend-legend-row.on .spend-dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--g)) 26%,transparent)}
+.spend-legend-row.on .spend-legend-name{font-weight:600}
+.spend-overview.focus .spend-legend-row:not(.on){opacity:.45}
+
+/* the same spotlight on the ring itself: the picked arc thickens, the rest
+   recede a hair, so the choice reads instantly. Every arc is its own hit
+   target, so the donut is tappable as well as the legend.
+   No `filter` here on purpose: a CSS filter on an SVG shape is clipped to the
+   shape's bounding box (a square), so a drop-shadow glow shows up as a pale
+   rectangle floating around the donut. */
+.spend-overview .spend-arc{
+  transform-box:view-box;transform-origin:100px 100px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  /* a tapped segment must never draw the UA focus rectangle around the ring */
+  outline:none;
+  transition:stroke-width .3s cubic-bezier(.2,.85,.25,1),opacity .3s ease,transform .34s cubic-bezier(.2,.85,.25,1);
+}
+.spend-overview .spend-arc:focus,
+.spend-overview .spend-arc:focus-visible{
+  outline:none;
+}
+/* keyboard-only affordance: a slight swell instead of a focus ring */
+.spend-overview:not(.focus) .spend-arc:focus-visible{stroke-width:23}
+@media(hover:hover){
+  .spend-overview:not(.focus) .spend-arc:hover{stroke-width:23}
+}
+.spend-overview.focus .spend-arc{opacity:.3;transform:scale(.985)}
+.spend-overview.focus .spend-arc.on{opacity:1;transform:none;stroke-width:25}
+
+@media(prefers-reduced-motion:reduce){
+  button.spend-legend-row,
+  .spend-overview .spend-arc{transition:none}
+}
+html.noanim button.spend-legend-row,
+html.noanim .spend-overview .spend-arc,
+html.rm button.spend-legend-row,
+html.rm .spend-overview .spend-arc{transition:none}
+
+@media(prefers-reduced-motion:reduce){
+  .spend-month-tab,.spend-year-btn,.spend-year-menu,
+  .spend-month-tab:active{transition:none;transform:none}
+  .spend-months-ink{transition:none!important}
+  #sp-top .spend-donut-wrap,
+  #sp-top .spend-center b,
+  #sp-top .spend-center span,
+  #sp-top .spend-arc,
+  .spend-legend-row,
+  .spend-insight{animation:none}
+  .spend-legend-row::before{transition:none}
+}

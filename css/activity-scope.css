@@ -1,0 +1,229 @@
+/* ==========================================================================
+   Activity — date scope. The full-width selector that used to sit above the
+   calendar is gone: the scope now lives in the ••• popup owned by
+   js/activity-scope.js and built from the Accounts component
+   (css/account-options.css).
+
+   What stays here:
+     .as-pills / .as-head  the type-filter row (with ••• flush right) and the
+                           period caption below it
+     .as-scoped …         the scoped calendar
+     .ao-*                the date grids the Accounts menu has no equivalent for
+     .as-in               the shared rise-in motion
+   ========================================================================== */
+
+/* ---- the type-filter row: the pills, then ••• flush right, exactly over the
+        right edge of the day totals below it ---- */
+/* 1em 0 matches the paragraph it replaced, so the row keeps its spacing */
+.as-pills{position:relative;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:1em 0}
+.as-pills .account-options-button{
+  margin-left:auto;margin-right:4px;color:var(--tx);
+  background:color-mix(in srgb,var(--tx) 6%,transparent);
+  border-color:color-mix(in srgb,var(--tx) 16%,var(--line));
+  font-size:19px;font-weight:800;letter-spacing:1px;
+}
+/* .pill.on sets color:var(--ac-t), which is dark-on-dark here because the
+   background below is a green tint rather than the solid accent. Pin the dots
+   to the text colour so the control stays legible in both themes. */
+.as-pills .account-options-button.on{
+  background:color-mix(in srgb,var(--g) 22%,transparent);
+  border-color:color-mix(in srgb,var(--g) 60%,var(--line));
+  color:var(--tx);
+}
+
+/* ---- the period caption: one slim line above the list ---- */
+.as-head{margin:0 4px;min-height:18px}
+/* soft() fades everything after the calendar with .cap-in. The caption is the
+   feedback for the change, so it states the new period at once instead. */
+.as-head.cap-in{animation:none}
+.as-cur{
+  display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  color:var(--tx);font-size:13px;font-variant-numeric:tabular-nums;
+}
+.as-cur b{font-weight:600}
+.as-cur small{margin-left:7px;color:var(--mut);font-size:12px;font-weight:500}
+.as-cur.on b{color:var(--g)}
+
+/* ---- the popup body ---- */
+#activity-options-menu{right:4px}
+#activity-options-menu .ao-body{animation:accountMenuIn .18s ease-out}
+#activity-options-menu .ao-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#activity-options-menu .ao-go{margin-left:auto;color:var(--mut);font-size:15px;line-height:1}
+#activity-options-menu .ao-back{color:var(--mut);font-size:13px;gap:6px}
+#activity-options-menu .ao-back .ao-label{flex:none}
+/* Clear dates: an action row rather than a sixth mode. It sits apart from the
+   radios and spells out the selection it releases. */
+#activity-options-menu .ao-clear .ao-icon{color:var(--mut)}
+#activity-options-menu .ao-clear .ao-tag{margin-left:auto;padding-left:8px;white-space:nowrap}
+
+/* period navigator: ‹  October 2026  › */
+#activity-options-menu .ao-nav{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  margin:9px 4px 7px;
+}
+#activity-options-menu .ao-nav b{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
+#activity-options-menu .ao-arrow{
+  flex:0 0 28px;width:28px;height:28px;min-height:28px;padding:0;
+  display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;
+  background:transparent;color:var(--tx);
+  transition:background .2s ease,border-color .2s ease;
+}
+@media(hover:hover){
+  #activity-options-menu .ao-arrow:hover{border-color:color-mix(in srgb,var(--g) 42%,var(--line))}
+}
+#activity-options-menu .ao-arrow svg{width:15px;height:15px;display:block}
+
+/* day + year/month tiles */
+#activity-options-menu .ao-dow{
+  display:grid;grid-template-columns:repeat(7,1fr);gap:2px;
+  padding:0 2px 3px;color:var(--mut);font-size:10.5px;text-align:center;
+}
+#activity-options-menu .ao-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 2px 2px}
+#activity-options-menu .ao-d{
+  aspect-ratio:1;min-height:0;padding:0;border:0;border-radius:50%;
+  display:grid;place-items:center;background:transparent;color:var(--tx);
+  font:inherit;font-size:12.5px;font-variant-numeric:tabular-nums;cursor:pointer;
+  transition:background .16s ease,color .16s ease;
+}
+#activity-options-menu .ao-d.x{color:var(--mut);opacity:.5}
+#activity-options-menu .ao-d.t{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--g) 55%,transparent)}
+#activity-options-menu .ao-d.on{background:var(--ac);color:var(--ac-t);font-weight:700;box-shadow:none}
+@media(hover:hover){
+  #activity-options-menu .ao-d:not(.on):hover{background:color-mix(in srgb,var(--tx) 8%,transparent)}
+}
+#activity-options-menu .ao-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 2px 2px}
+#activity-options-menu .ao-tile{
+  width:100%;min-height:38px;padding:0;border:1px solid var(--line);border-radius:11px;
+  display:grid;place-items:center;background:color-mix(in srgb,var(--card) 60%,transparent);
+  color:var(--tx);font:inherit;font-size:12.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;cursor:pointer;
+  transition:background .18s ease,border-color .18s ease,transform .16s ease;
+}
+#activity-options-menu .ao-tile.on{background:var(--ac);color:var(--ac-t);border-color:transparent}
+#activity-options-menu .ao-tile:active{transform:scale(.97)}
+@media(hover:hover){
+  #activity-options-menu .ao-tile:not(.on):hover{
+    border-color:color-mix(in srgb,var(--g) 42%,var(--line));
+    background:color-mix(in srgb,var(--g) 10%,var(--card));
+  }
+}
+#activity-options-menu .ao-list button{font-variant-numeric:tabular-nums}
+#activity-options-menu .ao-tag{
+  margin-left:8px;color:var(--mut);font-size:10.5px;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+
+/* ---- scoped calendar ---- */
+/* week: the seven days that are actually in view */
+.acal .dc.rng::before{
+  opacity:1;transform:none;
+  background:color-mix(in srgb,var(--g) 11%,transparent);
+  box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--g) 30%,transparent);
+}
+/* day: the app's own raised surface, warmed a touch so the picked day reads.
+   No ring and no glow — the selection is the surface plus the motion. */
+.acal .dc.sel::before{
+  opacity:1;transform:none;
+  background:color-mix(in srgb,var(--g) 15%,var(--bg));
+}
+/* days outside the period keep their date but give up their entries */
+.acal .dc.off .n{opacity:.45}
+
+/* ---- picking a date ------------------------------------------------------
+   The reference day-select motion, ported: the tapped cell presses in, springs
+   past its size and settles a touch bigger, and the day card below springs up
+   with its rows trailing after it.
+
+   Deliberately not ported: the reference's green border and glow. A picked day
+   reads as a raised surface plus the motion, with no ring around it. The
+   selected scale also stays small, because .dc is a 1fr grid cell here and the
+   calendar draws hairline borders the cell must not swallow.                 */
+.acal .dc{transition:transform .36s cubic-bezier(.2,1.18,.34,1)}
+.acal .dc.sel{transform:scale(1.035);z-index:2}
+.acal .dc.pop{animation:dcPop .62s cubic-bezier(.22,.9,.26,1) both;z-index:2}
+@keyframes dcPop{
+  0%{transform:scale(1)}
+  20%{transform:scale(.92)}
+  52%{transform:scale(1.055)}
+  76%{transform:scale(1.018)}
+  100%{transform:scale(1.035)}
+}
+
+/* the day card: opacity + lift + scale on a spring curve, rows trailing after
+   it. .day-enter is set by js/activity-scope.js for the length of the motion,
+   so the rows keep their own long-press animation once it is done. */
+.day-card{transform-origin:50% 0}
+.day-card.day-enter{animation:dayCardIn .52s cubic-bezier(.2,.92,.26,1.06) both}
+@keyframes dayCardIn{from{opacity:0;transform:translateY(18px) scale(.945)}to{opacity:1;transform:none}}
+.day-card.day-enter>.row{animation:dayRowIn .42s cubic-bezier(.2,.85,.25,1.02) both}
+@keyframes dayRowIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.day-card.day-enter>.row:nth-child(2){animation-delay:.05s}
+.day-card.day-enter>.row:nth-child(3){animation-delay:.09s}
+.day-card.day-enter>.row:nth-child(4){animation-delay:.13s}
+.day-card.day-enter>.row:nth-child(5){animation-delay:.17s}
+.day-card.day-enter>.row:nth-child(6){animation-delay:.21s}
+.day-card.day-enter>.row:nth-child(7){animation-delay:.25s}
+
+/* ---- calendar event visibility legend ---- */
+.cal-legend{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px}
+.cal-legend-item,.cal-show-all{
+  display:inline-flex;align-items:center;gap:5px;margin:0;padding:3px 6px;
+  border:0;border-radius:8px;background:transparent;color:var(--mut);
+  font:inherit;font-size:12px;line-height:1.2;cursor:pointer;
+  transition:opacity .2s ease,background .2s ease,color .2s ease;
+}
+.cal-legend-item:hover,.cal-legend-item:focus-visible{
+  background:color-mix(in srgb,var(--tx) 8%,transparent);color:var(--tx);outline:none;
+}
+.cal-legend-item i{width:9px;height:9px;flex:none;border-radius:50%;transition:opacity .2s ease}
+.cal-legend-item.off{opacity:.38;text-decoration:line-through}
+.cal-legend-item.off i{opacity:.55}
+.cal-selected{margin-left:4px}
+.acal .ap{opacity:1;transform:none;max-width:100%;transition:opacity .24s ease,transform .24s ease,max-width .24s ease,margin .24s ease}
+.acal .ap.cal-hidden{opacity:0;transform:scale(.82);max-width:0;margin-left:0;margin-right:0;pointer-events:none;overflow:hidden}
+@media(prefers-reduced-motion:reduce){.cal-legend-item,.acal .ap{transition:none}}
+
+/* ---- year: twelve month tiles ---- */
+.as-ygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:2px 0 4px}
+.as-ym{
+  position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+  padding:9px 10px;border:1px solid var(--line);border-radius:13px;text-align:left;
+  background:color-mix(in srgb,var(--card) 80%,transparent);color:var(--tx);
+  font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:background .2s ease,border-color .2s ease,transform .16s ease;
+}
+.as-ym:active{transform:scale(.97)}
+.as-ym:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+@media(hover:hover){
+  .as-ym:hover{
+    border-color:color-mix(in srgb,var(--g) 42%,var(--line));
+    background:color-mix(in srgb,var(--g) 10%,var(--card));
+  }
+}
+.as-ym b{font-size:12.5px;font-weight:700;letter-spacing:.01em}
+.as-ym small{color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
+.as-ym-n{position:absolute;top:8px;right:9px;font-size:10px;color:var(--mut);opacity:.75}
+
+/* ---- motion when the period changes ---- */
+.as-in{animation:asRise .34s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 26ms)}
+@keyframes asRise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+@media(prefers-reduced-motion:reduce){
+  #activity-options-menu .ao-body,
+  #activity-options-menu .ao-d,
+  #activity-options-menu .ao-tile,
+  #activity-options-menu .ao-arrow,
+  .as-ym{animation:none;transition:none}
+  .as-in{animation:none}
+  .acal .dc,.day-card.day-enter,.day-card.day-enter>.row{
+    animation:none!important;transition:none!important}
+}
+/* the app's own motion switch (Settings → animations) */
+html.rm .acal .dc,
+html.noanim .acal .dc{transition:none!important}
+html.rm .acal .dc.pop,
+html.noanim .acal .dc.pop,
+html.rm .day-card.day-enter,
+html.noanim .day-card.day-enter,
+html.rm .day-card.day-enter>.row,
+html.noanim .day-card.day-enter>.row{animation:none!important}
