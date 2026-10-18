@@ -2199,3 +2199,10 @@ html.rm *,html.rm *:before,html.rm *:after{animation-duration:.001ms!important;a
 @media(prefers-reduced-motion:reduce){.acct-money-actions button{transition:none}.acct-money-actions button:active{transform:none}}
 html.noanim .acct-money-actions button,html.rm .acct-money-actions button{transition:none!important}
 html.noanim .acct-money-actions button:active,html.rm .acct-money-actions button:active{transform:none;box-shadow:none}
+.acct-setup-form input.setup-invalid,.acct-setup-form select.setup-invalid{border-color:#ff453a!important;box-shadow:0 0 0 2px #ff453a44,0 0 14px #ff453a20!important}
+.acct-setup-form input.setup-invalid:focus,.acct-setup-form select.setup-invalid:focus{outline-color:#ff453a!important}
+.acct-setup-form .setup-label-invalid{color:#ff453a!important}
+.acct-setup-form .setup-field-error{display:block;margin:5px 0 2px;color:#ff453a;font-size:12px;line-height:1.35;font-weight:550;animation:setupFieldErrorIn .18s ease-out both}
+@keyframes setupFieldErrorIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.acct-setup-form .setup-field-error{animation:none}}
+html.noanim .acct-setup-form .setup-field-error,html.rm .acct-setup-form .setup-field-error{animation:none!important}
