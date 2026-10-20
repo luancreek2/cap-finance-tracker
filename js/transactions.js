@@ -383,6 +383,35 @@ function balanceConsistencyReport(){
   const orphanTransfers=(S.xfer||[]).filter(x=>x&&((x.from!=null&&!known.has(String(x.from)))||(x.to!=null&&!known.has(String(x.to))))).length;
   return{rows,orphanTransactions,orphanTransfers,accounts:rows.length,generatedAt:new Date().toISOString()}
 }
+/* ---- anchor snapshot + shadow comparison (dev-only) -------------------------
+   Anchors are the account balances at capture time, stored locally so later
+   mutations can be checked against them. They stay outside S: never synced,
+   never exported, never written into account records. */
+const ANCHOR_KEY='cap_balance_anchors_v1';
+function readBalanceAnchors(){try{const o=JSON.parse(localStorage.getItem(ANCHOR_KEY)||'null');return o&&o.anchors&&typeof o.anchors==='object'?o:null}catch(e){return null}}
+function captureBalanceAnchors(force=false){
+  const prev=readBalanceAnchors();
+  if(prev&&!force)return{ok:false,reason:'already captured',at:prev.at};
+  const anchors={};
+  for(const a of (S.accts||[])){const e=balanceEffects(a.id);if(e)anchors[String(a.id)]=e.impliedAnchor}
+  const doc={v:1,at:new Date().toISOString(),anchors};
+  try{localStorage.setItem(ANCHOR_KEY,JSON.stringify(doc))}catch(e){return{ok:false,reason:'storage failed'}}
+  return{ok:true,captured:anchors,...(prev?{previous:prev.anchors,previousAt:prev.at}:{})}
+}
+function balanceShadowReport(){
+  const st=readBalanceAnchors(),r2=v=>Math.round(v*100)/100;
+  if(!st)return{captured:false,rows:[],drift:[],missing:(S.accts||[]).length,extra:0,totalDrift:0};
+  const rows=[];
+  for(const a of (S.accts||[])){
+    const e=balanceEffects(a.id);if(!e)continue;
+    const key=String(a.id),has=Object.prototype.hasOwnProperty.call(st.anchors,key),anchor=has?+st.anchors[key]:null;
+    const derived=has?r2(anchor+e.effects):null,delta=has?r2(e.stored-derived):null;
+    rows.push({id:a.id,type:a.type,anchor,derived,stored:e.stored,delta,hasAnchor:has});
+  }
+  const drift=rows.filter(r=>r.hasAnchor&&Math.abs(r.delta)>0.005);
+  return{captured:true,at:st.at,rows,drift,missing:rows.filter(r=>!r.hasAnchor).length,extra:Object.keys(st.anchors).filter(k=>(S.accts||[]).every(a=>String(a.id)!==k)).length,totalDrift:r2(drift.reduce((n,r)=>n+Math.abs(r.delta),0))};
+}
+
 function openTx(txId=0){const f=txId?fTx(txId):null;if(txId&&!f)return;const t=f&&f.t,v=x=>String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'),cat=t?t.cat:'Food',a0=t?t.acct:(S.accts[0]||{}).id;
 openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value="-1" ${t&&t.amt<0?'selected':''}>Expense</option><option value="1" ${t&&t.amt>0?'selected':''}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t?Math.abs(t.amt):''}"><select id="ct">${catNames().map(c=>`<option ${c==cat?'selected':''}>${c}</option>`).join('')}</select><select id="ac" onchange="txAcc()">${S.accts.map(a=>`<option value="${a.id}" ${a.id==a0?'selected':''}>${esc(a.name)}</option>`).join('')}</select><input id="dt" type="date" value="${t?v(t.d):today}"><div id="ccf" style="display:none"><select id="ps" onchange="txAcc()"><option value="p" ${f&&f.p?'':'selected'}>Posted</option><option value="n" ${f&&f.p?'selected':''}>Not posted (pending)</option></select><input id="pdt" type="date" title="Posting date" value="${t&&t.pd?t.pd:(t?t.d:today)}"><p class="m" style="font-size:12px;margin:0 0 8px">Pending purchases already reduce the balance, but only appear in the billing cycle they post into.</p><div id="card-kind-wrap"><label class="m" for="card-kind">Card transaction type</label><select id="card-kind" onchange="txCardKind()"><option value="purchase" ${t&&t.cashAdvance?'':'selected'}>Purchase</option><option value="cash" ${t&&t.cashAdvance?'selected':''}>Cash advance / withdrawal</option></select><div id="card-currency-wrap"><label class="m" for="card-currency">Purchase currency</label><select id="card-currency"><option value="PHP">PHP · no foreign fee</option>${['USD','EUR','GBP','JPY','SGD','Other'].map(c=>`<option ${t&&t.foreignCurrency==c?'selected':''}>${c}</option>`).join('')}</select></div><p class="m" style="font-size:12px">Configured card fees are added automatically when this transaction is saved.</p></div></div><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t?v(t.note||''):''}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t?v(t.desc||''):''}</textarea><button class="btn" onclick="saveTx(${txId||0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>${txId?`<button class="btn s dng" onclick="askDel(${txId})">Delete transaction</button>`:''}`);if(t&&t.foreignCurrency&&$('#card-currency'))$('#card-currency').value=t.foreignCurrency;txAcc()}
 function txAcc(){const c=acct($('#ac').value).type=='credit';$('#ccf').style.display=c?'block':'none';$('#pdt').style.display=c&&$('#ps').value=='p'?'block':'none';if(c)txCardKind()}
