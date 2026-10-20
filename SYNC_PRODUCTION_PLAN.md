@@ -35,13 +35,18 @@ Covered by tests: posting a pending transaction, deleting a transaction,
 editing an amount, card payment, account transfer, goal move, deposit, interest
 credit, cash-advance/foreign fee, CSV import adjustment.
 
-**Verified 2026-10-20** on a disposable origin across 13 write paths (add/edit/
+**Verified 2026-10-20** on disposable origins across 19 write paths (add/edit/
 delete transaction, internal and external deposit, card payment and its
-deletion, pending then posted, goal move, cash-advance fee): the implied anchor
-stayed constant for every step except posting a pending purchase, which shifted
-the card by exactly the pending amount. `postOk` was re-applying `bApply` on top
-of the effect already applied at save; fixed by removing the duplicate call.
-Still to cover: CSV import adjustment, interest credit.
+deletion, pending then posted, goal move, cash-advance fee, interest credit,
+simulated interest, CSV import, JSON merge). Two defects were found and fixed:
+`postOk` re-applied the effect already applied at save, and CSV/JSON imports
+inserted pending credit rows without applying them, so such rows never reached
+the balance.
+
+Known divergence: CSV import with "Apply imported rows to account balances"
+unchecked records transactions without moving balances. Derived balances cannot
+represent that state, so the option must be removed or redefined before reads
+are flipped.
 
 ## 2. Outbox and push/pull worker
 
