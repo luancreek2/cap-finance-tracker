@@ -8,7 +8,7 @@ is required after the notes RPC setup.
 
 ## Run only when ready for real writes
 
-1. Reload the app to pick up shell v307 (two reloads may be needed).
+1. Reload the app to pick up shell v308 (two reloads may be needed).
 2. Open Privacy & Sync → developer tools → **Plan Outbox (read-only)**.
 3. Confirm **Inspect notes-test blocker (read-only)** reports a clean baseline,
    zero pending outbox entries, and no recovery checkpoint.
@@ -108,6 +108,42 @@ blocked cloud read is never proof that the cloud note is absent or restored.
 Reloading for inspection is safe because the checkpoint is persisted, but do
 not click the controlled test again.
 
+### Verified recovery finalization
+
+When the inspector reports any `CONVERGED` status — exact, sync-metadata-only,
+or limited evidence — it offers **Finalize verified recovery (confirm)**. This
+is the only supported checkpoint cleanup. It never retries the controlled test,
+changes a note, clears the outbox, changes the baseline, or calls a cloud
+mutation.
+
+Before prompting, it rechecks read-only:
+
+- the owned recovery checkpoint is present;
+- the outbox is empty and no demo-refresh checkpoint exists;
+- the cloud note and local note match the checkpoint's original content;
+- the financial snapshot is unchanged and persisted local state is current;
+- the baseline note record matches the original;
+- Cloud Sync is OFF;
+- the recovery classification is `CONVERGED`;
+- the full blocker validation has baseline version 2, current records equal to
+  baseline records, and zero missing, unexpected, mismatched, foreign-key,
+  unaccounted, or baseline-content differences.
+
+After a native confirmation, one IndexedDB transaction rechecks the exact
+baseline, checkpoint, absence of a demo-refresh checkpoint, empty outbox, and a
+synchronous local note/financial/state/ownership guard, then deletes **only**
+`controlled-notes-test-v1`. A read-back must show the checkpoint absent, the
+baseline byte-for-byte unchanged, the outbox empty, and no demo checkpoint. A
+post-commit check then re-verifies the local note, cloud note, financial
+snapshot, persisted state, and sync mode.
+
+Success is `RECOVERY FINALIZED — CHECKPOINT REMOVED; NOTE/BASELINE/CLOUD
+VERIFIED`. Cancellation or any failed precondition retains the checkpoint. A
+post-commit verification failure reports `LOCAL WRITE OCCURRED — VERIFICATION
+FAILED`; do not retry or reset — run the read-only blocker diagnostic and send
+the result. The button is not offered for a content mismatch, added/removed
+notes, a pending outbox entry, a blocked cloud read, or an unverified baseline.
+
 ### Local-only demo reconciliation
 
 When the diagnostic reports missing, unexpected, or mismatched app records,
@@ -142,7 +178,7 @@ Do not update a baseline by hand.
 
 After the user authorized removing only the three verified old account-harness
 entries, the diagnostic can offer **Remove 3 verified stale test entries
-(confirm)**. Reload to shell v307, run the read-only diagnostic, and use that
+(confirm)**. Reload to shell v308, run the read-only diagnostic, and use that
 button only for this approved scope. It verifies all evidence before and after
 a native confirmation under the same cross-tab test lock. Exactly three unique
 owned harness entries are required; a prefix alone never qualifies a record.
@@ -186,10 +222,27 @@ response; the pending entry is intentionally retained for safe recovery.
   caused zero mocked writes; confirmed light/dark runs each made two mocked
   writes, restored the original note, and left no queue/checkpoint. No user
   identifiers or note content appeared in diagnostics.
+- The verified-recovery finalizer was exercised on a disposable origin with a
+  43-record baseline, metadata-only `_u` drift, and a simulated cloud: the
+  inspector offered the button and reported metadata-only convergence; native
+  cancellation retained the checkpoint; after confirmation it removed only the
+  checkpoint, left the baseline and outbox unchanged, preserved the note
+  content and `_u`, verified the cloud note, kept Cloud Sync OFF, and made zero
+  mutation requests. The next inspector run reported `BLOCKED — NO RECOVERY
+  CHECKPOINT` and `Cloud Sync: not checked`.
 - `node tests/notes-recovery.cjs` passes 47 pure recovery and notes-snapshot
   checks, including pending operations, temporary cloud content, missing
   updates, evidence gaps, exact/limited convergence, sync-metadata-only drift,
   content changes, added/removed notes, and reordering.
+- `node tests/notes-recovery-finalize.cjs` passes 14 pure orchestration checks:
+  success, cancellation, not-ready/additional evidence, changed tickets,
+  pre/post-commit failures, unverified commits, confirmation/lock failures, and
+  concurrent finalization.
+- `node tests/notes-recovery-idb.cjs` passes 21 isolated atomic IndexedDB
+  checks: exact checkpoint removal, unchanged baseline/outbox/unrelated keys,
+  invalid receipts, changed baseline/checkpoint, pending outbox, demo-refresh
+  checkpoint, failing guards, rollback, postcommit read failure, and retry
+  rejection.
 - `node tests/demo-refresh.cjs` and `tests/demo-refresh-idb.cjs` pass 23
   reconstruction/confirmation checks and 15 atomic IndexedDB checks. A native
   disposable-origin run reconstructed 46 records from 44, retained the 44-record

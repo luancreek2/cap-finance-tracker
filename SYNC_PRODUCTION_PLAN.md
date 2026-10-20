@@ -152,7 +152,7 @@ disposable-origin rehearsal produced the expected converged, temporary-cloud,
 pending-outbox, metadata-only, and content-change diagnostics with no
 identifier or content leakage and no mutation request. The user's specific
 recovery state remains pending this inspection; no retry, reset, baseline
-change, or checkpoint cleanup is authorized yet.
+change, or automatic checkpoint cleanup is authorized.
 
 **Diagnosis of the stopped restoration check (2026-10-20).** The final local
 comparison used raw `S.notes` JSON. `save()` stamps changed local note objects
@@ -161,8 +161,30 @@ Cloud/local note content, the baseline note record, financial snapshot, outbox,
 and persisted state were all clean. The controlled test now compares note
 content with `_u`/`_mt` stripped, and the recovery inspector reports
 sync-metadata-only drift separately from content changes. The existing
-checkpoint still requires read-only confirmation before any checkpoint-only
-cleanup; no retry, reset, baseline change, or cleanup is authorized yet.
+checkpoint can now be finalized only through the separately confirmed
+checkpoint-only control described below; no retry, reset, baseline change, or
+automatic cleanup is authorized.
+
+**Verified recovery finalization (2026-10-20).** The recovery inspector can
+offer a button only for a `CONVERGED` recovery status (including limited
+evidence). It re-runs the full read-only blocker validation, requires baseline
+version 2 with current
+records equal to baseline records and zero missing, unexpected, mismatched,
+foreign-key, unaccounted, or baseline-content differences, then uses a native
+confirmation. One atomic local transaction deletes only
+`controlled-notes-test-v1` after rechecking the exact baseline/checkpoint, empty
+outbox, absent demo-refresh checkpoint, and a synchronous local
+note/financial/state/ownership guard. Read-back verifies the checkpoint is
+absent and baseline/outbox unchanged; a post-commit check re-verifies local and
+cloud note content, financial snapshot, persisted state, and sync mode. It never
+retries, clears the outbox, changes the baseline, or calls a cloud mutation.
+Fourteen pure orchestration checks and 21 isolated IndexedDB checks cover
+success, cancellation, changed evidence, guard/rollback/read-back failures, and
+retry rejection. A native disposable-origin run with 43 records and
+metadata-only `_u` drift: cancellation retained the checkpoint; confirmation
+removed only the checkpoint, preserved the note, `_u`, baseline, and outbox,
+made zero mutation requests, and then reported `BLOCKED — NO RECOVERY
+CHECKPOINT`.
 
 **Adapter-only notes push/finalization (2026-10-20).** The notes core now
 performs guarded preflight, readiness, local/auth/queue/baseline rechecks,

@@ -144,6 +144,58 @@
     return { committed: true, verified: true, removed: entries.length };
   }
 
+  /* Explicitly confirmed removal of ONE verified notes-test recovery
+     checkpoint. It never changes the baseline, outbox, local notes, or cloud
+     records; the caller must prove convergence and a clean full validation. */
+  async function discardVerifiedNotesRecoveryCheckpoint(receipt, guard) {
+    if (typeof guard !== 'function') throw Error('Local verification guard required');
+    const { userId, checkpoint, expectedBaseline, expectedLocalNotes, expectedFinancial } = clone(receipt || {});
+    const validCheckpoint = checkpoint && typeof checkpoint === 'object' && checkpoint.owner === userId &&
+      typeof checkpoint.id === 'string' && checkpoint.id && ['prepared', 'test', 'restore'].includes(checkpoint.phase) &&
+      typeof checkpoint.originalLocal === 'string' && typeof checkpoint.financial === 'string' &&
+      checkpoint.original && typeof checkpoint.original === 'object' && !Array.isArray(checkpoint.original);
+    if (!userId || !validCheckpoint || expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId ||
+        !Array.isArray(expectedBaseline.records) || expectedLocalNotes !== checkpoint.originalLocal ||
+        expectedFinancial !== checkpoint.financial) throw Error('Invalid recovery cleanup scope');
+    const d = await idb();
+    await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readwrite');
+      const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
+      let baseline, currentCheckpoint, refreshCheckpoint, entries, loaded = 0, failure;
+      const abort = () => { failure = Error('Recovery cleanup preconditions changed'); t.abort(); };
+      const ready = () => {
+        if (++loaded !== 4) return;
+        try {
+          if (!eq(baseline, expectedBaseline) || !eq(currentCheckpoint, checkpoint) || refreshCheckpoint ||
+              !Array.isArray(entries) || entries.length || guard() !== true) return abort();
+          meta.delete('controlled-notes-test-v1');
+        } catch (_) { abort(); }
+      };
+      const bq = meta.get('baseline'), cq = meta.get('controlled-notes-test-v1'), rq = meta.get('demo-local-refresh-state-v1'), oq = queue.getAll();
+      bq.onsuccess = () => { baseline = bq.result; ready(); };
+      cq.onsuccess = () => { currentCheckpoint = cq.result; ready(); };
+      rq.onsuccess = () => { refreshCheckpoint = rq.result; ready(); };
+      oq.onsuccess = () => { entries = oq.result; ready(); };
+      t.oncomplete = () => resolve();
+      t.onabort = () => reject(failure || Error('Atomic recovery cleanup aborted'));
+      t.onerror = () => { failure = Error('Atomic recovery cleanup failed'); };
+    });
+    const verified = await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readonly');
+      const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
+      let b, c, r, entries;
+      const bq = meta.get('baseline'), cq = meta.get('controlled-notes-test-v1'), rq = meta.get('demo-local-refresh-state-v1'), oq = queue.getAll();
+      bq.onsuccess = () => { b = bq.result; };
+      cq.onsuccess = () => { c = cq.result; };
+      rq.onsuccess = () => { r = rq.result; };
+      oq.onsuccess = () => { entries = oq.result; };
+      t.oncomplete = () => resolve(eq(b, expectedBaseline) && c === undefined && r === undefined && Array.isArray(entries) && entries.length === 0);
+      t.onabort = t.onerror = () => reject(Error('Recovery cleanup read-back failed'));
+    }).catch(() => false);
+    if (!verified) { const error = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED'); error.committed = true; throw error; }
+    return { committed: true, verified: true, removed: true };
+  }
+
   /* Confirmed, local-only demo alignment. A verified backup commits BEFORE
      replacement. Local state and its newly verified baseline then commit in
      one IDB transaction. There is no cloud transport or automatic rollback. */
@@ -522,6 +574,7 @@
     syncStore,
     finalizeVerifiedNotePush,
     discardVerifiedTestOutbox,
+    discardVerifiedNotesRecoveryCheckpoint,
     refreshVerifiedLocalDemo,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
