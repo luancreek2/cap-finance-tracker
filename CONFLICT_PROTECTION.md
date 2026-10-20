@@ -1,10 +1,12 @@
 # Conflict protection
 
 Shell `cap-shell-v312`, with keep-cloud resolution added in `cap-shell-v313`
-(see `CONFLICT_RESOLUTION.md`). The conflict-protection work described here is
-**simulated only**. No live local or cloud edit was made, and Cloud Sync remains
-OFF. It verifies that Cap refuses to overwrite a note when both the browser and
-Supabase changed it after the same baseline.
+(see `CONFLICT_RESOLUTION.md`). The original conflict-protection work was
+**simulated only**. A separately authorized live conflict trial was later
+performed on one baseline-mapped note; see [Live conflict trial](#live-conflict-trial).
+Cloud Sync remained OFF throughout. The checks verify that Cap refuses to
+overwrite a note when both the browser and Supabase changed it after the same
+baseline.
 
 ## What counts as a conflict
 
@@ -92,10 +94,11 @@ first. Do not retry, reset, clear storage, or delete metadata.
 
 ## User profile verification (read-only)
 
-### Shell v313 (current)
+### Shell v313 (pre-trial read-only)
 
-After reloading shell v313 and signing in, the user ran the developer-tool
-checks on the real profile with no live conflict created:
+Before the authorized live trial, after reloading shell v313 and signing in,
+the user ran the developer-tool checks on the real profile with no live
+conflict created:
 
 - Plan Outbox: 0 outbox entries, 0 conflicts, nothing queued; no operation was
   applied or removed;
@@ -108,10 +111,11 @@ checks on the real profile with no live conflict created:
 - the blocker reported nothing deleted, applied, reset, or baselined;
 - Cloud Sync remained OFF.
 
-No real note, financial, or cloud data was changed. The keep-cloud path was
-only previewed synthetically in the self-check; it was not executed on real
-data. Keep-local remains unavailable. This verifies the installed read-only
-conflict checks, not a live conflict trial, merge, or resolution apply.
+At that point no real note, financial, or cloud data was changed. The
+keep-cloud path was only previewed synthetically in the self-check; it had not
+yet been executed on real data. Keep-local remains unavailable. This verifies
+the installed read-only conflict checks before the later authorized trial; it
+was not itself a live conflict trial, merge, or resolution apply.
 
 ### Shell v312 (historical)
 
@@ -130,12 +134,33 @@ differences. No cleanup or baseline action was taken.
 
 ## Live conflict trial
 
-Not authorized or performed. A future live trial would need separate approval
-and would require making one local note edit and one cloud note edit against the
-same baseline. Until then, conflict behavior is proven only with synthetic and
-fake-IndexedDB data. The v313 keep-cloud resolution was rehearsed only on a
-disposable origin with synthetic data; it did not create a live conflict or
-write Supabase. The user's real profile was used only for the read-only v313
-verification above; no resolution was applied there. This phase does not
-implement merge, automatic resolution, background sync, or any financial-record
-change.
+A live trial was separately authorized and performed on 2026-10-20 against the
+signed-in real profile, with Cloud Sync OFF. Scope was one existing
+baseline-mapped note selected by the user; no financial record was touched. The
+cloud marker remains by user approval; no restoration was authorized.
+
+1. **Cloud side:** one CAS `cap_sync_note_put` call appended a generic cloud
+   trial marker to the selected note. Title, date, ownership, and row count were
+   unchanged, and the cloud row was re-read. This was the only Supabase
+   mutation.
+2. **Local side:** the user appended a distinct generic local marker to the same
+   note and saved it. No queue or push was performed.
+3. **Pull preview:** `CONFLICT — local and cloud changed; nothing overwritten`;
+   only `body` differed; both versions were preserved; no changes were made.
+4. **Review:** both on-device versions were shown; differing field `body`;
+   keep-local remained disabled.
+5. **Keep cloud:** `RESOLVED — CLOUD VERSION KEPT; LOCAL BACKUP RETAINED`.
+6. **Post-resolution preview:** `NO CLOUD NOTE CHANGE TO PULL — local, baseline,
+   and cloud agree`.
+7. **Blocker:** baseline 46 records, version 2, ownership verified; outbox 0;
+   recovery, demo-refresh, and manual note-pull checkpoints absent; current 46;
+   missing 0, unexpected 0, mismatches 0, foreign keys 0, without baseline 0,
+   baseline-only 0, baseline-content differences 0; nothing deleted, applied,
+   reset, or baselined; Cloud Sync OFF.
+8. **Cloud recheck:** one owned row; cloud marker present; local marker absent;
+   title and date unchanged. The resolution made no second Supabase write.
+
+The retained backup was not deleted. The cloud marker remains by user approval;
+restoration would require a separate authorization and another guarded cloud
+write. Keep-local, merge, automatic resolution, background sync, and
+financial-record changes remain unimplemented or blocked.

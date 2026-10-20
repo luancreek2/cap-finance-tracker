@@ -159,9 +159,42 @@ resolution:
   OFF.
 
 No real note, baseline, outbox, checkpoint, financial, or cloud data was
-changed. Keep-cloud was **not applied** to real data, and keep-local remains
-unavailable. The user's real profile was used only for these read-only checks;
-this does not authorize a live conflict trial or resolution write.
+changed at that stage. Keep-cloud was not applied during these read-only checks,
+and keep-local remains unavailable. The read-only check did not itself authorize
+a live trial; a later separately authorized trial is recorded below.
+
+## Authorized live conflict trial (2026-10-20)
+
+After separate authorization, one existing baseline-mapped note in the real
+signed-in profile was used. Cloud Sync stayed OFF. No other note, financial
+record, baseline entry, outbox entry, or checkpoint was targeted. Only statuses,
+field names, counts, and generic trial markers are recorded here; no note
+content, financial value, or user/record identifier is included.
+
+- **Cloud side:** one CAS `cap_sync_note_put` call appended a generic cloud
+  trial marker to the selected note. Title, date, ownership, and row count were
+  unchanged, and the cloud row was re-read. This was the only Supabase mutation.
+- **Local side:** the user appended a distinct generic local marker to the same
+  note and saved it. No queue or push was performed.
+- **Preview:** `CONFLICT — local and cloud changed; nothing overwritten`; only
+  `body` differed; both versions were preserved; no changes were made.
+- **Review:** both on-device versions were displayed; differing field `body`;
+  keep-local was disabled; Cloud Sync remained OFF.
+- **Keep cloud:** `RESOLVED — CLOUD VERSION KEPT; LOCAL BACKUP RETAINED`. The
+  atomic local/baseline update committed, the resolution checkpoint was removed
+  after verification, and the backup was retained.
+- **Convergence:** post-resolution pull preview reported
+  `NO CLOUD NOTE CHANGE TO PULL — local, baseline, and cloud agree`.
+- **Blocker:** baseline 46 records, version 2, ownership verified; outbox 0;
+  recovery, demo-refresh, and manual note-pull checkpoints absent; current 46;
+  all comparison difference categories 0; nothing deleted, applied, reset, or
+  baselined; Cloud Sync OFF.
+- **Cloud recheck:** one owned row; cloud marker present; local marker absent;
+  title and date unchanged. The resolution made no Supabase write.
+
+The cloud trial marker remains by user approval. No restoration was authorized.
+The retained backup was not deleted. Keep-local, merge, automatic resolution,
+background sync, and financial-record changes remain unimplemented or blocked.
 
 ## Not implemented
 

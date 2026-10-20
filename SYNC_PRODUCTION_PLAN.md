@@ -453,6 +453,20 @@ does not update the cloud or authorize the controlled notes test by itself.
   there is no automatic merge or re-prompt suppression yet. See
   `CONFLICT_RESOLUTION.md`.
 
+**First live keep-cloud conflict trial passed (2026-10-20).** With Cloud Sync
+OFF and separate authorization, one existing baseline-mapped note was edited in
+Supabase through the notes CAS RPC and locally in the real signed-in profile.
+The pull preview reported `CONFLICT` with only `body` differing; the review
+showed both on-device versions with keep-local disabled; keep-cloud returned
+`RESOLVED — CLOUD VERSION KEPT; LOCAL BACKUP RETAINED`. The post-resolution pull
+preview reported local, baseline, and cloud agreement; the blocker reported 46
+baseline/current records, version 2, outbox 0, absent recovery/demo-refresh/
+manual-note-pull checkpoints, and all comparison difference categories 0, with
+Cloud Sync OFF. A read-only cloud recheck confirmed the cloud marker remained
+and the local marker was not present, so resolution made no second Supabase
+write. The cloud marker remains by user approval; no restoration was
+authorized. Keep-local remains disabled. Details: `CONFLICT_RESOLUTION.md`.
+
 ## 4. Deletions
 
 - Local delete: write a tombstone (`deleted_at`) locally, push it.
