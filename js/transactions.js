@@ -228,7 +228,7 @@
         }
         openS(`<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="pill" onclick="closeS()">✕ Close</button></div><div style="display:flex;gap:12px;align-items:flex-start"><div style="width:5px;align-self:stretch;border-radius:9px;background:${col};flex:none"></div><div style="flex:1;min-width:0"><h2 style="font-size:26px;margin:0 0 6px">${tx ? o.note || o.cat : tt(e.t)}</h2><div>${ds}</div><div class="xmc">${tx ? (cardLogo(acct(o.acct)) || "") + `<span>${esc(acct(o.acct).name)} · ${esc(o.cat)}</span>` : "All-day"}</div>${tx && o.desc ? `<div class="m" style="margin-top:6px;overflow-wrap:anywhere">${esc(o.desc)}</div>` : ""}${tx ? `<div class="${o.amt > 0 ? "g" : "r"}" style="font-size:22px;font-weight:700">${php(o.amt)}</div>` : `<div class="m">🔁 Repeats monthly</div>${e.kind == "bill" ? `<div class="r" style="font-size:22px;font-weight:700">${php(o.amt)}</div>` : ""}`}</div><div class="xmi" aria-hidden="true">${tx ? ti(o) : e.kind == "bill" ? bIc(o) : (cardLogo(o) || "💳")}</div></div>
 <div class="eyebrow" style="margin:18px 0 6px">Options</div><div class="card" style="display:flex;justify-content:space-between;margin-bottom:10px"><span>🗓 Calendar</span><span class="m"><span style="color:${col}">●</span> ${tx ? (o.amt > 0 ? "Income" : "Expenses") : e.kind == "bill" ? "Bills" : "Credit Card"}</span></div>
-${tx ? "" : `<div class="card" style="margin-bottom:10px">${[0, 1, 2].map((i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0">🔔 Alert<select style="width:auto;margin:0" onchange="setAl('${e.kind}',${e.id},${i},this.value)">${ALO.map((a) => `<option value="${a[0]}" ${al[i] == a[0] ? "selected" : ""}>${a[1]}</option>`).join("")}</select></div>`).join("")}<p class="m" style="font-size:12px;margin:6px 0 0">Alerts appear under "Needs attention" on Home as the date gets close. They are not phone notifications.</p></div>`}
+ ${tx || e.kind == "bill" ? "" : `<div class="card" style="margin-bottom:10px">${[0, 1, 2].map((i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0">🔔 Alert<select style="width:auto;margin:0" onchange="setAl('${e.kind}',${e.id},${i},this.value)">${ALO.map((a) => `<option value="${a[0]}" ${al[i] == a[0] ? "selected" : ""}>${a[1]}</option>`).join("")}</select></div>`).join("")}<p class="m" style="font-size:12px;margin:6px 0 0">Alerts appear under "Needs attention" on Home as the date gets close. They are not phone notifications.</p></div>`}
 ${e.kind == "bill" && !bPaid(o, k) ? `<button class="btn" style="width:100%;margin-bottom:10px" onclick="payBill(${e.id},'${k}')">Mark as paid</button>` : ""}
 ${tx ? `<button class="btn s" style="width:100%;margin-bottom:8px" onclick="closeS();editTx(${e.id})">Edit transaction</button>` : ""}<button class="btn s" style="width:100%;color:#ff453a" onclick="${tx ? `askDel(${e.id})` : `sure(this,()=>evDel('${e.kind}',${e.id}))`}">${tx ? "Delete entry" : "Delete Event"}</button>`);
       }
@@ -334,21 +334,83 @@ ${calH()}<p>${["All", "Expenses", "Income", "Transfers", "Upcoming"].map((f) => 
 /* ---- transactions: posted / pending, edit, delete */
 const fTx=id=>{let t=S.tx.find(x=>x.id==id);if(t)return{t,p:0};t=S.pend.find(x=>x.id==id);return t?{t,p:1}:null};
 const bApply=(t,k)=>{const a=S.accts.find(x=>x.id==t.acct);if(a)a.bal+=k*(a.type=='credit'?-t.amt:t.amt)};
+/* ---- read-only balance consistency (Phase P1) -------------------------------
+   Derives what each account balance should be from posted/pending transactions
+   and transfers, mirroring bApply and the transfer commit paths. Read-only:
+   this never mutates S, accounts, or storage. */
+function balanceEffects(accountId){
+  const a=(S.accts||[]).find(x=>String(x.id)===String(accountId));
+  if(!a)return null;
+  const r2=v=>Math.round(v*100)/100,sign=a.type==='credit'?-1:1;
+  let txEffects=0,txCount=0,pendEffects=0,pendCount=0,xferEffects=0,xferCount=0;
+  const unknown=new Set();
+  for(const t of (S.tx||[]))if(t&&String(t.acct)===String(accountId)){txEffects+=sign*(+t.amt||0);txCount++}
+  for(const p of (S.pend||[]))if(p&&String(p.acct)===String(accountId)){pendEffects+=sign*(+p.amt||0);pendCount++}
+  for(const x of (S.xfer||[])){
+    if(!x)continue;
+    const isFrom=x.from!=null&&String(x.from)===String(accountId),isTo=x.to!=null&&String(x.to)===String(accountId);
+    if(!isFrom&&!isTo)continue;
+    const amt=+x.amt||0,kind=x.kind||'account-transfer';
+    let d;
+    if(kind==='card-payment')d=-amt;
+    else if(kind==='account-transfer'||kind==='goal-transfer')d=isFrom?-amt:amt;
+    else{unknown.add(String(kind));d=isFrom?-amt:amt}
+    xferEffects+=d;xferCount++;
+  }
+  const effects=txEffects+pendEffects+xferEffects,stored=+a.bal||0;
+  const out={id:a.id,type:a.type,stored:r2(stored),effects:r2(effects),txEffects:r2(txEffects),txCount,pendEffects:r2(pendEffects),pendCount,xferEffects:r2(xferEffects),xferCount,impliedAnchor:r2(stored-effects),unknownKinds:[...unknown],statement:null};
+  const hist=(Array.isArray(a.statementHistory)?a.statementHistory:[]).filter(s=>s&&s.en).sort((x,y)=>String(x.en).localeCompare(String(y.en)));
+  const last=hist[hist.length-1];
+  if(last){
+    const end=String(last.en),close=+last.close||0;
+    let after=0;
+    for(const t of [...(S.tx||[]),...(S.pend||[])])if(t&&String(t.acct)===String(accountId)&&String(t.d||'')>end)after+=sign*(+t.amt||0);
+    for(const x of (S.xfer||[])){
+      if(!x)continue;
+      const isFrom=x.from!=null&&String(x.from)===String(accountId),isTo=x.to!=null&&String(x.to)===String(accountId);
+      if((!isFrom&&!isTo)||String(x.d||'')<=end)continue;
+      const amt=+x.amt||0,kind=x.kind||'account-transfer';
+      after+=kind==='card-payment'?-amt:(isFrom?-amt:amt);
+    }
+    out.statement={end,close:r2(close),effectsAfter:r2(after),expected:r2(close+after),delta:r2(stored-(close+after))};
+  }
+  return out;
+}
+function balanceConsistencyReport(){
+  const rows=(S.accts||[]).map(a=>balanceEffects(a.id)).filter(Boolean);
+  const known=new Set((S.accts||[]).map(a=>String(a.id)));
+  const orphanTransactions=(S.tx||[]).filter(t=>t&&!known.has(String(t.acct))).length+(S.pend||[]).filter(t=>t&&!known.has(String(t.acct))).length;
+  const orphanTransfers=(S.xfer||[]).filter(x=>x&&((x.from!=null&&!known.has(String(x.from)))||(x.to!=null&&!known.has(String(x.to))))).length;
+  return{rows,orphanTransactions,orphanTransfers,accounts:rows.length,generatedAt:new Date().toISOString()}
+}
 function openTx(txId=0){const f=txId?fTx(txId):null;if(txId&&!f)return;const t=f&&f.t,v=x=>String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'),cat=t?t.cat:'Food',a0=t?t.acct:(S.accts[0]||{}).id;
 openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value="-1" ${t&&t.amt<0?'selected':''}>Expense</option><option value="1" ${t&&t.amt>0?'selected':''}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t?Math.abs(t.amt):''}"><select id="ct">${catNames().map(c=>`<option ${c==cat?'selected':''}>${c}</option>`).join('')}</select><select id="ac" onchange="txAcc()">${S.accts.map(a=>`<option value="${a.id}" ${a.id==a0?'selected':''}>${esc(a.name)}</option>`).join('')}</select><input id="dt" type="date" value="${t?v(t.d):today}"><div id="ccf" style="display:none"><select id="ps" onchange="txAcc()"><option value="p" ${f&&f.p?'':'selected'}>Posted</option><option value="n" ${f&&f.p?'selected':''}>Not posted (pending)</option></select><input id="pdt" type="date" title="Posting date" value="${t&&t.pd?t.pd:(t?t.d:today)}"><p class="m" style="font-size:12px;margin:0 0 8px">Pending purchases already reduce the balance, but only appear in the billing cycle they post into.</p><div id="card-kind-wrap"><label class="m" for="card-kind">Card transaction type</label><select id="card-kind" onchange="txCardKind()"><option value="purchase" ${t&&t.cashAdvance?'':'selected'}>Purchase</option><option value="cash" ${t&&t.cashAdvance?'selected':''}>Cash advance / withdrawal</option></select><div id="card-currency-wrap"><label class="m" for="card-currency">Purchase currency</label><select id="card-currency"><option value="PHP">PHP · no foreign fee</option>${['USD','EUR','GBP','JPY','SGD','Other'].map(c=>`<option ${t&&t.foreignCurrency==c?'selected':''}>${c}</option>`).join('')}</select></div><p class="m" style="font-size:12px">Configured card fees are added automatically when this transaction is saved.</p></div></div><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t?v(t.note||''):''}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t?v(t.desc||''):''}</textarea><button class="btn" onclick="saveTx(${txId||0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>${txId?`<button class="btn s dng" onclick="askDel(${txId})">Delete transaction</button>`:''}`);if(t&&t.foreignCurrency&&$('#card-currency'))$('#card-currency').value=t.foreignCurrency;txAcc()}
 function txAcc(){const c=acct($('#ac').value).type=='credit';$('#ccf').style.display=c?'block':'none';$('#pdt').style.display=c&&$('#ps').value=='p'?'block':'none';if(c)txCardKind()}
 function txCardKind(){const cash=$('#card-kind')?.value=='cash',wrap=$('#card-currency-wrap');if(wrap)wrap.style.display=cash?'none':'block'}
 function removeCardFeeChildren(parentId){const kids=S.tx.filter(x=>x.parentId==parentId&&x.feeActual);kids.forEach(t=>bApply(t,-1));S.tx=S.tx.filter(x=>!(x.parentId==parentId&&x.feeActual))}
 function syncLoggedCardFee(t,cash,currency,posted){removeCardFeeChildren(t.id);delete t.cashAdvance;delete t.cashAdvanceRate;delete t.cashAdvanceFeeEstimate;delete t.cashAdvanceFeeActual;delete t.foreignCurrency;delete t.foreignFeeRate;delete t.foreignFeeEstimate;delete t.foreignFeeActual;if(!posted||t.amt>=0)return;const a=acct(t.acct),f=cardFees(a);let kind,label,fee;if(cash){kind='cashAdvanceFee';label='Cash advance fee';fee=f.cashAdvanceFee;t.cashAdvance=true;t.cashAdvanceRate=f.cashAdvanceRate;t.cashAdvanceFeeActual=true}else if(currency&&currency!='PHP'){kind='foreignFee';label='Foreign transaction fee';fee=f.foreignFee;t.foreignCurrency=currency;t.foreignFeeRate=fee.value;t.foreignFeeActual=true}else return;const amount=cardFeeAmount(fee,Math.abs(t.amt));t[kind=='cashAdvanceFee'?'cashAdvanceFeeEstimate':'foreignFeeEstimate']=amount;if(amount>0){const child={id:uid(),ts:Date.now(),d:t.d,amt:-amount,cat:'Other',acct:t.acct,note:label,cardFee:kind,feeActual:true,parentId:t.id};S.tx.push(child);bApply(child,1)}}
+/* Capture the Home balance/stats before a transaction changes them, so the
+   net-balance count can start from the value on screen and move by the amount
+   just logged instead of restarting from zero. */
+function captureHomeBalanceDelta(){
+  if(tab!=='Home'||typeof setNetBalanceDelta!=='function')return;
+  const bal=document.getElementById('chv');if(!bal)return;
+  const dEl=document.querySelector('[data-ch-delta]');
+  setNetBalanceDelta({
+    net:+bal.dataset.chBalance||0,
+    delta:dEl?+dEl.dataset.chDelta||0:0,
+    stats:[...document.querySelectorAll('[data-home-stat]')].map(e=>+e.dataset.homeStat||0)
+  });
+}
 function saveTx(txId=0,allowAllocationOverrun=false){const a=Math.abs(+$('#am').value),s=+$('#ty').value,id=+$('#ac').value,ac=S.accts.find(x=>x.id==id),date=$('#dt').value||today;
 if(!(a>0))return toast('Enter an amount greater than 0');if(!ac)return toast('Choose an account');
 const pend=ac.type=='credit'&&$('#ps').value=='n',pd=ac.type=='credit'&&!pend?($('#pdt').value||date):'';
 if(pd&&pd<date)return toast('Posting date can’t be before the purchase date');
-const f=txId?fTx(txId):null;if(txId&&!f)return;if(ac.type!='credit'&&s<0&&!allowAllocationOverrun){let base=ac.bal;if(f){const old=S.accts.find(x=>x.id==f.t.acct);if(old&&old.id==ac.id)base-=f.t.amt}const projected=base+s*a,allocated=sum(S.goals.filter(g=>+g.accountId==+ac.id).map(g=>+g.saved||0));if(projected<allocated-.005)return confirmBox('This may use goal savings',`${ac.name} would have ${php(Math.max(0,projected))} left while ${php(allocated)} is allocated to goals. Continue with this expense?`,()=>saveTx(txId,true),'Continue');}if(f)bApply(f.t,-1);if(f)removeCardFeeChildren(f.t.id);
+const f=txId?fTx(txId):null;if(txId&&!f)return;captureHomeBalanceDelta();if(ac.type!='credit'&&s<0&&!allowAllocationOverrun){let base=ac.bal;if(f){const old=S.accts.find(x=>x.id==f.t.acct);if(old&&old.id==ac.id)base-=f.t.amt}const projected=base+s*a,allocated=sum(S.goals.filter(g=>+g.accountId==+ac.id).map(g=>+g.saved||0));if(projected<allocated-.005)return confirmBox('This may use goal savings',`${ac.name} would have ${php(Math.max(0,projected))} left while ${php(allocated)} is allocated to goals. Continue with this expense?`,()=>saveTx(txId,true),'Continue');}if(f)bApply(f.t,-1);if(f)removeCardFeeChildren(f.t.id);
 const t=f?f.t:{id:uid(),ts:Date.now()};S.tx=S.tx.filter(x=>x.id!=t.id);S.pend=S.pend.filter(x=>x.id!=t.id);
 Object.assign(t,{d:date,amt:s*a,cat:$('#ct').value,acct:id,note:$('#nt').value,desc:($('#ds')?$('#ds').value.trim():'')});if(pd)t.pd=pd;else delete t.pd;
 (pend?S.pend:S.tx).push(t);bApply(t,1);if(ac.type=='credit')syncLoggedCardFee(t,$('#card-kind')?.value=='cash',$('#card-currency')?.value,!pend);save();closeS();flash(t.id);render();toast(txId?'Transaction updated':pend?'Saved as pending':'Transaction added')}
-function delTx(id){const f=fTx(id);if(!f)return;const go=()=>{bApply(f.t,-1);removeCardFeeChildren(id);const b=billForTx(f.t);if(b)billUnmark(b,f.t);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast(b?'Deleted — bill marked unpaid':'Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
+function delTx(id){const f=fTx(id);if(!f)return;captureHomeBalanceDelta();const go=()=>{bApply(f.t,-1);removeCardFeeChildren(id);const b=billForTx(f.t);if(b)billUnmark(b,f.t);S.tx=S.tx.filter(x=>x.id!=id);S.pend=S.pend.filter(x=>x.id!=id);render();toast(b?'Deleted — bill marked unpaid':'Transaction deleted')},e=document.querySelector(`[data-tx="${id}"]`);if(e&&!matchMedia('(prefers-reduced-motion:reduce)').matches){e.classList.add('out');setTimeout(go,260)}else go()}
 
 /* ---- delete confirmation dialog */
 function confirmBox(title,sub,ok,label){
@@ -421,7 +483,7 @@ function askDel(id){const f=fTx(id);if(!f)return;confirmBox('Are you sure you wa
   });
 })();
 function postTx(id){const f=fTx(id);if(!f||!f.p)return;openS(`<h2>Mark as posted</h2><p class="m">${esc(f.t.note||f.t.cat)} · ${php(f.t.amt)}</p><label class="m">Posting date (decides the billing cycle)</label><input id="pdx" type="date" min="${f.t.d}" value="${today<f.t.d?f.t.d:today}"><button class="btn" onclick="postOk(${id})">Confirm posted</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
-function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);bApply(f.t,1);closeS();flash(id);render();toast('Posted · balance updated')}
+function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');captureHomeBalanceDelta();S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);bApply(f.t,1);closeS();flash(id);render();toast('Posted · balance updated')}
 /* Card payments are saved as transfers (S.xfer), not transactions: the money moves
    onto a card without being new spending, so Activity lists them but they never add
    to day, month or category totals. */
@@ -439,7 +501,16 @@ function xRow(x,accountId) {
   if(x.kind=='account-transfer'){const received=accountId!=null&&accountId==x.to,other=received?f:c,label=accountId==null?'Account transfer':received?'Transfer in':'Transfer out',amount=accountId==null?php(x.amt):(received?'+':'−')+php(x.amt),tone=accountId==null?'m':received?'g':'r',desc=accountId==null?`${xName(f,'Account')} → ${xName(c,'Account')}`:received?'From '+xName(other,'Account'):'To '+xName(other,'Account');return`<div class="row" style="cursor:pointer" onclick="accountTransferDetail(${x.id})"><div class="ico">⇄</div><div class="f">${label}<span class="tag">Transfer</span><small>${esc(desc)}${x.note?' · '+esc(x.note):''}</small></div><b class="${tone}">${amount}</b></div>`}
   return `<div class="row" style="cursor:pointer" onclick="cardPayDetail(${x.id},${x.to})"><div class="ico">${cardLogo(c) || "💳"}</div><div class="f">${esc(xName(c, "Card") + " Payment")}<span class="tag">Transfer</span><small>Transfer · from ${esc(xName(f, "Outside this app"))}</small></div><b class="m">${php(x.amt)}</b></div>`;
 }
-function accountTransferDetail(id){const x=S.xfer.find(z=>z.id==id&&z.kind=='account-transfer');if(!x)return;const from=acct(x.from),to=acct(x.to);openS(`<div class="sh-h"><h2>Transfer details</h2><button class="pill" aria-label="Close" onclick="closeS()">✕</button></div><div class="card"><div class="cc-sum-row"><span>Amount</span><b>${php(x.amt)}</b></div><div class="cc-sum-row"><span>From</span><b>${esc(from.name)}</b></div><div class="cc-sum-row"><span>To</span><b>${esc(to.name)}</b></div><div class="cc-sum-row"><span>Date</span><b>${noteD(x.d)}</b></div>${x.note?`<div class="cc-sum-row"><span>Note</span><b>${esc(x.note)}</b></div>`:''}</div><button class="btn s" style="width:100%" onclick="closeS()">Close</button>`)}
+function accountTransferDetail(id){
+  const x=S.xfer.find(z=>z.id==id&&z.kind=='account-transfer');if(!x)return;
+  const from=acct(x.from),to=acct(x.to);if(!from||!to)return;
+  const date=new Date(x.d+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}),
+    time=+x.ts>0?new Date(+x.ts).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'}):'Time not recorded',
+    transferredAt=date+' · '+time,
+    accountLine=a=>`<span class="psrc">${cardLogo(a)}<span>${esc(a.name||a.nickname||'Account')}</span></span>`,
+    row=(label,value)=>`<div class="pd-r"><span class="m">${label}</span><b>${value}</b></div>`;
+  openS(`<div class="sh-h"><button class="pill" aria-label="Close transfer details" onclick="closeS()">×</button><h2>Transfer details</h2></div><div class="pd-hero transfer-detail-hero"><div class="pd-h"><span class="ico">${cardLogo(from)}</span><div class="pd-tt"><b>Account transfer</b><small>${esc(from.name||from.nickname)} <span aria-hidden="true">→</span> ${esc(to.name||to.nickname)}</small></div></div><div class="pd-amt"><span class="pd-v">${php(x.amt)}</span><span class="chip ok paid-chip transfer-chip"><svg class="transfer-arrow-mark" viewBox="0 0 20 20" aria-hidden="true"><path class="transfer-arrow-right" d="M2 6h13m-3-3 3 3-3 3"/><path class="transfer-arrow-left" d="M18 14H5m3-3-3 3 3 3"/></svg>Transfer</span></div></div><div class="card transfer-detail-rows" style="margin:0 0 12px">${row('Transferred on',transferredAt)}${row('From',accountLine(from))}${row('To',accountLine(to))}${x.note?row('Note',esc(x.note)):''}</div><button class="btn s" style="width:100%" onclick="closeS()">Close</button>`)
+}
 function goalTransferDetail(id){const x=S.xfer.find(z=>z.id==id&&z.kind=='goal-transfer');if(!x)return;const g=S.goals.find(z=>z.id==x.goalId),from=acct(x.from),to=acct(x.to);openS(`<h2>${x.direction=='out'?'Goal withdrawal':'Goal contribution'}</h2><p>${g?esc(g.icon+' '+g.name):'Goal'}</p><div class="card"><div class="cc-sum-row"><span>Amount</span><b>${php(x.amt)}</b></div><div class="cc-sum-row"><span>From</span><b>${esc(from?.name||'Account')}</b></div><div class="cc-sum-row"><span>To</span><b>${esc(to?.name||'Account')}</b></div><div class="cc-sum-row"><span>Date</span><b>${noteD(x.d)}</b></div>${x.note?`<p class="m">${esc(x.note)}</p>`:''}</div><button class="btn s" onclick="closeS()">Close</button>`)}
 function rowT(t){if(t.transfer)return xRow(t.x,t.accountId);const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${t.cardFee?'<span class="tag fee-tag">Fee</span>':''}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
 
