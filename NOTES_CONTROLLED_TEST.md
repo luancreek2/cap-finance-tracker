@@ -144,6 +144,14 @@ FAILED`; do not retry or reset — run the read-only blocker diagnostic and send
 the result. The button is not offered for a content mismatch, added/removed
 notes, a pending outbox entry, a blocked cloud read, or an unverified baseline.
 
+Live resolution (2026-10-20): the user's profile completed this finalizer.
+Preflight reported 46 baseline/current records, an empty outbox, and clean full
+validation; the finalizer removed only the checkpoint. The post-cleanup blocker
+reported 46 current records, baseline version 2, ownership verified, both
+checkpoints absent, and zero missing, unexpected, mismatches, foreign keys,
+without-baseline, baseline-only, or baseline-content differences. Cloud Sync
+remained OFF. The controlled test has not been rerun.
+
 ### Local-only demo reconciliation
 
 When the diagnostic reports missing, unexpected, or mismatched app records,

@@ -186,6 +186,16 @@ removed only the checkpoint, preserved the note, `_u`, baseline, and outbox,
 made zero mutation requests, and then reported `BLOCKED — NO RECOVERY
 CHECKPOINT`.
 
+**Live recovery resolution (2026-10-20).** The user ran the checkpoint-only
+finalizer in their browser profile. Preflight reported baseline 46 records,
+current 46, outbox 0, and full validation clean. The finalizer returned
+`RECOVERY FINALIZED — CHECKPOINT REMOVED; NOTE/BASELINE/CLOUD VERIFIED`. The
+post-cleanup read-only blocker reported baseline 46/version 2/ownership verified,
+outbox 0, recovery and demo-refresh checkpoints absent, current 46, and zero
+missing, unexpected, mismatches, foreign-key, without-baseline, baseline-only,
+or baseline-content differences. Cloud Sync remained OFF. No retry, reset,
+baseline change, outbox clear, or cloud mutation occurred.
+
 **Adapter-only notes push/finalization (2026-10-20).** The notes core now
 performs guarded preflight, readiness, local/auth/queue/baseline rechecks,
 expected-content CAS, fresh cloud verification, and finalization via explicit
