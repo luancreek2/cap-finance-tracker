@@ -78,6 +78,23 @@ import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 
+**User-authorized stale outbox cleanup UI (2026-10-20).** The user approved
+preparing removal of only the three diagnostically verified old account-test
+entries in their separate browser profile. Shell v302 offers an exact-scope
+native-confirmation button after the read-only diagnostic. Fresh ownership,
+strict harness identity, local/cloud absence, baseline-reference and recovery
+checks run before and after confirmation; changing evidence blocks removal.
+One IndexedDB transaction deletes the exact three snapshots, preserving the
+baseline and all unrelated entries. Read-back verifies both deletion and
+baseline immutability. No cloud mutation or app-record deletion is involved.
+
+Verification: 13 controller checks, 17 isolated IndexedDB checks (including
+mid-delete rollback and postcommit verification failure), and native browser
+light/dark rehearsals with zero cloud mutation requests and unchanged app/
+baseline state. The agent did not perform cleanup in the user's browser.
+The separate 1 missing / 3 unexpected / 12 mismatch diagnostic is unresolved;
+neither baseline reset nor controlled note writes are authorized by cleanup.
+
 **Profile-specific blocker diagnostic (2026-10-20).** A user screenshot showed
 44 baseline records and three ignored test artifacts at localhost:8000/?dev=1,
 while the connected browser had 46 records and an empty queue. The query flag

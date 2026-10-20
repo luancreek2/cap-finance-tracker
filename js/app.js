@@ -98,6 +98,50 @@
     return { committed: true, verified: true, alreadyFinalized };
   }
 
+  /* Explicitly confirmed cleanup of exactly the three old account-harness
+     entries. Deletes no app rows and never replaces or updates the baseline. */
+  async function discardVerifiedTestOutbox(receipt, guard) {
+    if (typeof guard !== 'function') throw Error('Local verification guard required');
+    const { userId, entries, expectedBaseline } = clone(receipt || {});
+    const known = op => op?.user_id === userId && op.entity === 'accounts' && op.operation === 'upsert' &&
+      typeof op.id === 'string' && op.id && typeof op.local_id === 'string' && op.local_id &&
+      op.supabase_id === op.local_id && op.payload?.id === op.supabase_id && op.payload.user_id === userId &&
+      op.payload.name === 'CAP SYNC ENGINE TEST' && op.payload.legacy_id === 'phase6-test-' + op.local_id;
+    if (!userId || !Array.isArray(entries) || entries.length !== 3 || new Set(entries.map(e => e.id)).size !== 3 || !entries.every(known) ||
+        expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId || !Array.isArray(expectedBaseline.records)) throw Error('Invalid exact cleanup scope');
+    const d = await idb();
+    await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readwrite'), meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
+      let baseline, recovery, loaded = 0, failure;
+      const current = [], abort = () => { failure = Error('Cleanup preconditions changed'); t.abort(); };
+      const ready = () => {
+        if (++loaded !== entries.length + 2) return;
+        try {
+          if (!eq(baseline, expectedBaseline) || recovery || entries.some((op, i) => !eq(op, current[i]) ||
+              baseline.records.some(r => r.entity === 'accounts' && (String(r.supabase_id) === op.supabase_id || String(r.localId ?? r.legacy_id) === op.local_id))) || guard() !== true) return abort();
+          entries.forEach(op => queue.delete(op.id));
+        } catch (_) { abort(); }
+      };
+      const bq = meta.get('baseline'), rq = meta.get('controlled-notes-test-v1');
+      bq.onsuccess = () => { baseline = bq.result; ready(); };
+      rq.onsuccess = () => { recovery = rq.result; ready(); };
+      entries.forEach((op, i) => { const q = queue.get(op.id); q.onsuccess = () => { current[i] = q.result; ready(); }; });
+      t.oncomplete = () => resolve(); t.onabort = () => reject(failure || Error('Atomic cleanup aborted'));
+      t.onerror = () => { failure = Error('Atomic cleanup failed'); };
+    });
+    const verified = await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readonly');
+      let b, recovery; const remaining = [];
+      const bq = t.objectStore('syncmeta').get('baseline'), rq = t.objectStore('syncmeta').get('controlled-notes-test-v1');
+      bq.onsuccess = () => { b = bq.result; }; rq.onsuccess = () => { recovery = rq.result; };
+      entries.forEach((op, i) => { const q = t.objectStore('outbox').get(op.id); q.onsuccess = () => { remaining[i] = q.result; }; });
+      t.oncomplete = () => resolve(eq(b, expectedBaseline) && !recovery && remaining.every(x => x === undefined));
+      t.onabort = t.onerror = () => reject(Error('Cleanup read-back failed'));
+    }).catch(() => false);
+    if (!verified) { const error = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED'); error.committed = true; throw error; }
+    return { committed: true, verified: true, removed: entries.length };
+  }
+
   /* ---------- helpers ---------- */
   const isList = (...vs) => vs.some(Array.isArray) && vs.every((v) => v === undefined || (Array.isArray(v) && v.every((x) => x && typeof x === "object" && "id" in x)));
   const isMap = (v) => v && typeof v === "object" && !Array.isArray(v);
@@ -399,6 +443,7 @@
     },
     syncStore,
     finalizeVerifiedNotePush,
+    discardVerifiedTestOutbox,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
     settingsHtml,

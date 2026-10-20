@@ -61,6 +61,33 @@ localhost URL. A 44-record baseline is not inherently invalid just because a
 different profile has 46 records; diagnose against the current plan, never
 reset or hard-code the expected count to force a match.
 
+### Approved, narrowly scoped stale-entry cleanup
+
+After the user authorized removing only the three verified old account-harness
+entries, the diagnostic can offer **Remove 3 verified stale test entries
+(confirm)**. Reload to shell v302, run the read-only diagnostic, and use that
+button only for this approved scope. It verifies all evidence before and after
+a native confirmation under the same cross-tab test lock. Exactly three unique
+owned harness entries are required; a prefix alone never qualifies a record.
+
+The local helper checks the exact queued snapshots, unchanged owned baseline,
+absence of recovery metadata/references, and a synchronous local-absence guard
+inside one IndexedDB transaction. It deletes those three outbox keys together
+and verifies their absence and the unchanged baseline after commit. It never
+uses `clear`, writes the baseline, calls a cloud mutation, or removes app data.
+Unrelated queued entries are preserved. A changed/failed absence check blocks
+cleanup. A postcommit read-back failure is distinguished from an aborted
+transaction rather than asserting nothing was removed.
+
+Send the cleanup result and rerun the read-only diagnostic afterwards. The
+separate missing/unexpected/mismatched app records are **not** repaired by this
+queue cleanup, and the controlled write test must not be retried yet.
+
+Verification: 13 isolated confirmation/revalidation checks, 17 isolated atomic
+IndexedDB checks, and native browser light/dark fixtures covering cancellation,
+exact removal, unchanged baseline/app state, and zero cloud mutation requests.
+No cleanup was performed in the user's separate browser profile by the agent.
+
 **Do not retry, clear the outbox, reset data, or initialize a new baseline.**
 Send the status first. The checkpoint and any pending exact operation must be
 inspected read-only to determine local/cloud/baseline convergence. The original
