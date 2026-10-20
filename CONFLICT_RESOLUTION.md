@@ -142,8 +142,26 @@ cloud note body were both changed after the baseline.
 - After reload: the cloud version persisted, baseline revision 1, backup
   retained, checkpoint absent, outbox 0, shell cache `cap-shell-v313`.
 
-This is not a live Supabase trial and does not authorize one. The user’s real
-profile has not been used for this phase.
+This disposable rehearsal is not a live Supabase trial and does not authorize
+one.
+
+## Real-profile read-only verification
+
+Shell v313 was verified on the signed-in real profile without applying a
+resolution:
+
+- Plan Outbox: 0 outbox entries, 0 conflicts, nothing queued;
+- conflict self-check: all five `PASS` lines, including the keep-cloud preview;
+- blocker diagnostic: baseline 46 records, version 2, ownership verified;
+  outbox 0; recovery, demo-refresh, and manual note-pull checkpoints absent;
+  current 46 records; all comparison difference categories 0;
+- nothing was deleted, applied, reset, or baselined, and Cloud Sync remained
+  OFF.
+
+No real note, baseline, outbox, checkpoint, financial, or cloud data was
+changed. Keep-cloud was **not applied** to real data, and keep-local remains
+unavailable. The user's real profile was used only for these read-only checks;
+this does not authorize a live conflict trial or resolution write.
 
 ## Not implemented
 

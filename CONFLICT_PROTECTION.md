@@ -92,29 +92,50 @@ first. Do not retry, reset, clear storage, or delete metadata.
 
 ## User profile verification (read-only)
 
-After reloading shell v312, the user ran the developer-tool checks on the real
-profile with no live conflict created:
+### Shell v313 (current)
 
-- conflict self-check: all four `PASS` lines at the time of this v312 check
-  (v313 adds a fifth keep-cloud resolution-preview line);
+After reloading shell v313 and signing in, the user ran the developer-tool
+checks on the real profile with no live conflict created:
+
+- Plan Outbox: 0 outbox entries, 0 conflicts, nothing queued; no operation was
+  applied or removed;
+- conflict self-check: all five `PASS` lines, including the keep-cloud
+  resolution-preview line and the disabled keep-local path;
+- blocker diagnostic: baseline 46 records, version 2, ownership verified;
+  outbox 0; recovery, demo-refresh, and manual note-pull checkpoints absent;
+  current 46 records; missing 0, unexpected 0, mismatches 0, foreign keys 0,
+  without baseline 0, baseline-only 0, and baseline-content differences 0;
+- the blocker reported nothing deleted, applied, reset, or baselined;
+- Cloud Sync remained OFF.
+
+No real note, financial, or cloud data was changed. The keep-cloud path was
+only previewed synthetically in the self-check; it was not executed on real
+data. Keep-local remains unavailable. This verifies the installed read-only
+conflict checks, not a live conflict trial, merge, or resolution apply.
+
+### Shell v312 (historical)
+
+After reloading shell v312, the user ran the earlier developer-tool checks on
+the real profile with no live conflict created:
+
+- conflict self-check: all four `PASS` lines at the time of the v312 check;
 - cloud pull preview: `NO CLOUD NOTE CHANGE TO PULL — local, baseline, and cloud agree`;
 - manual push preview: `NO NOTE EDIT TO QUEUE — local, baseline, and cloud agree`;
 - Cloud Sync remained OFF, with no changes made.
 
-This verifies the installed read-only conflict checks only. It is not a live
-conflict trial and does not authorize merge or resolution behavior.
-
-A final read-only blocker check reported baseline/current 46, owned version 2,
+That v312 blocker check also reported baseline/current 46, owned version 2,
 outbox 0, all three recovery checkpoints absent, and zero missing, unexpected,
 mismatch, foreign-key, without-baseline, baseline-only, or baseline-content
-differences. Cloud Sync remained OFF. No cleanup or baseline action was taken.
+differences. No cleanup or baseline action was taken.
 
 ## Live conflict trial
 
 Not authorized or performed. A future live trial would need separate approval
 and would require making one local note edit and one cloud note edit against the
 same baseline. Until then, conflict behavior is proven only with synthetic and
-fake-IndexedDB data. The v313 keep-cloud resolution was also rehearsed only on a
-disposable origin with synthetic data; it did not create a live conflict, write
-Supabase, or touch the user profile. This phase does not implement merge,
-automatic resolution, background sync, or any financial-record change.
+fake-IndexedDB data. The v313 keep-cloud resolution was rehearsed only on a
+disposable origin with synthetic data; it did not create a live conflict or
+write Supabase. The user's real profile was used only for the read-only v313
+verification above; no resolution was applied there. This phase does not
+implement merge, automatic resolution, background sync, or any financial-record
+change.
