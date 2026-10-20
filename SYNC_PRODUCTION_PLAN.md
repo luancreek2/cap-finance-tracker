@@ -78,6 +78,20 @@ import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 
+**Profile-specific blocker diagnostic (2026-10-20).** A user screenshot showed
+44 baseline records and three ignored test artifacts at localhost:8000/?dev=1,
+while the connected browser had 46 records and an empty queue. The query flag
+does not change origin; stored state must be inspected in the affected browser
+profile rather than assuming the connected profile represents it. No artifacts
+were deleted and no baseline was reset or regenerated.
+
+The Plan Outbox panel now exposes a read-only notes-test diagnostic covering
+all queue entries, ownership, strict recognition of the old account harness,
+local/cloud presence, baseline references, recovery metadata, and dynamic
+plan/baseline/cloud counts. Cleanup eligibility is evidence, not authorization.
+Raw IDs, payload values and API errors are not rendered. Ten isolated checks
+pass, including failed absence reads and zero mutation assertions. Shell v301.
+
 **Explicitly confirmed demo bridge (2026-10-20).** The dev-only Plan Outbox
 panel can now start a controlled notes round trip. Read-only full validation,
 per-record baseline matching, metadata readiness, a cross-tab Web Lock, and a

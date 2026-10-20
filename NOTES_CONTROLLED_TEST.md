@@ -47,6 +47,20 @@ multi-tab coordination and true multi-session server race tests remain pending.
 
 ## If it stops or the tab closes
 
+For a preflight block, use **Inspect notes-test blocker (read-only)** in the
+same Plan Outbox panel and send the resulting diagnostic. It includes *all*
+queued entries, including artifacts excluded from the usual plan, plus dynamic
+local/cloud/baseline counts. The exact older account harness is recognized only
+when its entity, operation, identities, ownership, name and legacy marker all
+match. Eligible-for-cleanup means review evidence only: it never deletes an
+entry or grants cleanup permission. Failed cloud reads never prove absence.
+
+Storage is scoped to origin **and browser profile**. `?dev=1` does not change
+the origin, but two profiles can have different baselines/outboxes at the same
+localhost URL. A 44-record baseline is not inherently invalid just because a
+different profile has 46 records; diagnose against the current plan, never
+reset or hard-code the expected count to force a match.
+
 **Do not retry, clear the outbox, reset data, or initialize a new baseline.**
 Send the status first. The checkpoint and any pending exact operation must be
 inspected read-only to determine local/cloud/baseline convergence. The original
