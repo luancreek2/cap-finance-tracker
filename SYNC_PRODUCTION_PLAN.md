@@ -21,9 +21,11 @@ Phased migration:
    `anchor + posted transactions + transfers`, using the same sign rules as
    `bApply` (`credit` accounts invert the sign). Pending transactions are
    excluded until posted.
-2. **Anchor.** Account creation writes an `opening_balance` anchor (migration:
-   `anchor = current stored balance - sum(existing effects)`). This preserves
-   current values exactly; drift is not corrected silently.
+2. **Opening entries (implemented).** Account creation writes a normal
+   transaction marked `opening:true` instead of a hidden field, so
+   `balance = Σ entries` holds on every device. Migration inserts one entry per
+   account equal to its implied anchor and is idempotent. Opening entries are
+   excluded from income/spending aggregates and from card statement cycles.
 3. **Report-only check.** Compare stored vs derived for every account and show
    the difference in a read-only diagnostic. No behaviour change.
 4. **Fix drift sources.** Any account where stored != derived is investigated
@@ -56,6 +58,11 @@ card payment, pending then posted) kept drift at 0; an injected +75 was detected
 as one drifting account; the capture guard refused to overwrite existing anchors;
 anchors and drift survived a reload. Production still needs anchors inside the
 synced account record, with an explicit field and mapping.
+
+**Opening entries (verified 2026-10-20):** migration created three entries
+(−450, 3880, −9701); every implied anchor became 0, Home stats were unchanged,
+a second run created nothing, and five later mutations kept anchors at 0.
+Statement cycles and income/spending aggregates exclude the entries.
 
 ## 2. Outbox and push/pull worker
 

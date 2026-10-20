@@ -370,6 +370,8 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
           lim: c.type == "credit" ? +($("#cl") || {}).value || 0 : 0,
           ...(interestOn?{interestEnabled:true,interestRate:+$('#newsi-rate').value,interestCalc:'daily',interestCreditFreq:$('#newsi-credit-freq').value,interestOtherDays:+$('#newsi-other-days').value||30,interestSimulation:$('#newsi-simulate').checked,goalInterestMode:$('#newsi-goal-mode').value,interestGoalId:+$('#newsi-goal-id').value||0,interestLastCredited:today}:{}),
         });
+        const acc=S.accts[S.accts.length-1];
+        if(balance>0)S.tx.push(openingTx(acc,balance,today));
         save();
         closeS();
         render();
@@ -622,7 +624,7 @@ function cyc(a,i){return cardCycles(a)[i]||null}
    waiting to post, then payments in. Pending rows are balance events too (they already
    reduce the balance), but they carry pend:1 so statements can list them separately and
    only in the cycle they post into. */
-const cev=a=>[...S.tx.filter(t=>t.acct==a.id).map(t=>({d:t.pd||t.d,o:-t.amt,t})),...(S.pend||[]).filter(t=>t.acct==a.id).map(t=>({d:t.pd||t.d,o:-t.amt,t,pend:1})),...S.xfer.filter(x=>x.to==a.id).map(x=>({d:x.d,o:-x.amt,x}))],
+const cev=a=>[...S.tx.filter(t=>t.acct==a.id&&!t.opening).map(t=>({d:t.pd||t.d,o:-t.amt,t})),...(S.pend||[]).filter(t=>t.acct==a.id).map(t=>({d:t.pd||t.d,o:-t.amt,t,pend:1})),...S.xfer.filter(x=>x.to==a.id).map(x=>({d:x.d,o:-x.amt,x}))],
 balAt=(a,d)=>a.bal-sum(cev(a).filter(e=>e.d>d).map(e=>e.o));
 function cardCycles(a){
   if(!a.stmt)return[];

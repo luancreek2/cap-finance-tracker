@@ -193,8 +193,8 @@
       function calStats(Y, M) {
         const p = `${Y}-${String(M + 1).padStart(2, "0")}`,
           l = S.tx.filter((t) => t.d.startsWith(p)),
-          i = sum(l.filter((t) => t.amt > 0).map((t) => t.amt)),
-          o = -sum(l.filter((t) => t.amt < 0).map((t) => t.amt));
+          i = sum(l.filter((t) => t.amt > 0 && !t.opening).map((t) => t.amt)),
+          o = -sum(l.filter((t) => t.amt < 0 && !t.opening).map((t) => t.amt));
         return `<span class="g">+${php(i)}</span> <span class="m">·</span> <span class="r">−${php(o)}</span> <span class="m">· ${l.length} ${l.length == 1 ? "entry" : "entries"}</span>`;
       }
       function evDetail(k, j) {
@@ -265,7 +265,7 @@ ${tx ? `<button class="btn s" style="width:100%;margin-bottom:8px" onclick="clos
         const pop = actTab && actTab !== filt;
         actTab = filt;
         return `<h1>Activity</h1><input id="activity-search" placeholder="Search title, description, category or amount" value="${esc(q)}" oninput="q=this.value;render();const i=$('#activity-search');i.focus();i.setSelectionRange(q.length,q.length)">
-<p><b>${new Date().toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</b> <span class="g">+${php(sum(m.filter((t) => t.amt > 0).map((t) => t.amt)))}</span> <span class="r">${php(-sum(m.filter((t) => t.amt < 0).map((t) => t.amt)))}</span> <span class="m">· ${m.length} entries</span></p>
+<p><b>${new Date().toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</b> <span class="g">+${php(sum(m.filter((t) => t.amt > 0 && !t.opening).map((t) => t.amt)))}</span> <span class="r">${php(-sum(m.filter((t) => t.amt < 0 && !t.opening).map((t) => t.amt)))}</span> <span class="m">· ${m.length} entries</span></p>
 ${calH()}<p>${["All", "Expenses", "Income", "Transfers", "Upcoming"].map((f) => `<button class="pill ${f == filt ? "on" : ""}${f == filt && pop ? " pop" : ""}" onclick="filt='${f}';sel='';render()">${f}</button>`).join(" ")}</p>
 <div class="card">${l.map((t) => `<div class="row"><div class="ico">${ti(t)}</div><div class="f">${t.note || t.cat}<small>${t.cat} · ${acct(t.acct).name} · ${t.d}</small></div><b class="${t.amt > 0 ? "g" : "r"}">${t.amt > 0 ? "+" : ""}${php(t.amt)}</b><button class="pill dots" aria-label="Edit transaction" onclick="editTx(${t.id})">${DOTS}</button></div>`).join("") || '<p class="m">Nothing here yet.</p>'}</div>`;
       }
@@ -410,6 +410,39 @@ function balanceShadowReport(){
   }
   const drift=rows.filter(r=>r.hasAnchor&&Math.abs(r.delta)>0.005);
   return{captured:true,at:st.at,rows,drift,missing:rows.filter(r=>!r.hasAnchor).length,extra:Object.keys(st.anchors).filter(k=>(S.accts||[]).every(a=>String(a.id)!==k)).length,totalDrift:r2(drift.reduce((n,r)=>n+Math.abs(r.delta),0))};
+}
+/* ---- opening balances (Phase P3) -------------------------------------------
+   An opening entry is a normal payment record marked opening:true. It makes the
+   ledger account for the balance an account started with, so derived balances
+   need no side field. It never changes the stored balance: the account already
+   carries that value. */
+function openingTx(a,amount,date){
+  return{id:uid(),ts:Date.now(),d:date||today,amt:a.type==='credit'?-amount:amount,cat:'Other',acct:a.id,note:'Opening balance',desc:'Opening balance carried into Cap',opening:true};
+}
+function hasOpeningTx(accountId){return(S.tx||[]).some(t=>t&&t.opening&&String(t.acct)===String(accountId))}
+function earliestDateFor(accountId){
+  const ds=[...(S.tx||[]),...(S.pend||[])].filter(t=>t&&String(t.acct)===String(accountId)&&t.d).map(t=>String(t.d)).sort();
+  return ds[0]||'';
+}
+function openingBalancePreview(){
+  const rows=[];
+  for(const a of (S.accts||[])){
+    const e=balanceEffects(a.id);if(!e)continue;
+    if(Math.abs(e.impliedAnchor)<=0.005)continue;
+    if(hasOpeningTx(a.id))continue;
+    rows.push({id:a.id,type:a.type,anchor:e.impliedAnchor});
+  }
+  return rows;
+}
+function createOpeningBalances(){
+  const created=[];
+  for(const a of (S.accts||[])){
+    const e=balanceEffects(a.id);if(!e||Math.abs(e.impliedAnchor)<=0.005||hasOpeningTx(a.id))continue;
+    const t=openingTx(a,e.impliedAnchor,earliestDateFor(a.id)||today);
+    S.tx.push(t);created.push({id:a.id,amt:t.amt,d:t.d});
+  }
+  if(created.length)save();
+  return{created};
 }
 
 function openTx(txId=0){const f=txId?fTx(txId):null;if(txId&&!f)return;const t=f&&f.t,v=x=>String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'),cat=t?t.cat:'Food',a0=t?t.acct:(S.accts[0]||{}).id;

@@ -550,7 +550,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       const acct = (id) => S.accts.find((a) => a.id == id) || { name: "—" };
       let ym = today.slice(0, 7);
       const inM = S.tx.filter;
-      const mtx = () => S.tx.filter((t) => t.d.startsWith(ym));
+      const mtx = () => S.tx.filter((t) => t.d.startsWith(ym) && !t.opening);
       const sum = (a) => a.reduce((s, x) => s + x, 0);
       const spent = (c) =>
         -sum(
@@ -825,7 +825,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           trend = Array.from({ length: 6 }, (_, i) => {
             const d = new Date(T.getFullYear(), T.getMonth() - 5 + i, 1),
               key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-              value = -sum(S.tx.filter((t) => t.d.startsWith(key) && t.amt < 0).map((t) => t.amt));
+              value = -sum(S.tx.filter((t) => t.d.startsWith(key) && t.amt < 0 && !t.opening).map((t) => t.amt));
             return { label: d.toLocaleDateString("en-PH", { month: "short" }), value, now: i == 5 };
           }),
           maxTrend = Math.max(...trend.map((x) => x.value), 1);
@@ -837,7 +837,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           out = -sum(m.filter((t) => t.amt < 0).map((t) => t.amt));
         const cash = sum(S.accts.filter((a) => a.type != "credit").map((a) => a.bal)),
           owed = sum(S.accts.filter((a) => a.type == "credit").map((a) => a.bal));
-        const td = -sum(S.tx.filter((t) => t.d == today && t.amt < 0).map((t) => t.amt));
+        const td = -sum(S.tx.filter((t) => t.d == today && t.amt < 0 && !t.opening).map((t) => t.amt));
         const cb = outstandingCardStatements().map(({ a, amount, due }) => ({
               name: a.name + " Payment",
               cardId: a.id,
@@ -1198,7 +1198,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           pym = d0.getFullYear() + "-" + String(d0.getMonth() + 1).padStart(2, "0"),
           lp = -sum(
             S.tx
-              .filter((t) => t.d.startsWith(pym) && t.amt < 0 && +t.d.slice(8) <= dm)
+              .filter((t) => t.d.startsWith(pym) && t.amt < 0 && +t.d.slice(8) <= dm && !t.opening)
               .map((t) => t.amt),
           ),
           cats = Object.keys(CATS)
@@ -1260,7 +1260,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           pym = d0.getFullYear() + "-" + String(d0.getMonth() + 1).padStart(2, "0"),
           lp = -sum(
             S.tx
-              .filter((t) => t.d.startsWith(pym) && t.amt < 0 && +t.d.slice(8) <= dm)
+              .filter((t) => t.d.startsWith(pym) && t.amt < 0 && +t.d.slice(8) <= dm && !t.opening)
               .map((t) => t.amt),
           ),
           cats = Object.keys(CATS)
@@ -1571,7 +1571,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           return '<div class="eyebrow" style="margin:16px 0 6px">Transactions</div><p class="m">No transactions with this card yet.</p>';
         const g = {};
         l.slice(0, 80).forEach((t) => (g[t.d] = g[t.d] || []).push(t));
-        const ms = -sum(l.filter((t) => t.d.startsWith(ym) && t.amt < 0).map((t) => t.amt));
+        const ms = -sum(l.filter((t) => t.d.startsWith(ym) && t.amt < 0 && !t.opening).map((t) => t.amt));
         return (
           `<div class="eyebrow" style="margin:16px 0 2px">Transactions · ${l.length}</div><p class="m" style="margin:0 0 4px;font-size:13px">Spent this month ${php(ms)}</p>` +
           Object.keys(g)
