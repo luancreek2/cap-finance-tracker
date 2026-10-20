@@ -35,6 +35,14 @@ Covered by tests: posting a pending transaction, deleting a transaction,
 editing an amount, card payment, account transfer, goal move, deposit, interest
 credit, cash-advance/foreign fee, CSV import adjustment.
 
+**Verified 2026-10-20** on a disposable origin across 13 write paths (add/edit/
+delete transaction, internal and external deposit, card payment and its
+deletion, pending then posted, goal move, cash-advance fee): the implied anchor
+stayed constant for every step except posting a pending purchase, which shifted
+the card by exactly the pending amount. `postOk` was re-applying `bApply` on top
+of the effect already applied at save; fixed by removing the duplicate call.
+Still to cover: CSV import adjustment, interest credit.
+
 ## 2. Outbox and push/pull worker
 
 - Enqueue per changed record: `{entity, localId, op, payloadFingerprint, ts}`.
