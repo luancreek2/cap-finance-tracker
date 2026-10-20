@@ -118,6 +118,17 @@ already-applied, verification mismatch, write failure, planning read failure,
 verification read failure, ownership mismatch, payload-id mismatch, and
 concurrent double execution. No real cloud request was made.
 
+**First controlled real execution (2026-10-20).** One disposable account
+(`phase6-test-outbox-…`) was queued, planned as INSERT, executed, and verified
+against Supabase; a queued delete was then executed and verified absent. Both
+returned APPLIED — VERIFIED and removed their outbox entries. The outbox was
+empty afterwards, no baseline existed on that origin and none was created, and
+Cloud Sync remained OFF.
+
+The bulk planner's test-artifact filter matches either the payload `legacy_id`
+or the outbox `local_id` prefix, so a test delete is skipped as well (verified
+with two test entries skipped and one real entry planned).
+
 ## 3. Conflict handling
 
 - Three-way compare against the baseline (already implemented).

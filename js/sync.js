@@ -120,7 +120,8 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     const u=await CapSupabase.currentUser();if(!u?.id)throw Error('Authenticate before planning the outbox');
     const baseline=await CapOff.syncStore('syncmeta','get','baseline').catch(()=>null);
     const all=await CapOff.syncStore('outbox','all').catch(e=>{throw Error('Outbox read failed: '+e.message)});
-    const mine=all.filter(x=>x.user_id===u.id),others=all.length-mine.length,test=mine.filter(x=>(x.payload?.legacy_id||'').startsWith('phase6-test-')),entries=mine.filter(x=>!test.includes(x));
+    const isTest=x=>String(x.payload?.legacy_id||'').startsWith('phase6-test-')||String(x.local_id||'').startsWith('phase6-test-');
+    const mine=all.filter(x=>x.user_id===u.id),others=all.length-mine.length,test=mine.filter(isTest),entries=mine.filter(x=>!test.includes(x));
     const readCloud=cloudReader(u.id);
     const result=await planOutbox(entries,{userId:u.id,readCloud,baseline});
     return {...result,ignoredTestArtifacts:test.length,ignoredOtherUsers:others,dryRun:true,applied:0,removed:0};
