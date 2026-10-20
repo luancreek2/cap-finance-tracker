@@ -48,6 +48,15 @@ unchecked records transactions without moving balances. Derived balances cannot
 represent that state, so the option must be removed or redefined before reads
 are flipped.
 
+**Shadow mode (dev-only, 2026-10-20):** anchors are captured on demand and stored
+in `localStorage` under `cap_balance_anchors_v1`, outside `S`, so they are never
+synced or exported. `balanceShadowReport()` compares stored against
+anchor + effects and lists drift. Verified: five mutations (income, transfer,
+card payment, pending then posted) kept drift at 0; an injected +75 was detected
+as one drifting account; the capture guard refused to overwrite existing anchors;
+anchors and drift survived a reload. Production still needs anchors inside the
+synced account record, with an explicit field and mapping.
+
 ## 2. Outbox and push/pull worker
 
 - Enqueue per changed record: `{entity, localId, op, payloadFingerprint, ts}`.
