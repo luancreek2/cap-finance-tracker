@@ -78,6 +78,22 @@ import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 
+**Explicitly confirmed demo bridge (2026-10-20).** The dev-only Plan Outbox
+panel can now start a controlled notes round trip. Read-only full validation,
+per-record baseline matching, metadata readiness, a cross-tab Web Lock, and a
+native confirmation precede any persistent changes. A local recovery checkpoint
+then protects two scoped operations: append a marker to one existing demo note,
+verify/finalize it, restore its original body, and verify/finalize restoration.
+Unrelated baseline/financial state must remain unchanged; the outbox must be
+empty before checkpoint cleanup. No blind rollback or automatic retry exists.
+
+Production execution stays locked and Cloud Sync stays OFF. No live user
+Supabase write was performed in this implementation step. Rehearsals: 24
+simulated bridge checks and actual local UI/Web Lock/IndexedDB tests on a
+disposable origin against a simulated cloud, including cancellation and both
+themes. Instructions, authorized scope and recovery rules are in
+`NOTES_CONTROLLED_TEST.md`. Multi-session PostgreSQL races remain pending.
+
 **Adapter-only notes push/finalization (2026-10-20).** The notes core now
 performs guarded preflight, readiness, local/auth/queue/baseline rechecks,
 expected-content CAS, fresh cloud verification, and finalization via explicit

@@ -241,6 +241,154 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     }catch(_){return rpcCalled?{status:'WRITE OUTCOME UNKNOWN — NOTHING FINALIZED',wrote:null,finalized:false}:refused('Read-only preflight could not complete');}
     finally{notePushBusy.delete(operationId)}
   }
+  let controlledNotesBusy=false;
+  async function controlledNoteRoundTrip(io){
+    if(!io||['withLock','preflight','confirm','checkpoint','stage','push','verify','finish'].some(k=>typeof io[k]!=='function'))return {status:'BLOCKED — EXPLICIT TEST ADAPTERS REQUIRED',complete:false};
+    if(controlledNotesBusy)return {status:'BLOCKED — TEST ALREADY RUNNING',complete:false};
+    controlledNotesBusy=true;
+    let checkpointed=false;
+    try{
+      return await io.withLock(async()=>{
+        const first=await io.preflight();
+        if(await io.confirm()!==true)return {status:'CANCELLED — NOTHING CHANGED',complete:false};
+        const current=await io.preflight();
+        if(first.ticket!==current.ticket)return {status:'BLOCKED — DATA CHANGED DURING CONFIRMATION',complete:false};
+        checkpointed=true;await io.checkpoint(current);
+        for(const phase of ['test','restore']){
+          const operationId=await io.stage(current,phase);
+          const result=await io.push(operationId);
+          if(!result?.finalized)return {status:result?.status||'STOPPED — OPERATION NOT VERIFIED',complete:false,recoveryRequired:true};
+        }
+        if(await io.verify(current)!==true)return {status:'STOPPED — RESTORATION NOT VERIFIED',complete:false,recoveryRequired:true};
+        await io.finish(current);
+        return {status:'PASS — NOTE RESTORED; BOTH PUSHES VERIFIED',complete:true};
+      });
+    }catch(error){return {status:error?.localWrite===true?'LOCAL WRITE OCCURRED — VERIFICATION FAILED':checkpointed?'STOPPED — RECOVERY CHECK REQUIRED':'BLOCKED — PREFLIGHT OR LOCK UNAVAILABLE',complete:false,recoveryRequired:checkpointed};}
+    finally{controlledNotesBusy=false}
+  }
+  const NOTES_TEST_KEY='controlled-notes-test-v1';
+  function currentNotePlan(){
+    const prep=migrationPrepare();if(prep.blockingProblems.length)throw Error('Local mapping blocked');
+    return buildSupabaseMigrationPlan(prep);
+  }
+  function noteFromPlan(localId){
+    const rows=currentNotePlan().tables.find(x=>x[0]==='notes')?.[1]||[];
+    const matches=rows.filter(r=>String(r.legacy_id)===String(localId));
+    if(matches.length!==1)throw Error('Note mapping changed');return matches[0];
+  }
+  function notesFinancialSnapshot(){
+    return JSON.stringify(Object.fromEntries(['accts','tx','pend','xfer','bills','goals','debts','budgets'].map(k=>[k,S[k]])));
+  }
+  function localStateIsCurrent(){
+    try{return localStorage.getItem('pera')===JSON.stringify(S);}catch(_){return false;}
+  }
+  function controlledNotesAdapters(){
+    let active=null;
+    const report=message=>{const out=document.getElementById('controlled-notes-result');if(out)out.textContent=message;};
+    const localGuard=entry=>{
+      try{const row=noteFromPlan(entry.local_id);return localStateIsCurrent()&&CapSupabase.status().userId===entry.user_id&&row.id===entry.supabase_id&&row.user_id===entry.user_id&&JSON.stringify(noteContent(row))===JSON.stringify(noteContent(entry.payload));}catch(_){return false;}
+    };
+    const io={
+      withLock:run=>{
+        if(!navigator.locks?.request)throw Error('Cross-tab lock unavailable');
+        return navigator.locks.request('cap-controlled-notes-test',{mode:'exclusive',ifAvailable:true},lock=>{if(!lock)throw Error('Test active in another tab');return run();});
+      },
+      preflight:async()=>{
+        report('READ-ONLY PREFLIGHT · Cloud Sync must remain OFF · no changes made yet.');
+        if(!window.CAP_DEV_TOOLS||typeof claude!=='undefined'||(await status()).mode!=='off')throw Error('Developer/local-only preconditions failed');
+        if(!localStateIsCurrent()){report('BLOCKED · Persisted local state differs from this tab. Reload and inspect other tabs before testing.');throw Error('Persisted local state changed');}
+        if(await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY)){report('BLOCKED · An unresolved notes-test recovery checkpoint exists. Do not clear it or the outbox.');throw Error('Unresolved controlled test checkpoint');}
+        const u=await CapSupabase.currentUser();if(!u?.id)throw Error('Authentication required');
+        const baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all');
+        report('READ-ONLY PREFLIGHT · Baseline records: '+(Array.isArray(baseline?.records)?baseline.records.length:'unavailable')+' · outbox: '+(Array.isArray(entries)?entries.length:'unavailable')+' · Cloud Sync OFF.');
+        if(baseline?.version!==2||baseline.user_id!==u.id||!Array.isArray(baseline.records)||!Array.isArray(entries)||entries.length)throw Error('Clean owned baseline and empty outbox required');
+        if(!await CapSupabase.refreshNotesRpcReadiness()){report('BLOCKED · Notes RPC metadata not verified. No write RPC was called.');throw Error('Notes RPC metadata not ready');}
+        const plan=currentNotePlan(),validation=await CapSupabase.validateRealData(plan);
+        report('READ-ONLY VALIDATION · Missing: '+validation.missingCount+' · unexpected: '+validation.unexpectedCount+' · mismatches: '+validation.mismatchCount+' · foreign-key errors: '+validation.foreignKeyErrorCount+' · no changes made.');
+        if(!validation.dataOk)throw Error('Local/cloud validation blocked');
+        const records=await recordFingerprints(plan,validation);
+        const base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r]));
+        if(records.length!==base.size||base.size!==baseline.records.length||records.some(r=>r.contentFingerprint!==r.cloudContentFingerprint||r.contentFingerprint!==base.get(r.entity+':'+r.supabase_id)?.contentFingerprint||base.get(r.entity+':'+r.supabase_id)?.user_id!==u.id||String(r.localId)!==String(base.get(r.entity+':'+r.supabase_id)?.localId)))throw Error('Baseline content or mapping differs');
+        const rows=plan.tables.find(x=>x[0]==='notes')?.[1]||[];
+        if(!rows.length)throw Error('Existing demo note required');
+        const original=JSON.parse(JSON.stringify(rows[0]));noteContent(original);
+        if(typeof original.body!=='string')throw Error('Text note required');
+        const cloud=(validation.snapshot?.notes||[]).filter(n=>n.id===original.id);
+        if(cloud.length!==1||cloud[0].user_id!==u.id||JSON.stringify(noteContent(cloud[0]))!==JSON.stringify(noteContent(original)))throw Error('Cloud note mapping differs');
+        if(typeof S.notes!=='string'&&(!Array.isArray(S.notes)||S.notes.filter(n=>String(n.id)===String(original.legacy_id)&&typeof n.b==='string').length!==1))throw Error('Stable local text representation required');
+        const originalLocal=JSON.stringify(S.notes),financial=notesFinancialSnapshot();
+        const ticket=await contentFingerprint({owner:u.id,baseline:JSON.stringify(baseline),records:JSON.stringify(records),originalLocal,financial});
+        report('PREFLIGHT PASSED · Local = baseline = cloud · outbox empty · notes RPC metadata verified. Awaiting explicit confirmation.');
+        return {owner:u.id,original,originalLocal,financial,baseline,ticket};
+      },
+      confirm:()=>window.confirm('Controlled DEMO notes test — REAL CLOUD WRITES\n\nOnly proceed with demo/test data. This temporarily appends a test marker to one existing note, pushes and verifies it, then restores the original note through a second verified push. Local note state, two outbox operations, and their baseline acknowledgements will change. A recovery checkpoint is kept if interrupted.\n\nAccount balances and financial records will not be changed. Cloud Sync remains OFF. Keep other app tabs idle until finished.\n\nRun this test?'),
+      checkpoint:async context=>{
+        const checkpoint={id:crypto.randomUUID(),owner:context.owner,original:context.original,originalLocal:context.originalLocal,financial:context.financial,created_at:now(),phase:'prepared'};
+        await CapOff.syncStore('syncmeta','put',checkpoint,NOTES_TEST_KEY);
+        const read=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
+        if(JSON.stringify(read)!==JSON.stringify(checkpoint)){const error=Error('Checkpoint not verified');error.localWrite=true;throw error;}
+        active=checkpoint;
+      },
+      stage:async(context,phase)=>{
+        report(phase==='test'?'CONFIRMED · Preparing temporary note update.':'TEMPORARY PUSH VERIFIED · Preparing original-content restoration.');
+        const u=await CapSupabase.currentUser(),stored=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
+        if(!active||u?.id!==active.owner||stored?.id!==active.id||(await CapOff.syncStore('outbox','all')).length||notesFinancialSnapshot()!==context.financial)throw Error('Test context changed');
+        const before=noteFromPlan(context.original.legacy_id);
+        const testPayload={...context.original,body:context.original.body+'\n[Cap atomic notes test]'};
+        const expected=phase==='test'?context.original:testPayload,target=phase==='test'?testPayload:context.original;
+        if(JSON.stringify(noteContent(before))!==JSON.stringify(noteContent(expected))||before.id!==context.original.id||before.user_id!==context.owner)throw Error('Note changed before staging');
+        const entry={id:crypto.randomUUID(),entity:'notes',local_id:String(target.legacy_id),supabase_id:target.id,operation:'upsert',payload:target,user_id:context.owner,queued_at:now(),local_updated_at:now(),retry_count:0,last_error:null};
+        active={...stored,phase,operationId:entry.id};
+        await CapOff.syncStore('syncmeta','put',active,NOTES_TEST_KEY);
+        await CapOff.syncStore('outbox','put',entry);
+        if(JSON.stringify(await CapOff.syncStore('outbox','get',entry.id))!==JSON.stringify(entry)){const error=Error('Outbox staging not verified');error.localWrite=true;throw error;}
+        // No await between the final local check, body-only edit, and save.
+        if(!localGuard({...entry,payload:expected})||notesFinancialSnapshot()!==context.financial)throw Error('Local note changed before save');
+        if(typeof S.notes==='string')S.notes=target.body;
+        else {const notes=S.notes.filter(n=>String(n.id)===String(entry.local_id));if(notes.length!==1)throw Error('Local note ambiguous');notes[0].b=target.body;}
+        try{save();if(!localGuard(entry)||notesFinancialSnapshot()!==context.financial)throw Error('Local note save not verified');}
+        catch(_){const error=Error('Local note save not verified');error.localWrite=true;throw error;}
+        return entry.id;
+      },
+      push:operationId=>rehearseNotePush(operationId,{
+        currentUser:()=>CapSupabase.currentUser(),
+        readState:async()=>({baseline:await CapOff.syncStore('syncmeta','get','baseline'),entries:await CapOff.syncStore('outbox','all')}),
+        readLocal:entry=>noteFromPlan(entry.local_id),
+        readCloud:entry=>cloudReader(entry.user_id)('notes',{id:entry.supabase_id,localId:entry.local_id}),
+        ready:()=>CapSupabase.refreshNotesRpcReadiness(),
+        cas:async args=>{
+          const u=await CapSupabase.currentUser(),checkpoint=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
+          if(!active||!localStateIsCurrent()||u?.id!==active.owner||checkpoint?.id!==active.id||checkpoint.operationId!==active.operationId||args.p_id!==active.original.id||args.p_expected===null||!CapSupabase.notesRpcReady())throw Error('Controlled write authorization changed');
+          return CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_note_put',{method:'POST',body:JSON.stringify(args)});
+        },
+        finalize:receipt=>CapOff.finalizeVerifiedNotePush(receipt,()=>localGuard(receipt.entry)&&notesFinancialSnapshot()===active?.financial),
+      }),
+      verify:async context=>{
+        const u=await CapSupabase.currentUser(),baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all');
+        const local=noteFromPlan(context.original.legacy_id),remote=await cloudReader(context.owner)('notes',{id:context.original.id});
+        const records=baseline?.records||[],target=records.filter(r=>r.entity==='notes'&&r.supabase_id===context.original.id);
+        const originalFingerprint=await contentFingerprint(canonical(context.original,'','notes'));
+        const unchanged=JSON.stringify(records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)))===JSON.stringify(context.baseline.records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)));
+        return localStateIsCurrent()&&u?.id===context.owner&&baseline?.user_id===context.owner&&entries.length===0&&target.length===1&&target[0].contentFingerprint===originalFingerprint&&
+          JSON.stringify(noteContent(local))===JSON.stringify(noteContent(context.original))&&JSON.stringify(noteContent(remote))===JSON.stringify(noteContent(context.original))&&
+          JSON.stringify(S.notes)===context.originalLocal&&notesFinancialSnapshot()===context.financial&&unchanged&&(await status()).mode==='off';
+      },
+      finish:async()=>{
+        const current=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
+        if(current?.id!==active?.id)throw Error('Recovery checkpoint changed');
+        await CapOff.syncStore('syncmeta','delete',NOTES_TEST_KEY);
+        if(await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY))throw Error('Checkpoint cleanup not verified');
+        active=null;
+      },
+    };
+    return io;
+  }
+  window.runCapControlledNotesTest=async()=>{
+    const out=document.getElementById('controlled-notes-result');if(!out||!window.CAP_DEV_TOOLS)return;
+    out.textContent='Starting read-only preflight. Nothing changes unless you confirm.';
+    const result=await controlledNoteRoundTrip(controlledNotesAdapters());
+    out.textContent+='\n'+result.status+(result.recoveryRequired?' · STOP: do not retry, reset, or clear the outbox; inspect the recovery checkpoint and pending operation.':'')+' · Cloud Sync remains OFF.';
+  };
   /* Session-only review preferences. These are NOT resolutions and are never
      consumed by the executor. Each preference is bound to the exact queue,
      baseline, owner and canonical cloud snapshot, and rechecked on selection. */
@@ -369,7 +517,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     }finally{executingOutbox.delete(operationId)}
   }
   function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="testCapSyncEngine()">Test Sync Engine</button><small id="sync-engine-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
-  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,ORDER};
+  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,controlledNoteRoundTrip,ORDER};
   /* Read-only balance consistency report. Shows balances and drift on this
      device only; never writes. Gated behind ?dev=1 in the settings panel. */
   window.checkBalanceConsistency=()=>{
@@ -442,6 +590,13 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         const button=document.createElement('button'),result=document.createElement('span');
         button.type='button';button.className='btn s';button.textContent='Check atomic notes RPC (read-only)';result.setAttribute('role','status');result.setAttribute('aria-live','polite');
         button.onclick=async()=>{button.disabled=true;result.textContent='Checking metadata only…';try{const ready=await CapSupabase.refreshNotesRpcReadiness();result.textContent=ready?'Notes RPC metadata verified. Production writes remain locked.':'BLOCKED — notes RPC metadata is missing, unsafe, or could not be verified. No write RPC was called.';}catch(_){result.textContent='BLOCKED — readiness could not be verified. No write RPC was called.';}finally{button.disabled=false}};
+        o.appendChild(button);o.appendChild(result);
+      }
+      if(o&&window.CAP_DEV_TOOLS){
+        const button=document.createElement('button'),result=document.createElement('span');
+        button.type='button';button.className='btn s';button.textContent='Controlled demo notes test (real writes)';
+        result.id='controlled-notes-result';result.setAttribute('role','status');result.setAttribute('aria-live','polite');
+        button.onclick=async()=>{button.disabled=true;try{await window.runCapControlledNotesTest();}finally{button.disabled=false}};
         o.appendChild(button);o.appendChild(result);
       }
     }catch(e){if(o)o.textContent='Outbox plan blocked: authentication, storage, or cloud verification could not complete. No operation was applied or removed.';toast('Outbox plan failed')}

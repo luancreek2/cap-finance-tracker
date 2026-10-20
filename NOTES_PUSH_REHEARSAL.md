@@ -1,7 +1,9 @@
 # Notes push pipeline: rehearsal status
 
-Implemented and rehearsed; **not enabled for live Supabase writes**.
-No action or new SQL installation is required for this step.
+Implemented and rehearsed; general production writes remain locked.
+A separate, explicitly confirmed demo-test bridge is now available in
+`NOTES_CONTROLLED_TEST.md`; it has not been run against user Supabase data.
+No additional SQL installation is required for that test.
 
 ## Pipeline
 
@@ -9,7 +11,9 @@ No action or new SQL installation is required for this step.
 authentication, current baseline/outbox, current local note, cloud reads,
 readiness verification, the notes CAS call, and atomic local finalization.
 There are no default live adapters and no apply button. Calling it without
-adapters refuses the operation. Review preferences do not authorize execution.
+adapters refuses the operation. Only the separate confirmed demo controller
+assembles live adapters for two scoped updates to one existing note. Review
+preferences do not authorize execution.
 
 The core supports one explicitly mapped owned notes upsert at a time. It:
 

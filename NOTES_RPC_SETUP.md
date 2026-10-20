@@ -39,10 +39,10 @@ does **not** enable writes or prove multi-device production readiness.
   settings, version, execution ACLs, notes RLS, the known ownership policy,
   table grants, and whether the authenticated role can bypass RLS. It never
   calls the write function or selects app rows.
-- No live client transport is connected to the new writer. The adapter-only
-  client pipeline and atomic local baseline/outbox acknowledgement are
-  rehearsed in `NOTES_PUSH_REHEARSAL.md`; live integration and applying
-  conflict-review choices remain pending.
+- General production transport remains locked. A narrow, explicitly confirmed
+  two-update demo test is available in `NOTES_CONTROLLED_TEST.md`, but has not
+  been run against user Supabase data. The pipeline and atomic local
+  acknowledgement are rehearsed; applying conflict-review choices is pending.
 
 ## Verification performed locally
 

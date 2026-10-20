@@ -1,0 +1,71 @@
+# Controlled demo notes test
+
+Built and rehearsed; **not yet run against the user's Supabase data**.
+This is an explicit exception for a confirmed demo test, not production sync.
+No additional SQL installation is required after the notes RPC setup.
+
+## Run only when ready for real writes
+
+1. Reload the app to pick up shell v300 (two reloads may be needed).
+2. Open Privacy & Sync → developer tools → **Plan Outbox (read-only)**.
+3. Click **Controlled demo notes test (real writes)**.
+4. Read the native confirmation and confirm only for demo/test data. Keep
+   other app tabs idle; do not edit the note, navigate away, or reload mid-test.
+5. Send the resulting status. Expected:
+   `PASS — NOTE RESTORED; BOTH PUSHES VERIFIED`.
+
+The initial preflight is read-only. Canceling before confirmation changes no
+app data, outbox entries, baseline, or recovery metadata. The test refuses an
+unclean baseline, pending outbox, unverifiable metadata, mismatched persisted
+local state, an existing recovery checkpoint, or an unavailable Web Lock.
+
+## Exactly what the confirmation authorizes
+
+- Choose one existing, baseline-mapped note from a fully synchronized demo set.
+- Store a local recovery checkpoint in `syncmeta` under
+  `controlled-notes-test-v1` (original note/local representation and comparison
+  data). This is not exported or synced as app data.
+- Append a fixed test marker to the note body, queue one exact operation, and
+  call only `cap_sync_note_put` through the guarded notes pipeline.
+- Verify cloud content; atomically acknowledge one baseline record and remove
+  that outbox entry.
+- Restore the original body with a second queued CAS operation and verified
+  atomic acknowledgement.
+- Verify the original note representation/content, unrelated baseline records,
+  financial state and empty outbox, then remove the recovery checkpoint.
+
+There are normally two cloud note writes and two local acknowledgements.
+There are no inserts/deletes, balance writes, financial-table mutations,
+background processing, or automatic retry. Cloud Sync remains OFF. Normal
+production execution and conflict-review preferences remain locked/separate.
+
+The test holds a native Web Lock across preflight, confirmation and both
+operations, rejects stale localStorage snapshots, and rechecks ownership,
+checkpoint identity and local state before writes. This coordinates other
+controlled tests, not arbitrary older app tabs/editors: keep those idle. General
+multi-tab coordination and true multi-session server race tests remain pending.
+
+## If it stops or the tab closes
+
+**Do not retry, clear the outbox, reset data, or initialize a new baseline.**
+Send the status first. The checkpoint and any pending exact operation must be
+inspected read-only to determine local/cloud/baseline convergence. The original
+note is retained in the checkpoint until successful restoration is verified.
+The UI does not automatically resume or blindly roll back interrupted work.
+A failed/ambiguous request can mean a cloud write happened despite a lost
+response; the pending entry is intentionally retained for safe recovery.
+
+## Rehearsal evidence
+
+- `node tests/notes-controlled.cjs`: 24 simulated bridge/controller checks.
+  Includes cancellation, changed data during confirmation, stale local state,
+  unavailable lock, invalid baselines, pending/recovery blocking, queue/save
+  failures, racing cloud edits, lost responses, failed acknowledgement,
+  failed restoration, user edits before restore, and checkpoint cleanup errors.
+- The actual UI, local note edits, Web Lock and IndexedDB finalizer were
+  exercised on a disposable browser origin with a simulated cloud: cancellation
+  caused zero mocked writes; confirmed light/dark runs each made two mocked
+  writes, restored the original note, and left no queue/checkpoint. No user
+  identifiers or note content appeared in diagnostics.
+- Existing suites also pass: 32 pipeline, 18 IndexedDB, 49 outbox, 25 readiness,
+  and 41 SQL integration checks. No live write test is implied by rehearsal.
