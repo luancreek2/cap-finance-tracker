@@ -50,13 +50,13 @@
     await new Promise((resolve, reject) => {
       const t = d.transaction(['syncmeta', 'outbox'], 'readwrite');
       const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
-      const bq = meta.get('baseline'), oq = queue.get(entry.id), rq = meta.get('demo-local-refresh-state-v1');
-      let baseline, currentEntry, refreshRecovery, loaded = 0, failure;
+      const bq = meta.get('baseline'), oq = queue.get(entry.id), rq = meta.get('demo-local-refresh-state-v1'), pq = meta.get('manual-notes-pull-v1');
+      let baseline, currentEntry, refreshRecovery, pullRecovery, loaded = 0, failure;
       const abort = () => { failure = Error('Note acknowledgement preconditions changed'); t.abort(); };
       const ready = () => {
-        if (++loaded !== 3) return;
+        if (++loaded !== 4) return;
         try {
-          if (refreshRecovery || baseline?.version !== 2 || baseline.user_id !== userId || !Array.isArray(baseline.records)) return abort();
+          if (refreshRecovery || pullRecovery || baseline?.version !== 2 || baseline.user_id !== userId || !Array.isArray(baseline.records)) return abort();
           const matches = baseline.records.filter(r => r.entity === 'notes' &&
             (r.supabase_id === entry.supabase_id || String(r.localId) === String(entry.local_id)));
           if (!currentEntry && matches.length === 1 && eq(matches[0], nextRecord)) {
@@ -74,6 +74,7 @@
       bq.onsuccess = () => { baseline = bq.result; ready(); };
       oq.onsuccess = () => { currentEntry = oq.result; ready(); };
       rq.onsuccess = () => { refreshRecovery = rq.result; ready(); };
+      pq.onsuccess = () => { pullRecovery = pq.result; ready(); };
       t.oncomplete = () => resolve();
       t.onabort = () => reject(failure || Error('Atomic note acknowledgement aborted'));
       t.onerror = () => { failure = Error('Atomic note acknowledgement failed'); };
@@ -113,12 +114,12 @@
     const d = await idb();
     await new Promise((resolve, reject) => {
       const t = d.transaction(['syncmeta', 'outbox'], 'readwrite'), meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
-      let baseline, recovery, refreshRecovery, loaded = 0, failure;
+      let baseline, recovery, refreshRecovery, pullRecovery, loaded = 0, failure;
       const current = [], abort = () => { failure = Error('Cleanup preconditions changed'); t.abort(); };
       const ready = () => {
-        if (++loaded !== entries.length + 3) return;
+        if (++loaded !== entries.length + 4) return;
         try {
-          if (!eq(baseline, expectedBaseline) || recovery || refreshRecovery || entries.some((op, i) => !eq(op, current[i]) ||
+          if (!eq(baseline, expectedBaseline) || recovery || refreshRecovery || pullRecovery || entries.some((op, i) => !eq(op, current[i]) ||
               baseline.records.some(r => r.entity === 'accounts' && (String(r.supabase_id) === op.supabase_id || String(r.localId ?? r.legacy_id) === op.local_id))) || guard() !== true) return abort();
           entries.forEach(op => queue.delete(op.id));
         } catch (_) { abort(); }
@@ -127,6 +128,7 @@
       bq.onsuccess = () => { baseline = bq.result; ready(); };
       rq.onsuccess = () => { recovery = rq.result; ready(); };
       drq.onsuccess = () => { refreshRecovery = drq.result; ready(); };
+      const pq = meta.get('manual-notes-pull-v1'); pq.onsuccess = () => { pullRecovery = pq.result; ready(); };
       entries.forEach((op, i) => { const q = queue.get(op.id); q.onsuccess = () => { current[i] = q.result; ready(); }; });
       t.oncomplete = () => resolve(); t.onabort = () => reject(failure || Error('Atomic cleanup aborted'));
       t.onerror = () => { failure = Error('Atomic cleanup failed'); };
@@ -161,12 +163,12 @@
     await new Promise((resolve, reject) => {
       const t = d.transaction(['syncmeta', 'outbox'], 'readwrite');
       const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
-      let baseline, currentCheckpoint, refreshCheckpoint, entries, loaded = 0, failure;
+      let baseline, currentCheckpoint, refreshCheckpoint, pullRecovery, entries, loaded = 0, failure;
       const abort = () => { failure = Error('Recovery cleanup preconditions changed'); t.abort(); };
       const ready = () => {
-        if (++loaded !== 4) return;
+        if (++loaded !== 5) return;
         try {
-          if (!eq(baseline, expectedBaseline) || !eq(currentCheckpoint, checkpoint) || refreshCheckpoint ||
+          if (!eq(baseline, expectedBaseline) || !eq(currentCheckpoint, checkpoint) || refreshCheckpoint || pullRecovery ||
               !Array.isArray(entries) || entries.length || guard() !== true) return abort();
           meta.delete('controlled-notes-test-v1');
         } catch (_) { abort(); }
@@ -176,6 +178,7 @@
       cq.onsuccess = () => { currentCheckpoint = cq.result; ready(); };
       rq.onsuccess = () => { refreshCheckpoint = rq.result; ready(); };
       oq.onsuccess = () => { entries = oq.result; ready(); };
+      const pq = meta.get('manual-notes-pull-v1'); pq.onsuccess = () => { pullRecovery = pq.result; ready(); };
       t.oncomplete = () => resolve();
       t.onabort = () => reject(failure || Error('Atomic recovery cleanup aborted'));
       t.onerror = () => { failure = Error('Atomic recovery cleanup failed'); };
@@ -194,6 +197,143 @@
     }).catch(() => false);
     if (!verified) { const error = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED'); error.committed = true; throw error; }
     return { committed: true, verified: true, removed: true };
+  }
+
+  /* Manual note staging is local queue metadata only. No save(), baseline
+     replacement, or transport; all mutable evidence is rechecked atomically. */
+  async function stageVerifiedManualNote(receipt, guard) {
+    if (typeof guard !== 'function') throw Error('Local verification guard required');
+    const { userId, entry, expectedBaseline } = clone(receipt || {});
+    if (!userId || entry?.source !== 'manual-notes-v1' || entry.entity !== 'notes' || entry.operation !== 'upsert' || !entry.supabase_id ||
+        typeof entry.id !== 'string' || !entry.id || entry.user_id !== userId || entry.payload?.user_id !== userId || entry.payload.id !== entry.supabase_id ||
+        String(entry.payload.legacy_id) !== String(entry.local_id) || entry.manual_original?.id !== entry.supabase_id ||
+        entry.manual_original.user_id !== userId || String(entry.manual_original.legacy_id) !== String(entry.local_id) ||
+        expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId || !Array.isArray(expectedBaseline.records)) throw Error('Invalid manual note scope');
+    const d = await idb();
+    await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readwrite'), meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
+      const requests = [meta.get('baseline'), meta.get('controlled-notes-test-v1'), meta.get('demo-local-refresh-state-v1'), queue.getAll(), meta.get('manual-notes-pull-v1')];
+      const values = []; let loaded = 0, failure;
+      requests.forEach((q, i) => { q.onsuccess = () => {
+        values[i] = q.result;
+        if (++loaded !== requests.length) return;
+        try {
+          const [baseline, recovery, refresh, entries, pullRecovery] = values;
+          const matches = baseline?.records?.filter(r => r.entity === 'notes' && (r.supabase_id === entry.supabase_id || String(r.localId) === entry.local_id));
+          if (!eq(baseline, expectedBaseline) || recovery || refresh || pullRecovery || entries.length || matches?.length !== 1 ||
+              matches[0].supabase_id !== entry.supabase_id || String(matches[0].localId) !== entry.local_id || guard() !== true) throw Error('Changed evidence');
+          queue.add(entry);
+        } catch (_) { failure = Error('Manual note staging preconditions changed'); t.abort(); }
+      }; });
+      t.oncomplete = () => resolve(); t.onabort = () => reject(failure || Error('Manual note staging aborted'));
+      t.onerror = () => { failure = Error('Manual note staging failed'); };
+    });
+    let verified = false;
+    try {
+      verified = await new Promise((resolve, reject) => {
+        const t = d.transaction(['syncmeta', 'outbox'], 'readonly');
+        const bq = t.objectStore('syncmeta').get('baseline'), oq = t.objectStore('outbox').getAll(); let baseline, entries;
+        bq.onsuccess = () => { baseline = bq.result; }; oq.onsuccess = () => { entries = oq.result; };
+        t.oncomplete = () => resolve(eq(baseline, expectedBaseline) && entries?.length === 1 && eq(entries[0], entry));
+        t.onabort = t.onerror = () => reject(Error('Manual note staging read-back failed'));
+      });
+    } catch (_) {}
+    if (!verified) { const e = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED'); e.committed = true; throw e; }
+    return { committed: true, verified: true };
+  }
+
+  /* Confirmed one-note pull: verified backup first, then local IndexedDB
+     state + one baseline acknowledgement together. No cloud transport here.
+     The recovery checkpoint survives any ambiguous/partial application. */
+  async function applyVerifiedNotePull(receipt, guard, verifyCloud) {
+    if (!api || typeof guard !== 'function' || typeof verifyCloud !== 'function') throw Error('Explicit pull guards required');
+    const { userId, expectedLocalJson, expectedBaseline, expectedRecord, nextRecord, cloud, backupKey } = clone(receipt || {});
+    const validHash = value => /^[0-9a-f]{64}$/i.test(value || '');
+    if (!userId || typeof expectedLocalJson !== 'string' || !backupKey?.startsWith('manual-notes-pull-backup:') ||
+        expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId || !Array.isArray(expectedBaseline.records) ||
+        expectedRecord?.entity !== 'notes' || expectedRecord.user_id !== userId || !validHash(expectedRecord.contentFingerprint) ||
+        cloud?.id !== expectedRecord.supabase_id || cloud.user_id !== userId || cloud.legacy_id !== String(expectedRecord.localId) ||
+        typeof cloud.title !== 'string' || typeof cloud.body !== 'string' || !Object.prototype.hasOwnProperty.call(cloud, 'note_date') ||
+        cloud.note_date !== null && (typeof cloud.note_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cloud.note_date)) ||
+        Object.keys(cloud).some(k => !['id','user_id','legacy_id','title','body','note_date','created_at','updated_at'].includes(k)) ||
+        nextRecord?.entity !== 'notes' || nextRecord.user_id !== userId || nextRecord.supabase_id !== cloud.id ||
+        String(nextRecord.localId) !== cloud.legacy_id || !validHash(nextRecord.contentFingerprint) || !nextRecord.last_pull_id) throw Error('Invalid note pull scope');
+    const original = JSON.parse(expectedLocalJson), next = clone(original);
+    if (!Array.isArray(next.notes) || next.notes.some(n => !n || typeof n !== 'object' || n.id === undefined || n.id === null) ||
+        new Set(next.notes.map(n => String(n.id))).size !== next.notes.length || !Number.isFinite(Number(original._mt || 0))) throw Error('Invalid stable local note state');
+    const targets = Array.isArray(next.notes) ? next.notes.filter(n => String(n.id) === cloud.legacy_id) : [];
+    const mapped = expectedBaseline.records.filter(r => r.entity === 'notes' && (r.supabase_id === cloud.id || String(r.localId) === cloud.legacy_id));
+    if (targets.length !== 1 || mapped.length !== 1 || !eq(mapped[0], expectedRecord)) throw Error('Ambiguous note pull mapping');
+    const originalNote = targets[0];
+    if (await CapSync.contentFingerprint({ title: originalNote.t || '', body: originalNote.b || '', note_date: originalNote.d || null }) !== expectedRecord.contentFingerprint ||
+        await CapSync.contentFingerprint(cloud) !== nextRecord.contentFingerprint || expectedRecord.contentFingerprint === nextRecord.contentFingerprint) throw Error('Note pull content not proven');
+    Object.assign(targets[0], { t: cloud.title, b: cloud.body, d: cloud.note_date });
+    next._mt = Math.max(now(), Number(original._mt) || 0) + 1;
+    const nextJson = J(next), nextBaseline = { ...expectedBaseline, records: expectedBaseline.records.map(r => eq(r, expectedRecord) ? clone(nextRecord) : r),
+      revision: (expectedBaseline.revision || 0) + 1, aggregateFingerprintStale: true, updated_at: new Date().toISOString() };
+    const checkpointKey = 'manual-notes-pull-v1';
+    const checkpoint = { kind: 'manual-note-pull', owner: userId, backupKey, phase: 'prepared', cloud,
+      expectedLocalJson, nextLocalJson: nextJson, expectedBaseline, nextBaseline };
+    const applied = { ...checkpoint, phase: 'applied' };
+    const localGuard = json => guard() === true && J(api.get()) === json && localStorage.getItem('pera') === json;
+    if (!localGuard(expectedLocalJson)) throw Error('Local state changed');
+    const d = await idb(); let backedUp = false, committed = false;
+    const transaction = (mode, work) => new Promise((resolve, reject) => {
+      const t = d.transaction(['kv', 'syncmeta', 'outbox'], mode), meta = t.objectStore('syncmeta');
+      const requests = [meta.get('baseline'), meta.get(checkpointKey), meta.get('controlled-notes-test-v1'), meta.get('demo-local-refresh-state-v1'),
+        t.objectStore('outbox').getAll(), t.objectStore('kv').get('state'), meta.get(backupKey)];
+      const values = []; let loaded = 0, failure;
+      requests.forEach((q, i) => { q.onsuccess = () => {
+        values[i] = q.result;
+        if (++loaded !== requests.length) return;
+        try { work(t, values); } catch (_) { failure = Error('Note pull preconditions changed'); t.abort(); }
+      }; });
+      t.oncomplete = () => resolve(values); t.onabort = () => reject(failure || Error('Note pull transaction aborted'));
+      t.onerror = () => { failure = Error('Note pull transaction failed'); };
+    });
+    try {
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || active || testRecovery || demoRecovery || entries.length || backup ||
+            state?.json !== expectedLocalJson || !localGuard(expectedLocalJson)) throw Error('Backup blocked');
+        const meta = t.objectStore('syncmeta');
+        meta.add({ kind: 'manual-note-pull-backup', owner: userId, localJson: expectedLocalJson, baseline: expectedBaseline, indexeddbState: state }, backupKey);
+        meta.add(checkpoint, checkpointKey);
+      });
+      backedUp = true;
+      const backupGuard = (backup) => backup?.owner === userId && backup.localJson === expectedLocalJson && eq(backup.baseline, expectedBaseline);
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Backup not verified');
+      });
+      if (await verifyCloud() !== true || !localGuard(expectedLocalJson)) throw Error('Cloud or local evidence changed');
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Apply blocked');
+        // Only cancel an old delayed save after the final original-state guard.
+        clearTimeout(pt);
+        t.objectStore('kv').put({ json: nextJson, mt: next._mt }, 'state');
+        t.objectStore('syncmeta').put(nextBaseline, 'baseline');
+        t.objectStore('syncmeta').put(applied, checkpointKey);
+      });
+      committed = true;
+      api.set(clone(next)); localStorage.setItem('pera', nextJson); lsBase = nextJson;
+      resetTracking(); next.notes.forEach(n => recMap.set('notes:' + n.id, J(n, strip)));
+      const verifyApplied = (baseline, active, testRecovery, demoRecovery, entries, state, backup) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== nextJson || !backupGuard(backup) || !localGuard(nextJson)) throw Error('Applied pull not verified');
+      };
+      await transaction('readonly', (_, values) => verifyApplied(...values));
+      if (await verifyCloud() !== true || !localGuard(nextJson)) throw Error('Post-apply cloud verification failed');
+      await transaction('readwrite', (t, values) => { verifyApplied(...values); t.objectStore('syncmeta').delete(checkpointKey); });
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, nextBaseline) || active || testRecovery || demoRecovery || entries.length || state?.json !== nextJson ||
+            !backupGuard(backup) || !localGuard(nextJson)) throw Error('Cleanup read-back failed');
+      });
+      return { committed: true, verified: true, backupRetained: true };
+    } catch (_) {
+      const error = Error(committed ? 'LOCAL WRITE OCCURRED — PULL VERIFICATION FAILED' : backedUp ? 'STOPPED — PULL BACKUP RETAINED; LOCAL DATA NOT REPLACED' : 'BLOCKED — NOTE PULL NOT APPLIED');
+      error.committed = committed; error.backedUp = backedUp; throw error;
+    }
   }
 
   /* Confirmed, local-only demo alignment. A verified backup commits BEFORE
@@ -220,7 +360,7 @@
     try {
       const transaction = (mode, work) => new Promise((resolve, reject) => {
         const t = d.transaction(['kv', 'syncmeta', 'outbox'], mode), meta = t.objectStore('syncmeta');
-        const requests = [meta.get('baseline'), meta.get('demo-local-refresh-state-v1'), meta.get('controlled-notes-test-v1'), t.objectStore('outbox').getAll(), meta.get(backupKey), t.objectStore('kv').get('state')];
+        const requests = [meta.get('baseline'), meta.get('demo-local-refresh-state-v1'), meta.get('controlled-notes-test-v1'), t.objectStore('outbox').getAll(), meta.get(backupKey), t.objectStore('kv').get('state'), meta.get('manual-notes-pull-v1')];
         const values = []; let loaded = 0, failure;
         requests.forEach((q, i) => { q.onsuccess = () => {
           values[i] = q.result;
@@ -230,8 +370,8 @@
         t.oncomplete = () => resolve(values); t.onabort = () => reject(failure || Error('Demo refresh transaction aborted'));
         t.onerror = () => { failure = Error('Demo refresh transaction failed'); };
       });
-      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, oldBackup, state]) => {
-        if (!eq(baseline, expectedBaseline) || active || notesRecovery || queue.length || oldBackup || !localGuard()) throw Error('Backup blocked');
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, oldBackup, state, pullRecovery]) => {
+        if (!eq(baseline, expectedBaseline) || active || notesRecovery || pullRecovery || queue.length || oldBackup || !localGuard()) throw Error('Backup blocked');
         const meta = t.objectStore('syncmeta');
         meta.put({ ...backup, indexeddbState: state || null }, backupKey); meta.put(checkpoint, 'demo-local-refresh-state-v1');
       });
@@ -242,8 +382,8 @@
       if (await verifyCloud() !== true || !localGuard()) throw Error('Cloud/local evidence changed after backup');
       nextState._mt = Math.max(now(), Number(api.get()._mt) || 0) + 1;
       const nextJson = J(nextState), applied = { ...checkpoint, phase: 'applied' };
-      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup]) => {
-        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || notesRecovery || queue.length ||
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup, , pullRecovery]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || notesRecovery || pullRecovery || queue.length ||
             currentBackup?.localJson !== expectedLocalJson || !localGuard()) throw Error('Replacement blocked');
         t.objectStore('kv').put({ json: nextJson, mt: nextState._mt }, 'state');
         t.objectStore('syncmeta').put(nextBaseline, 'baseline');
@@ -253,14 +393,14 @@
       api.set(clone(nextState)); resetTracking();
       localStorage.setItem('pera', nextJson); lsBase = nextJson;
       localStorage.removeItem('cap_balance_anchors_v1');
-      const verified = await transaction('readonly', (_, [baseline, active, notesRecovery, queue, currentBackup, state]) => {
-        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || queue.length || !currentBackup ||
+      const verified = await transaction('readonly', (_, [baseline, active, notesRecovery, queue, currentBackup, state, pullRecovery]) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || pullRecovery || queue.length || !currentBackup ||
             state?.json !== nextJson || J(api.get()) !== nextJson || localStorage.getItem('pera') !== nextJson ||
             localStorage.getItem('cap_balance_anchors_v1') !== null || guard() !== true) throw Error('Replacement read-back failed');
       });
       if (!verified) throw Error('Replacement not verified');
-      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup, state]) => {
-        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || queue.length || !currentBackup ||
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup, state, pullRecovery]) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || pullRecovery || queue.length || !currentBackup ||
             state?.json !== nextJson || J(api.get()) !== nextJson || localStorage.getItem('pera') !== nextJson || guard() !== true) throw Error('Final checkpoint changed');
         t.objectStore('syncmeta').delete('demo-local-refresh-state-v1');
       });
@@ -575,6 +715,8 @@
     finalizeVerifiedNotePush,
     discardVerifiedTestOutbox,
     discardVerifiedNotesRecoveryCheckpoint,
+    stageVerifiedManualNote,
+    applyVerifiedNotePull,
     refreshVerifiedLocalDemo,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,

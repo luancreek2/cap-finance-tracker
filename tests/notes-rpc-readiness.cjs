@@ -14,9 +14,11 @@ const calls = [];
 let payload = valid, fail = false, defer = null;
 const context = {
   CAP_SUPABASE_CONFIG: { url: 'https://fixture.invalid', publishableKey: 'test-only' },
-  localStorage: { getItem: () => null },
-  document: { body: { insertAdjacentHTML() {} }, getElementById: () => ({ classList: { add() {} } }) },
+  localStorage: { getItem: () => JSON.stringify({ access_token: 'fixture-token', refresh_token: 'fixture-refresh', user: { id: 'fixture-owner' } }) },
+  setTimeout: fn => { fn(); },
+  document: { body: { insertAdjacentHTML() {} }, getElementById: () => ({ remove() {}, classList: { add() {} } }) },
   fetch: async (url, options) => {
+    if (url.endsWith('/auth/v1/user')) return { ok: true, text: async () => JSON.stringify({ id: 'fixture-owner' }) };
     calls.push({ url, options });
     if (defer) return defer;
     if (fail) throw Error('private user identifier and financial value');
@@ -29,6 +31,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/supabase.js'), 'utf8
 
 (async () => {
   const api = context.CapSupabase;
+  await api.boot();
   let passed = 0;
   assert.equal(api.notesRpcReady(), false);
   assert.equal(api.rpcReady(), false);
@@ -51,6 +54,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/supabase.js'), 'utf8
   assert.equal(api.notesRpcReady(), false);
   assert.ok(!JSON.stringify(api.notesRpcVerifierStatus()).includes('private')); passed++;
   fail = false;
+  await api.currentUser(); // A failed cloud read invalidates online verification.
   let release;
   defer = new Promise(resolve => { release = resolve; });
   const oldCheck = api.refreshNotesRpcReadiness();

@@ -2,20 +2,76 @@
    This module never reads or uploads Cap financial state. */
 (function(){
   const cfg=window.CAP_SUPABASE_CONFIG||{},KEY='cap_supabase_session';let session=null,rpcReadyState=false;
+  let verifiedUser=null,localAccess=false,verification='signed-out',sessionRevision=0,bootPromise=null;
   const clean=v=>String(v||'').replace(/\/$/,'');
   const configured=()=>!!(cfg.url&&cfg.publishableKey);
   function readSession(){try{return JSON.parse(localStorage.getItem(KEY)||'null')}catch(_){return null}}
-  function writeSession(v){try{if(v)localStorage.setItem(KEY,JSON.stringify(v));else localStorage.removeItem(KEY)}catch(_){}session=v||null}
-  async function request(path,options={}){const h={'apikey':cfg.publishableKey,'Content-Type':'application/json',...(options.headers||{})};if(session?.access_token)h.Authorization='Bearer '+session.access_token;const r=await fetch(clean(cfg.url)+path,{...options,headers:h});const body=await r.text();let data=null;try{data=body?JSON.parse(body):null}catch(_){}if(!r.ok){const err=Error(data?.msg||data?.message||data?.error_description||body||('HTTP '+r.status));err.status=r.status;err.code=data?.code||null;throw err}return data}
-  async function user(){return request('/auth/v1/user')}
-  async function refresh(){if(!session?.refresh_token)throw Error('No saved session');const s=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:session.refresh_token})});writeSession(s);return s}
-  async function restore(){if(!configured())return null;const saved=readSession();if(!saved)return null;session=saved;try{return await user()}catch(_){try{return (await refresh())&&await user()}catch(__){writeSession(null);return null}}}
+  const offline=()=>typeof navigator!=='undefined'&&navigator.onLine===false;
+  const hasToken=s=>!!(s&&typeof s==='object'&&!Array.isArray(s)&&typeof s.access_token==='string'&&s.access_token);
+  const cachedLocal=s=>hasToken(s)&&typeof s.user?.id==='string'&&!!s.user.id;
+  function invalidate(state){
+    verifiedUser=null;verification=state;rpcReadyState=false;
+    notesRpcReadyState=false;notesRpcVerifierResult=null;++notesRpcCheck;
+  }
+  function notice(){
+    const old=document.getElementById('cap-local-auth-notice');
+    if(!localAccess||verifiedUser){if(old)old.remove();return;}
+    if(old)return;
+    document.body.insertAdjacentHTML('beforeend','<div id="cap-local-auth-notice" class="cap-local-auth-notice" role="status">Local access only · Cloud authentication is not verified. Cloud Sync stays OFF. Reconnect and reload to verify your session.</div>');
+  }
+  function writeSession(v){try{if(v)localStorage.setItem(KEY,JSON.stringify(v));else localStorage.removeItem(KEY)}catch(_){}session=v||null;++sessionRevision;localAccess=cachedLocal(session);invalidate(v?'unverified':'signed-out');if(!v)notice()}
+  async function request(path,options={}){
+    const auth=path.startsWith('/auth/v1/');
+    if(offline()){invalidate('offline');notice();throw Error('Offline — cloud authentication is not verified');}
+    if(!auth&&!verifiedUser)throw Error('Cloud access blocked — online authentication required');
+    const revision=sessionRevision,h={'apikey':cfg.publishableKey,'Content-Type':'application/json',...(options.headers||{})};
+    if(session?.access_token)h.Authorization='Bearer '+session.access_token;
+    try{
+      const r=await fetch(clean(cfg.url)+path,{...options,headers:h}),body=await r.text();let data=null;
+      try{data=body?JSON.parse(body):null}catch(_){}
+      if(!r.ok){const err=Error(data?.msg||data?.message||data?.error_description||body||('HTTP '+r.status));err.status=r.status;err.code=data?.code||data?.error_code||null;throw err}
+      if(revision!==sessionRevision)throw Error('Session changed during request');
+      return data;
+    }catch(error){if(revision===sessionRevision){invalidate(offline()?'offline':'unverified');notice();}throw error}
+  }
+  async function user(){
+    if(!configured()||!hasToken(session))throw Error('Online sign-in required');
+    const revision=sessionRevision,u=await request('/auth/v1/user');
+    if(revision!==sessionRevision||!u||typeof u.id!=='string'||!u.id||session.user?.id&&session.user.id!==u.id){invalidate('unverified');throw Error('Authenticated identity not proven');}
+    // Only a successful, fresh server response establishes cloud identity.
+    // Cached session.user is exclusively evidence for local offline access.
+    if(!session.user?.id)writeSession({...session,user:u});
+    verifiedUser=u;localAccess=true;verification='verified';notice();return u;
+  }
+  const accessRejected=e=>e?.status===401||e?.status===403;
+  const refreshRejected=e=>accessRejected(e)||e?.status===400&&['refresh_token_not_found','refresh_token_already_used','session_not_found','user_not_found','user_banned','invalid_credentials','invalid_grant'].includes(e.code);
+  async function refresh(){
+    if(!session?.refresh_token)throw Error('No saved refresh token');
+    const revision=sessionRevision,s=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:session.refresh_token})});
+    if(revision!==sessionRevision||!hasToken(s)||typeof s.refresh_token!=='string'||!s.refresh_token||
+      session.user?.id&&s.user?.id&&session.user.id!==s.user.id)throw Error('Refreshed session not proven');
+    writeSession({...s,user:s.user||session.user});return s;
+  }
+  async function restore(){
+    if(!configured())return;
+    const saved=readSession();if(!hasToken(saved))return;
+    session=saved;++sessionRevision;localAccess=cachedLocal(saved);invalidate('unverified');
+    if(offline()){invalidate('offline');return;}
+    try{await user();return;}catch(error){
+      // Network/5xx/429 failures are not evidence that credentials were revoked.
+      // Do not refresh or discard saved credentials on an ambiguous failure.
+      if(!accessRejected(error))return;
+      if(!session?.refresh_token){writeSession(null);return;}
+    }
+    try{await refresh();}catch(error){if(refreshRejected(error))writeSession(null);return;}
+    try{await user();}catch(error){if(accessRejected(error))writeSession(null);}
+  }
   function showError(text){const e=document.getElementById('cap-auth-error');if(e)e.textContent=text||''}
   function hideLogin(){const e=document.getElementById('cap-auth');if(e){e.classList.add('cap-auth-out');setTimeout(()=>e.remove(),260)}}
   function loginMarkup(){const logo=typeof capBrandLogo==='function'?capBrandLogo('default'):'<img src="assets/branding/cap-default.png" alt="">';return `<div id="cap-auth" class="cap-auth" role="dialog" aria-modal="true" aria-labelledby="cap-auth-title"><form class="cap-auth-card" onsubmit="event.preventDefault();CapSupabase.signIn()"><div class="cap-auth-logo">${logo}</div><h1 id="cap-auth-title">Welcome to Cap</h1><p class="m">Sign in to connect your personal cloud database.</p><label>Email<input id="cap-auth-email" type="email" autocomplete="username" required></label><label>Password<span class="cap-auth-pass"><input id="cap-auth-password" type="password" autocomplete="current-password" required><button type="button" aria-label="Show password" onclick="CapSupabase.togglePassword(this)">Show</button></span></label><div id="cap-auth-error" class="cap-auth-error" role="alert"></div><button id="cap-auth-submit" class="btn" type="submit">Sign In</button><small class="cap-auth-local">Your Cap data remains on this device. Cloud sync is not enabled.</small></form></div>`}
-  async function signIn(){const button=document.getElementById('cap-auth-submit'),email=document.getElementById('cap-auth-email')?.value.trim(),password=document.getElementById('cap-auth-password')?.value;if(!configured())return showError('Supabase is not configured.');if(!email||!password)return showError('Enter your email and password.');button.disabled=true;button.textContent='Signing in…';showError('');try{const s=await request('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});writeSession(s);await user();hideLogin()}catch(e){writeSession(null);showError(e.message||'Sign in failed.')}finally{button.disabled=false;button.textContent='Sign In'}}
+  async function signIn(){const button=document.getElementById('cap-auth-submit'),email=document.getElementById('cap-auth-email')?.value.trim(),password=document.getElementById('cap-auth-password')?.value;if(!configured())return showError('Supabase is not configured.');if(!email||!password)return showError('Enter your email and password.');button.disabled=true;button.textContent='Signing in…';showError('');try{const s=await request('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});if(!hasToken(s))throw Error('Invalid session');writeSession(s);await restore();if(verifiedUser||localAccess){hideLogin();notice();}else showError('Sign-in could not be verified. Please try again online.');}catch(_){showError(offline()?'You are offline. Reconnect before signing in.':'Sign-in could not be verified. Check your connection and credentials.');}finally{button.disabled=false;button.textContent='Sign In'}}
   function togglePassword(button){const input=document.getElementById('cap-auth-password');if(!input)return;input.type=input.type==='password'?'text':'password';button.textContent=input.type==='password'?'Show':'Hide';button.setAttribute('aria-label',input.type==='password'?'Show password':'Hide password')}
-  async function signOut(){try{if(session?.access_token)await request('/auth/v1/logout',{method:'POST'});}catch(_){}writeSession(null);location.reload()}
+  async function signOut(){const token=session?.access_token;writeSession(null);notice();try{if(token)await request('/auth/v1/logout',{method:'POST',headers:{Authorization:'Bearer '+token}});}catch(_){}location.reload()}
   async function testCurrent(){
     if(!configured())throw Error('Supabase URL and Publishable key are not configured');
     const u=await user();
@@ -105,8 +161,16 @@
     report.missingCount=missing.length;report.newLocalMissingCount=newLocalMissing.length;report.unexpectedCount=unexpected.length;report.mismatchCount=mismatches.length;report.foreignKeyErrorCount=fk.length;report.dataOk=!missing.length&&!unexpected.length&&!mismatches.length&&!fk.length;report.ok=report.dataOk;report.baselineReady=timestampReadiness.ready;report.dryRunAvailable=timestampReadiness.ready;
     return report;
   }
-  function status(){return{configured:configured(),authenticated:!!session,userId:session?.user?.id||null}}
-  async function boot(){document.body.insertAdjacentHTML('afterbegin',loginMarkup());const u=await restore();if(u)hideLogin();else{const e=document.getElementById('cap-auth');if(e)e.classList.add('cap-auth-ready');if(!configured())showError('Add the Supabase URL and Publishable key to supabase-config.js.')}}
+  function status(){if(offline()&&verifiedUser)invalidate('offline');return{configured:configured(),authenticated:!!verifiedUser,userId:verifiedUser?.id||null,localAccess,verification}}
+  function boot(){
+    if(bootPromise)return bootPromise;
+    bootPromise=(async()=>{
+      document.body.insertAdjacentHTML('afterbegin',loginMarkup());await restore();
+      if(verifiedUser||localAccess){hideLogin();notice();}
+      else{const e=document.getElementById('cap-auth');if(e)e.classList.add('cap-auth-ready');if(!configured())showError('Add the Supabase URL and Publishable key to supabase-config.js.');else if(offline())showError('Reconnect to sign in. No saved local session is available.');}
+    })();
+    return bootPromise;
+  }
   let rpcVerifierResult=null;
   async function refreshRpcReadiness(){try{const r=await request('/rest/v1/rpc/cap_verify_transaction_rpc',{method:'POST',body:'{}'});const v=Array.isArray(r)?r[0]:r;rpcVerifierResult={success:true,response:v,status:200,code:null,error:null};rpcReadyState=!!(v&&v.exists===true&&v.signature_ok===true&&v.security_invoker===true&&v.language_ok===true&&v.authenticated_execute===true&&v.anon_execute===false&&v.public_execute===false&&v.version==='CAP_PHASE_6K2A_V1'&&v.version_ok===true&&v.ready===true);return rpcReadyState}catch(e){rpcVerifierResult={success:false,response:null,status:e?.status||null,code:e?.code||null,error:String(e?.message||e)};rpcReadyState=false;return false}}
   const rpcVerifierStatus=()=>rpcVerifierResult;

@@ -430,10 +430,10 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
   };
   async function notesTestBlockerSnapshot(){
     const u=await CapSupabase.currentUser();if(!u?.id)throw Error('Authentication required');
-    const baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all'),checkpoint=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY),refreshCheckpoint=await CapOff.syncStore('syncmeta','get',DEMO_REFRESH_KEY);
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all'),checkpoint=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY),refreshCheckpoint=await CapOff.syncStore('syncmeta','get',DEMO_REFRESH_KEY),pullCheckpoint=await CapOff.syncStore('syncmeta','get','manual-notes-pull-v1');
     if(!Array.isArray(entries))throw Error('Outbox read failed');
     const records=Array.isArray(baseline?.records)?baseline.records:[];
-    const report={baselinePresent:!!baseline,baselineVersion:baseline?.version===2?2:'not verified',baselineRecords:records.length,baselineOwned:baseline?.user_id===u.id,outboxEntries:entries.length,recoveryCheckpoint:!!checkpoint,demoRefreshCheckpoint:!!refreshCheckpoint,queue:[],validation:null};
+    const report={baselinePresent:!!baseline,baselineVersion:baseline?.version===2?2:'not verified',baselineRecords:records.length,baselineOwned:baseline?.user_id===u.id,outboxEntries:entries.length,recoveryCheckpoint:!!checkpoint,demoRefreshCheckpoint:!!refreshCheckpoint,notePullCheckpoint:!!pullCheckpoint,queue:[],validation:null};
     for(const [index,op] of entries.entries()){
       const own=op?.user_id===u.id,entity=ORDER.includes(op?.entity)?op.entity:'unknown',operation=['upsert','delete'].includes(op?.operation)?op.operation:'unknown';
       const testHint=String(op?.payload?.legacy_id||'').startsWith('phase6-test-')||String(op?.local_id||'').startsWith('phase6-test-');
@@ -447,7 +447,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         try{item.cloudPresence=await cloudReader(u.id)(entity,{id:op.supabase_id})?'present':'verified absent';}
         catch(_){item.cloudPresence='BLOCKED — RECORD ABSENCE NOT PROVEN';}
       }
-      item.cleanupReviewEligible=report.baselineOwned&&baseline?.version===2&&Array.isArray(baseline.records)&&!checkpoint&&!refreshCheckpoint&&knownHarness&&item.localPresent===false&&item.cloudPresence==='verified absent'&&item.baselineReferences===0;
+      item.cleanupReviewEligible=report.baselineOwned&&baseline?.version===2&&Array.isArray(baseline.records)&&!checkpoint&&!refreshCheckpoint&&!pullCheckpoint&&knownHarness&&item.localPresent===false&&item.cloudPresence==='verified absent'&&item.baselineReferences===0;
       report.queue.push(item);
     }
     try{
@@ -493,7 +493,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         const snapshot=await notesTestBlockerSnapshot(),r=snapshot.report;
         const entries=snapshot.entries.filter((op,i)=>r.queue[i]?.cleanupReviewEligible).sort((a,b)=>String(a.id).localeCompare(String(b.id)));
         out.textContent='READ-ONLY CLEANUP PREFLIGHT · baseline '+r.baselineRecords+' · outbox '+r.outboxEntries+' · verified eligible '+entries.length+' · recovery '+(r.recoveryCheckpoint?'present':'absent')+'. App-data mismatches are not resolved by this cleanup.';
-        if(entries.length!==3||!r.baselineOwned||r.recoveryCheckpoint||r.demoRefreshCheckpoint||typeof claude!=='undefined'||(await status()).mode!=='off')throw Error('Cleanup scope not proven');
+        if(entries.length!==3||!r.baselineOwned||r.recoveryCheckpoint||r.demoRefreshCheckpoint||r.notePullCheckpoint||typeof claude!=='undefined'||(await status()).mode!=='off')throw Error('Cleanup scope not proven');
         const u=await CapSupabase.currentUser();if(u?.id!==snapshot.owner)throw Error('Ownership changed');
         const localAccounts=JSON.stringify(S.accts||[]);
         const ticket=await contentFingerprint({owner:snapshot.owner,baseline:JSON.stringify(snapshot.baseline),entries:JSON.stringify(entries),localAccounts});
@@ -510,6 +510,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     try{
       const r=await inspectNotesTestBlocker();
       const lines=['READ-ONLY NOTES-TEST DIAGNOSTIC','Baseline: '+r.baselineRecords+' records · version '+r.baselineVersion+' · ownership '+(r.baselineOwned?'verified':'BLOCKED'),'Outbox: '+r.outboxEntries+' · recovery checkpoint: '+(r.recoveryCheckpoint?'present':'absent')+' · demo-refresh checkpoint: '+(r.demoRefreshCheckpoint?'present':'absent')];
+      lines.push('Manual note-pull checkpoint: '+(r.notePullCheckpoint?'present — inspect note-pull recovery; do not retry':'absent'));
       for(const q of r.queue)lines.push('Entry '+q.number+' · '+q.entity+' / '+q.operation+' · ownership '+(q.owned?'verified':'BLOCKED')+' · test hint '+q.testHint+' · known harness '+q.knownHarness+' · local '+(q.localPresent===null?'not checked':q.localPresent?'present':'absent')+' · cloud '+q.cloudPresence+' · baseline references '+(q.baselineReferences??'not checked')+' · cleanup review eligible '+q.cleanupReviewEligible);
       const v=r.validation;
       lines.push(v?.blocked?'Validation BLOCKED — comparison incomplete.':'Comparison: current '+v.currentRecords+' · missing '+v.missing+' · unexpected '+v.unexpected+' · mismatches '+v.mismatches+' · foreign keys '+v.foreignKeys+' · without baseline '+v.withoutBaseline+' · baseline-only '+v.baselineWithoutCurrent+' · baseline content differences '+v.baselineContentDifferences);
@@ -552,6 +553,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         if(!localStateIsCurrent()){report('BLOCKED · Persisted local state differs from this tab. Reload and inspect other tabs before testing.');throw Error('Persisted local state changed');}
         if(await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY)){report('BLOCKED · An unresolved notes-test recovery checkpoint exists. Do not clear it or the outbox.');throw Error('Unresolved controlled test checkpoint');}
         if(await CapOff.syncStore('syncmeta','get',DEMO_REFRESH_KEY)){report('BLOCKED · An unresolved demo-refresh checkpoint exists. Inspect recovery before testing.');throw Error('Unresolved demo refresh');}
+        if(await CapOff.syncStore('syncmeta','get','manual-notes-pull-v1')){report('BLOCKED · An unresolved note-pull checkpoint exists. Inspect note-pull recovery before testing.');throw Error('Unresolved note pull');}
         const u=await CapSupabase.currentUser();if(!u?.id)throw Error('Authentication required');
         const baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all');
         report('READ-ONLY PREFLIGHT · Baseline records: '+(Array.isArray(baseline?.records)?baseline.records.length:'unavailable')+' · outbox: '+(Array.isArray(entries)?entries.length:'unavailable')+' · Cloud Sync OFF.');
@@ -763,7 +765,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     const allowed=!!(recovery.checkpointPresent&&c.checkpointOwned&&recovery.outboxCount===0&&c.cloudRead==='verified'&&c.cloudOriginal&&
       c.localOriginal&&c.financialUnchanged&&c.baselineOriginal&&c.localStateCurrent&&c.syncOff&&
       blocker.report.baselineOwned&&blocker.report.baselineVersion===2&&blocker.report.outboxEntries===0&&
-      blocker.report.recoveryCheckpoint&&!blocker.report.demoRefreshCheckpoint&&converged&&fullClean&&checkpoint&&baseline);
+      blocker.report.recoveryCheckpoint&&!blocker.report.demoRefreshCheckpoint&&!blocker.report.notePullCheckpoint&&converged&&fullClean&&checkpoint&&baseline);
     const summary={classification:recovery.status,baselineRecords:blocker.report.baselineRecords,currentRecords:Number.isInteger(v.currentRecords)?v.currentRecords:null,outbox:blocker.report.outboxEntries,fullValidation:fullClean};
     if(!allowed){
       let status='BLOCKED — RECOVERY FINALIZATION PRECONDITIONS NOT PROVEN';
@@ -1086,6 +1088,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         const recovery=document.createElement('button');recovery.type='button';recovery.className='btn s';recovery.textContent='Inspect notes-test recovery (read-only)';recovery.onclick=window.inspectCapNotesTestRecovery;
         o.appendChild(button);o.appendChild(diagnostic);o.appendChild(recovery);o.appendChild(result);
         const refresh=document.createElement('button');refresh.type='button';refresh.className='btn s';refresh.textContent='Refresh this browser’s demo (local only)';refresh.onclick=async()=>{refresh.disabled=true;try{await window.runCapLocalDemoRefresh();}finally{refresh.disabled=false}};o.appendChild(refresh);
+        if(window.CapManualNotes)CapManualNotes.mount(o);
       }
     }catch(e){if(o)o.textContent='Outbox plan blocked: authentication, storage, or cloud verification could not complete. No operation was applied or removed.';toast('Outbox plan failed')}
   };

@@ -78,6 +78,84 @@ import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 
+**First live existing-note pull trial passed (user screenshots).** The user
+separately authorized and made one cloud-only note body edit, reviewed its
+read-only PULL preview, and confirmed local application. Result: `PULLED —
+VERIFIED AND FINALIZED; LOCAL BACKUP RETAINED`. A subsequent unverified-auth
+plan attempt was blocked without changes; after an online reload the added
+line persisted and the blocker reported baseline/current 46, owned version 2,
+outbox 0, all three recovery checkpoints absent, and all comparison differences
+0. Cloud Sync remained OFF. No retry, reset, or backup cleanup was needed.
+The live push and pull UPDATE milestones are now verified separately; this
+does not enable full production sync or authorize further live changes.
+
+**Guarded existing-note pull implementation.** Shell v311 adds a read-only
+cloud-note preview and separately confirmed local apply. The local note must
+still equal the owned baseline; unrelated records/queue entries, conflicts,
+missing mappings, or recovery checkpoints block it. A verified local backup
+precedes atomic IndexedDB state + one-note baseline acknowledgement, followed
+by localStorage/in-memory/read-back/cloud-snapshot verification. Partial or
+ambiguous application retains a pull recovery checkpoint and backup; a separate
+read-only inspector reports safe state comparisons without values. Existing
+scoped write/cleanup helpers reject pending pull recovery. There are no cloud
+mutations, automatic pulls/retries, financial writes, or SQL changes. Live pull
+testing remains separately unauthorized. Details: `NOTES_PULL.md`.
+
+**Simulated conflict protection.** Shell v312 adds field-name-only conflict
+reports to both previews and a read-only synthetic self-check. Divergent local
+and cloud edits to the same note are blocked before any backup, checkpoint,
+outbox change, baseline update, or cloud write; neither version is overwritten.
+Identical two-sided content is not mislabelled as a conflict and still requires
+separate baseline review. Pending operations and recovery checkpoints take
+precedence. Tests cover pull and push conflicts, retained backups, reload
+behavior, and the self-check. No live conflict trial was performed; merge and
+automatic resolution remain unimplemented. Details: `CONFLICT_PROTECTION.md`.
+
+**First live manual note trial passed (user screenshots).** Following the
+offline-auth verification and separate authorization, the user previewed one
+existing note body edit, confirmed local queueing, previewed the pending note,
+and separately confirmed its cloud push. Result: `APPLIED — VERIFIED AND
+FINALIZED`. After reload, the blocker reported baseline/current 46, owned
+version 2, outbox 0, both recovery checkpoints absent, and zero record,
+relationship, coverage, or baseline-content differences. The actual note edit
+was retained and Cloud Sync remained OFF. This closes the one-existing-note
+manual UPDATE trial, not full production sync; no additional writes are
+authorized. Details: `NOTES_MANUAL_SYNC.md`.
+
+**Offline-auth blocker and fix.** The user's first DevTools-offline reload
+loaded the cached shell but displayed the cloud login screen. Startup had
+discarded the saved session after ambiguous network failures. After online
+sign-in, the blocker was still clean: 46 current/baseline records, owned version
+2, outbox 0, checkpoints absent, all differences 0, Cloud Sync OFF. The user
+authorized the auth fix, not a live manual note write. Shell v310 preserves
+cached local access on transient auth failures while requiring fresh online
+identity verification for cloud access. It does not change financial state,
+baseline, or queue. All 17 isolated suites pass, including 41 new auth checks.
+Native simulated-offline/reconnect rehearsal passed on a disposable mock-only
+origin. The user's subsequent screenshots confirm a true DevTools-offline
+reload kept the dashboard accessible with the local-only notice; online reload
+removed the notice without another login. The offline-auth milestone is closed;
+live manual note queue/push remains separately unauthorized. Details:
+`OFFLINE_AUTH.md`.
+
+**Controlled notes re-test complete (user screenshots).** The fresh authorized
+round trip returned `PASS — NOTE RESTORED; BOTH PUSHES VERIFIED`. After reload,
+the blocker reported baseline/current 46, owned version 2, outbox 0, both
+checkpoints absent, all record/relationship/baseline differences 0, and Cloud
+Sync OFF. The marker-test milestone is closed; this does not enable production
+sync or authorize another live write.
+
+**Manual existing-note sync implementation.** Shell v309 adds a developer-only
+read-only preview, separately confirmed local queue staging, and separately
+confirmed one-note CAS push/atomic acknowledgement. No save hooks, background
+worker, automatic retries, inserts/deletes, or financial writes are added.
+Changed evidence, unrelated records/queue entries, conflicts, stale local state,
+or recovery checkpoints fail closed. The existing outbox retains pending work
+across reload; a lost-response convergence can be acknowledged without another
+RPC, only after fresh explicit confirmation. The agent has not performed live
+manual writes or baseline/queue mutations in the user's profile. Details,
+limits, and simulated checks: `NOTES_MANUAL_SYNC.md`.
+
 **User-authorized stale outbox cleanup UI (2026-10-20).** The user approved
 preparing removal of only the three diagnostically verified old account-test
 entries in their separate browser profile. Shell v302 offers an exact-scope

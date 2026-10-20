@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v308";
+const VERSION = "cap-shell-v312";
 const CORE = [
   "./index.html",
   "./manifest.json",
@@ -10,10 +10,12 @@ const CORE = [
   "./css/spending.css",
   "./css/activity-scope.css",
   "./css/calendar-popup.css",
+  "./css/offline-auth.css",
   "./js/brand.js",
   "./supabase-config.js",
   "./js/supabase.js",
   "./js/sync.js",
+  "./js/notes-manual.js",
   "./js/account-carousel.js",
   "./js/account-options.js",
   "./css/account-options.css",
