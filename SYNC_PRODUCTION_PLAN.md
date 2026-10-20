@@ -30,11 +30,11 @@ Phased migration:
    the difference in a read-only diagnostic. No behaviour change.
 4. **Fix drift sources.** Any account where stored != derived is investigated
    against statement history before anything is rewritten.
-5. **Write-through cache (implemented, off by default).** With
-   `cap_derived_balance=1`, `save()` recomputes every complete account's balance
-   from its entries before persisting; corrections are recorded for the dev
-   report. Accounts without an opening entry are left unchanged. Once stable,
-   reads can move directly to the derivation and `bal` can be dropped.
+5. **Write-through cache (implemented, on by default).** Every save recomputes
+   each complete account's balance from its entries; corrections are recorded
+   for the dev report. `cap_derived_balance=0` disables it. Accounts without an
+   opening entry are left unchanged. Once stable, reads can move directly to the
+   derivation and `bal` can be dropped.
 
 Covered by tests: posting a pending transaction, deleting a transaction,
 editing an amount, card payment, account transfer, goal move, deposit, interest
@@ -48,10 +48,8 @@ simulated interest, CSV import, JSON merge). Two defects were found and fixed:
 inserted pending credit rows without applying them, so such rows never reached
 the balance.
 
-Known divergence: CSV import with "Apply imported rows to account balances"
-unchecked records transactions without moving balances. Derived balances cannot
-represent that state, so the option must be removed or redefined before reads
-are flipped.
+Resolved: the import option that recorded transactions without moving balances
+has been removed. Imports always apply, so the ledger stays authoritative.
 
 **Shadow mode (dev-only, 2026-10-20):** anchors are captured on demand and stored
 in `localStorage` under `cap_balance_anchors_v1`, outside `S`, so they are never
@@ -71,6 +69,12 @@ Statement cycles and income/spending aggregates exclude the entries.
 stayed in place; with it on, the same injection was corrected to the ledger
 value and recorded. Five mutations produced zero corrections, and the state
 survived a reload.
+
+**Default-on flip (verified 2026-10-20):** with no flag set, an injected +100
+self-corrected; setting `cap_derived_balance=0` restored the old behaviour.
+A CSV import of two posted rows and one pending row moved balances exactly,
+left every implied anchor at 0, and recorded zero corrections. The adjustable
+import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 

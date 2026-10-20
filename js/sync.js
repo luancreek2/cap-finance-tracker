@@ -75,7 +75,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
           +'<br><span class="m">transactions '+x.txCount+' ('+f(x.txEffects)+') · pending '+x.pendCount+' ('+f(x.pendEffects)+') · transfers '+x.xferCount+' ('+f(x.xferEffects)+')</span>'+unk+st+'</div>';
       }).join('<br>');
       const sh=balanceShadowReport();
-      const derOn=(()=>{try{return localStorage.getItem('cap_derived_balance')==='1'}catch(e){return false}})();
+      const derOn=(()=>{try{return localStorage.getItem('cap_derived_balance')!=='0'}catch(e){return true}})();
       let shadow;
       if(!sh.captured)shadow='<br><b>ANCHORS</b><br><span class="m">Not captured. Capture anchors to start drift detection.</span>';
       else{
@@ -112,9 +112,9 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     },'Create entries');
   };
   window.capToggleDerivedBalances=()=>{
-    const on=(()=>{try{return localStorage.getItem('cap_derived_balance')==='1'}catch(e){return false}})();
-    const go=()=>{try{localStorage.setItem('cap_derived_balance',on?'0':'1')}catch(e){};location.reload()};
-    if(!on)return confirmBox('Turn on derived balances?','Every save will recalculate each account balance from its ledger entries. Accounts without an opening entry are left unchanged. Balances should not move; corrections are recorded for the dev report.',go,'Turn on');
+    const off=(()=>{try{return localStorage.getItem('cap_derived_balance')==='0'}catch(e){return false}})();
+    const go=()=>{try{localStorage.setItem('cap_derived_balance',off?'1':'0')}catch(e){};location.reload()};
+    if(!off)return confirmBox('Turn off derived balances?','Balances will stop being recalculated from the ledger on save. Accounts keep their stored values, so drift will no longer self-correct.',go,'Turn off');
     go();
   };
   window.testCapSyncEngine=async()=>{const o=document.getElementById('sync-engine-result');if(o)o.textContent='Running disposable sync test…';try{const r=await test();if(o)o.textContent=r.report.map(x=>x[0]+' '+(x[1]?'✓':'✕')).join(' · ')+' · Existing data untouched ✓';toast('Sync engine test passed',true)}catch(e){if(o)o.textContent='Sync test failed: '+e.message;toast('Sync engine test failed')}};
