@@ -483,7 +483,7 @@ function askDel(id){const f=fTx(id);if(!f)return;confirmBox('Are you sure you wa
   });
 })();
 function postTx(id){const f=fTx(id);if(!f||!f.p)return;openS(`<h2>Mark as posted</h2><p class="m">${esc(f.t.note||f.t.cat)} · ${php(f.t.amt)}</p><label class="m">Posting date (decides the billing cycle)</label><input id="pdx" type="date" min="${f.t.d}" value="${today<f.t.d?f.t.d:today}"><button class="btn" onclick="postOk(${id})">Confirm posted</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
-function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');captureHomeBalanceDelta();S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);bApply(f.t,1);closeS();flash(id);render();toast('Posted · balance updated')}
+function postOk(id){const f=fTx(id),pd=$('#pdx').value;if(!f||!f.p)return;if(!pd||pd<f.t.d)return toast('Enter a valid posting date');captureHomeBalanceDelta();S.pend=S.pend.filter(x=>x.id!=id);f.t.pd=pd;S.tx.push(f.t);closeS();flash(id);render();toast('Posted to statement')}
 /* Card payments are saved as transfers (S.xfer), not transactions: the money moves
    onto a card without being new spending, so Activity lists them but they never add
    to day, month or category totals. */
