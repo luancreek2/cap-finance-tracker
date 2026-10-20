@@ -213,6 +213,24 @@ conflict-resolution readiness is implied by this demo baseline.
 
 ## 5. Server side
 
+**Notes-only atomic RPC draft (2026-10-20).**
+`supabase_production_notes_rpc.sql` defines an authenticated SECURITY INVOKER
+notes compare-and-swap writer and a metadata-only readiness verifier. The
+writer checks expected content under advisory/row locks, handles idempotent
+retries and insert collisions without overwriting, rejects stale updates to
+missing rows, and rolls back if read-back differs. No financial tables or
+deletes are supported. Identity/ownership is not accepted in content snapshots.
+
+The verifier never invokes the writer or reads notes. The new client readiness
+method and Plan Outbox readiness button call only the verifier; production
+execution remains locked regardless of metadata success. No SQL was installed
+in Supabase and no live app records or baseline were changed in this step.
+Manual installation instructions and remaining gates are in
+`NOTES_RPC_SETUP.md`. Local verification: 41 PostgreSQL-WASM integration checks,
+25 readiness-contract checks, the existing 49 outbox checks, and light/dark
+readiness UI checks. True multi-session races and live Supabase behavior remain
+unverified. Client CAS transport and per-operation baseline updates are pending.
+
 - Replace `cap_test_transaction_create` with production RPCs (SECURITY INVOKER,
   ownership checks, advisory locks on the record UUID).
 - Review RLS per table with an explicit matrix (select/insert/update/delete,

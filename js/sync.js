@@ -359,6 +359,12 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       const lines=[...r.plan,...r.blocked].slice(0,8).map((x,i)=>'Record '+(i+1)+' · '+(ORDER.includes(x.entity)?x.entity:'unknown entity')+' · '+x.action+(x.classification?' · '+x.classification:'')+(x.reason?' ('+x.reason+')':'')).join('\n');
       if(o){o.style.whiteSpace='pre-line';o.textContent='Outbox entries: '+r.entries+' · coalesced '+r.coalesced+' · insert '+r.summary.insert+' · update '+r.summary.update+' · delete '+r.summary.delete+' · no-op '+r.summary.noop+' · blocked '+r.summary.blocked+' · conflicts '+r.summary.conflicts+(r.ignoredTestArtifacts?' · ignored test artifacts '+r.ignoredTestArtifacts:'')+(r.ignoredOtherUsers?' · other users '+r.ignoredOtherUsers:'')+'\n'+(lines||'Nothing queued.')+'\nRead-only plan. No operation was applied or removed. No financial values or user identifiers displayed.';}
       if(o&&r.summary.conflicts){const button=document.createElement('button');button.type='button';button.className='btn s';button.textContent='Review conflicts (no changes applied)';button.onclick=window.reviewCapOutboxConflicts;o.appendChild(button);}
+      if(o){
+        const button=document.createElement('button'),result=document.createElement('span');
+        button.type='button';button.className='btn s';button.textContent='Check atomic notes RPC (read-only)';result.setAttribute('role','status');result.setAttribute('aria-live','polite');
+        button.onclick=async()=>{button.disabled=true;result.textContent='Checking metadata only…';try{const ready=await CapSupabase.refreshNotesRpcReadiness();result.textContent=ready?'Notes RPC metadata verified. Production writes remain locked.':'BLOCKED — notes RPC metadata is missing, unsafe, or could not be verified. No write RPC was called.';}catch(_){result.textContent='BLOCKED — readiness could not be verified. No write RPC was called.';}finally{button.disabled=false}};
+        o.appendChild(button);o.appendChild(result);
+      }
     }catch(e){if(o)o.textContent='Outbox plan blocked: authentication, storage, or cloud verification could not complete. No operation was applied or removed.';toast('Outbox plan failed')}
   };
 })();

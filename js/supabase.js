@@ -110,6 +110,21 @@
   let rpcVerifierResult=null;
   async function refreshRpcReadiness(){try{const r=await request('/rest/v1/rpc/cap_verify_transaction_rpc',{method:'POST',body:'{}'});const v=Array.isArray(r)?r[0]:r;rpcVerifierResult={success:true,response:v,status:200,code:null,error:null};rpcReadyState=!!(v&&v.exists===true&&v.signature_ok===true&&v.security_invoker===true&&v.language_ok===true&&v.authenticated_execute===true&&v.anon_execute===false&&v.public_execute===false&&v.version==='CAP_PHASE_6K2A_V1'&&v.version_ok===true&&v.ready===true);return rpcReadyState}catch(e){rpcVerifierResult={success:false,response:null,status:e?.status||null,code:e?.code||null,error:String(e?.message||e)};rpcReadyState=false;return false}}
   const rpcVerifierStatus=()=>rpcVerifierResult;
-  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,togglePassword,status,boot};
+  let notesRpcReadyState=false,notesRpcVerifierResult=null,notesRpcCheck=0;
+  async function refreshNotesRpcReadiness(){
+    const check=++notesRpcCheck;
+    notesRpcReadyState=false;
+    notesRpcVerifierResult=null;
+    try{
+      // Metadata verifier only. Never probe readiness by invoking the writer.
+      const response=await request('/rest/v1/rpc/cap_verify_notes_rpc',{method:'POST',body:'{}'});
+      if(check!==notesRpcCheck)return false;
+      const v=Array.isArray(response)?(response.length===1?response[0]:null):response;
+      notesRpcReadyState=!!(v&&v.exists===true&&v.signature_ok===true&&v.security_invoker===true&&v.search_path_ok===true&&v.version_ok===true&&v.authenticated_execute===true&&v.anon_execute===false&&v.public_execute===false&&v.rls_ok===true&&v.policy_ok===true&&v.table_grants_ok===true&&v.version==='CAP_NOTES_CAS_V1'&&v.ready===true);
+      notesRpcVerifierResult={checked:true,ready:notesRpcReadyState};
+    }catch(_){if(check!==notesRpcCheck)return false;notesRpcVerifierResult={checked:true,ready:false,blocked:true};}
+    return notesRpcReadyState;
+  }
+  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
   boot();
 })();
