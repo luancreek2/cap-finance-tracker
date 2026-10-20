@@ -30,8 +30,11 @@ Phased migration:
    the difference in a read-only diagnostic. No behaviour change.
 4. **Fix drift sources.** Any account where stored != derived is investigated
    against statement history before anything is rewritten.
-5. **Flip reads.** UI reads derived values; the stored value becomes a cache
-   refreshed after each mutation, then is dropped once stable.
+5. **Write-through cache (implemented, off by default).** With
+   `cap_derived_balance=1`, `save()` recomputes every complete account's balance
+   from its entries before persisting; corrections are recorded for the dev
+   report. Accounts without an opening entry are left unchanged. Once stable,
+   reads can move directly to the derivation and `bal` can be dropped.
 
 Covered by tests: posting a pending transaction, deleting a transaction,
 editing an amount, card payment, account transfer, goal move, deposit, interest
@@ -63,6 +66,11 @@ synced account record, with an explicit field and mapping.
 (−450, 3880, −9701); every implied anchor became 0, Home stats were unchanged,
 a second run created nothing, and five later mutations kept anchors at 0.
 Statement cycles and income/spending aggregates exclude the entries.
+
+**Write-through (verified 2026-10-20):** with the flag off, an injected +100
+stayed in place; with it on, the same injection was corrected to the ledger
+value and recorded. Five mutations produced zero corrections, and the state
+survived a reload.
 
 ## 2. Outbox and push/pull worker
 

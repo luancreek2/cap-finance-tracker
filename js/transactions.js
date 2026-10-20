@@ -444,6 +444,21 @@ function createOpeningBalances(){
   if(created.length)save();
   return{created};
 }
+/* ---- write-through balance cache (Phase P4, off by default) -----------------
+   When cap_derived_balance=1, save() recomputes each complete account's balance
+   from its entries before persisting. Accounts without an opening entry are
+   left untouched and reported as unaccounted. */
+function refreshBalances(){
+  const corr=[];
+  for(const a of (S.accts||[])){
+    if(!hasOpeningTx(a.id))continue;
+    const e=balanceEffects(a.id);if(!e)continue;
+    const target=Math.round(e.effects*100)/100;
+    if(Math.abs(e.stored-target)>0.005){corr.push({id:a.id,from:e.stored,to:target,at:new Date().toISOString()});a.bal=target}
+  }
+  if(corr.length&&typeof window!=='undefined')window.CAP_BALANCE_CORRECTIONS=(window.CAP_BALANCE_CORRECTIONS||[]).concat(corr).slice(-20);
+  return corr;
+}
 
 function openTx(txId=0){const f=txId?fTx(txId):null;if(txId&&!f)return;const t=f&&f.t,v=x=>String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'),cat=t?t.cat:'Food',a0=t?t.acct:(S.accts[0]||{}).id;
 openS(`<h2>${t?'Edit transaction':'New entry'}</h2><select id="ty"><option value="-1" ${t&&t.amt<0?'selected':''}>Expense</option><option value="1" ${t&&t.amt>0?'selected':''}>Income</option></select><input id="am" type="number" min="0" step="0.01" placeholder="Amount (${CS()})" inputmode="decimal" value="${t?Math.abs(t.amt):''}"><select id="ct">${catNames().map(c=>`<option ${c==cat?'selected':''}>${c}</option>`).join('')}</select><select id="ac" onchange="txAcc()">${S.accts.map(a=>`<option value="${a.id}" ${a.id==a0?'selected':''}>${esc(a.name)}</option>`).join('')}</select><input id="dt" type="date" value="${t?v(t.d):today}"><div id="ccf" style="display:none"><select id="ps" onchange="txAcc()"><option value="p" ${f&&f.p?'':'selected'}>Posted</option><option value="n" ${f&&f.p?'selected':''}>Not posted (pending)</option></select><input id="pdt" type="date" title="Posting date" value="${t&&t.pd?t.pd:(t?t.d:today)}"><p class="m" style="font-size:12px;margin:0 0 8px">Pending purchases already reduce the balance, but only appear in the billing cycle they post into.</p><div id="card-kind-wrap"><label class="m" for="card-kind">Card transaction type</label><select id="card-kind" onchange="txCardKind()"><option value="purchase" ${t&&t.cashAdvance?'':'selected'}>Purchase</option><option value="cash" ${t&&t.cashAdvance?'selected':''}>Cash advance / withdrawal</option></select><div id="card-currency-wrap"><label class="m" for="card-currency">Purchase currency</label><select id="card-currency"><option value="PHP">PHP · no foreign fee</option>${['USD','EUR','GBP','JPY','SGD','Other'].map(c=>`<option ${t&&t.foreignCurrency==c?'selected':''}>${c}</option>`).join('')}</select></div><p class="m" style="font-size:12px">Configured card fees are added automatically when this transaction is saved.</p></div></div><input id="nt" placeholder="Title (e.g. Jollibee)" value="${t?v(t.note||''):''}"><textarea id="ds" maxlength="300" placeholder="Description (e.g. Chickenjoy bucket for family dinner)">${t?v(t.desc||''):''}</textarea><button class="btn" onclick="saveTx(${txId||0})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>${txId?`<button class="btn s dng" onclick="askDel(${txId})">Delete transaction</button>`:''}`);if(t&&t.foreignCurrency&&$('#card-currency'))$('#card-currency').value=t.foreignCurrency;txAcc()}

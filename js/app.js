@@ -532,6 +532,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         { id: 3, who: "Mom", note: "Borrowed", amt: 7500, dir: "out", due: "" },
       ];
       const save = () => {
+        try{if(typeof refreshBalances==='function'&&localStorage.getItem('cap_derived_balance')==='1')refreshBalances()}catch(e){}
         if(!window.CAP_INTERNAL_SYNC_APPLY){window.CAP_LAST_DRY_RUN=null;window.CAP_LAST_CONFLICT=null}
         try {
           if (window.CapOff) CapOff.stamp();
