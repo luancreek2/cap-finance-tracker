@@ -78,12 +78,38 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
   function cloudReader(userId){
     return (entity,{id,localId})=>{
       const filter=id?'id=eq.'+encodeURIComponent(id):'legacy_id=eq.'+encodeURIComponent(localId);
-      return CapSupabase.syncRequest('/rest/v1/'+entity+'?select=*&user_id=eq.'+encodeURIComponent(userId)+'&'+filter).then(rows=>rows?.[0]||null);
+      return CapSupabase.syncRequest('/rest/v1/'+entity+'?select=*&user_id=eq.'+encodeURIComponent(userId)+'&'+filter).then(rows=>{
+        if(!Array.isArray(rows)||rows.length>1)throw Error('Cloud response is not an exact record result');
+        if(rows.length&&(rows[0].user_id!==userId||(id&&String(rows[0].id)!==String(id))))throw Error('Cloud response identity mismatch');
+        return rows[0]||null;
+      });
     };
   }
   function payloadMatches(payload,cloud){
     const norm=v=>v&&typeof v==='object'?JSON.stringify(v):String(v??'');
     return Object.keys(payload||{}).filter(k=>!['updated_at','created_at'].includes(k)).every(k=>norm(payload[k])===norm(cloud?.[k]));
+  }
+  /* Read-only three-way guard. A queued payload is not permission to overwrite
+     cloud changes. Only an unchanged cloud baseline permits UPDATE/DELETE.
+     Final atomic compare-and-write on the server is still required. */
+  async function classifyQueuedChange(op,cloud,base){
+    const fingerprint=v=>contentFingerprint(canonical(v,'',op.entity));
+    if(op.operation==='delete'){
+      if(!cloud)return {action:'ALREADY_DELETED',classification:'BOTH_DELETED'};
+      if(!base)return {action:'BLOCKED',classification:'CONFLICT',reason:'Delete has no verified baseline'};
+      if(await fingerprint(cloud)!==base.contentFingerprint)return {action:'BLOCKED',classification:'CONFLICT',reason:'Cloud changed since baseline; delete requires review'};
+      return {action:'DELETE',classification:'LOCAL_DELETE'};
+    }
+    const local=await fingerprint(op.payload);
+    if(!cloud){
+      if(base)return {action:'BLOCKED',classification:local===base.contentFingerprint?'CLOUD_DELETE':'CONFLICT',reason:'Baseline record is absent in cloud; do not recreate without review'};
+      return {action:'INSERT',classification:'NEW_LOCAL'};
+    }
+    const remote=await fingerprint(cloud);
+    if(local===remote)return {action:'NOOP',classification:base&&local===base.contentFingerprint?'UNCHANGED':'CONVERGED'};
+    if(!base)return {action:'BLOCKED',classification:'CONFLICT',reason:'Existing cloud record has no verified baseline'};
+    if(remote===base.contentFingerprint)return {action:'UPDATE',classification:'PUSH'};
+    return {action:'BLOCKED',classification:local===base.contentFingerprint?'PULL':'CONFLICT',reason:local===base.contentFingerprint?'Cloud-only change; pull required before pushing':'Both sides changed; conflict review required'};
   }
   async function planOutbox(entries,{userId,readCloud,baseline}={}){
     if(!userId)throw Error('An authenticated user is required to plan the outbox');
@@ -104,15 +130,25 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       let supabaseId=op.supabase_id?String(op.supabase_id):null;
       if(!supabaseId&&baseline)supabaseId=supabaseIdFor(op,baseline);
       if(!supabaseId){plan.push({key,entity:op.entity,localId:op.local_id,operation:op.operation,action:'BLOCKED',reason:'no Supabase id (baseline mapping missing)'});continue}
+      const result={key,entity:op.entity,localId:op.local_id,operation:op.operation,supabaseId};
+      const bases=(Array.isArray(baseline?.records)?baseline.records:[]).filter(r=>r.entity===op.entity&&String(r.supabase_id)===supabaseId);
+      const base=bases[0];
+      if(baseline&&(baseline.version!==2||baseline.user_id!==userId||!Array.isArray(baseline.records))||bases.length>1||base&&(base.user_id!==userId||String(base.localId)!==String(op.local_id)||!/^[0-9a-f]{64}$/i.test(base.contentFingerprint||''))){
+        plan.push({...result,action:'BLOCKED',reason:'Baseline ownership, identity, or fingerprint is invalid'});continue;
+      }
+      if(op.operation==='upsert'&&(Array.isArray(op.payload)||String(op.payload.id)!==supabaseId||op.payload.user_id!==userId)){
+        plan.push({...result,action:'BLOCKED',reason:'Payload identity or ownership is invalid'});continue;
+      }
       let cloud;
       try{cloud=await readCloud(op.entity,{id:supabaseId,localId:op.local_id})}
-      catch(e){plan.push({key,entity:op.entity,localId:op.local_id,operation:op.operation,action:'BLOCKED',reason:'cloud read failed: '+(e?.message||'unknown')});continue}
-      if(op.operation==='delete'){plan.push({key,entity:op.entity,localId:op.local_id,operation:'delete',supabaseId,action:cloud?'DELETE':'ALREADY_DELETED'});continue}
-      if(!cloud){plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',supabaseId,action:'INSERT'});continue}
-      plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',supabaseId,action:payloadMatches(op.payload,cloud)?'NOOP':'UPDATE'});
+      catch(e){plan.push({...result,action:'BLOCKED',reason:'BLOCKED — RECORD ABSENCE NOT PROVEN'});continue}
+      if(cloud!==null&&(!cloud||typeof cloud!=='object'||Array.isArray(cloud)||String(cloud.id)!==supabaseId||cloud.user_id!==userId)){
+        plan.push({...result,action:'BLOCKED',reason:'Cloud record identity or response shape is invalid'});continue;
+      }
+      plan.push({...result,...await classifyQueuedChange(op,cloud,base)});
     }
     const count=a=>plan.filter(x=>x.action===a).length;
-    const summary={insert:count('INSERT'),update:count('UPDATE'),delete:count('DELETE'),noop:count('NOOP')+count('ALREADY_DELETED'),blocked:count('BLOCKED')+blocked.length};
+    const summary={insert:count('INSERT'),update:count('UPDATE'),delete:count('DELETE'),noop:count('NOOP')+count('ALREADY_DELETED'),blocked:count('BLOCKED')+blocked.length,conflicts:plan.filter(x=>x.classification==='CONFLICT').length};
     return {entries:(entries||[]).length,coalesced,plan,blocked,summary,safe:summary.blocked===0};
   }
   async function processOutbox(options={}){
@@ -145,6 +181,10 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       const planned=await planOutbox([entry],{userId:u.id,readCloud:reader,baseline});
       const item=planned.plan[0];
       if(!item||item.action==='BLOCKED')return{status:'REFUSED — NOTHING WRITTEN',reason:planned.blocked[0]?.reason||item?.reason||'blocked',wrote:false,removed:false};
+      // Client reads cannot prevent an edit racing with a subsequent write.
+      // Keep the real transport restricted to disposable test operations until
+      // server-side compare-and-write and baseline reconciliation are ready.
+      if(!write&&!String(entry.local_id||'').startsWith('phase6-test-'))return{status:'REFUSED — NOTHING WRITTEN',reason:'Production execution is disabled pending atomic conflict checks and baseline reconciliation',wrote:false,removed:false};
       const supabaseId=item.supabaseId;
       if(entry.operation==='upsert'&&!entry.payload?.id)return{status:'REFUSED — NOTHING WRITTEN',reason:'payload has no id',wrote:false,removed:false};
       if(entry.operation==='upsert'&&String(entry.payload.id)!==String(supabaseId))return{status:'REFUSED — NOTHING WRITTEN',reason:'payload id does not match the resolved Supabase id',wrote:false,removed:false};
@@ -232,8 +272,8 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     if(o)o.textContent='Planning outbox read-only…';
     try{
       const r=await processOutbox({dryRun:true});
-      const lines=r.plan.slice(0,8).map(x=>x.entity+' · '+x.localId+' · '+(x.action==='BLOCKED'?'<b>BLOCKED</b>':x.action)+(x.reason?' ('+esc(x.reason)+')':'')).join('<br>');
-      if(o)o.innerHTML='Outbox entries: '+r.entries+' · coalesced '+r.coalesced+' · insert '+r.summary.insert+' · update '+r.summary.update+' · delete '+r.summary.delete+' · no-op '+r.summary.noop+' · blocked '+r.summary.blocked+(r.ignoredTestArtifacts?' · ignored test artifacts '+r.ignoredTestArtifacts:'')+(r.ignoredOtherUsers?' · other users '+r.ignoredOtherUsers:'')+'<br>'+(lines||'<span class="m">Nothing queued.</span>')+'<br><span class="m">Read-only plan. No operation was applied or removed.</span>';
-    }catch(e){if(o)o.textContent='Outbox plan failed: '+e.message;toast('Outbox plan failed')}
+      const lines=[...r.plan,...r.blocked].slice(0,8).map((x,i)=>'Record '+(i+1)+' · '+(ORDER.includes(x.entity)?x.entity:'unknown entity')+' · '+x.action+(x.classification?' · '+x.classification:'')+(x.reason?' ('+x.reason+')':'')).join('\n');
+      if(o){o.style.whiteSpace='pre-line';o.textContent='Outbox entries: '+r.entries+' · coalesced '+r.coalesced+' · insert '+r.summary.insert+' · update '+r.summary.update+' · delete '+r.summary.delete+' · no-op '+r.summary.noop+' · blocked '+r.summary.blocked+' · conflicts '+r.summary.conflicts+(r.ignoredTestArtifacts?' · ignored test artifacts '+r.ignoredTestArtifacts:'')+(r.ignoredOtherUsers?' · other users '+r.ignoredOtherUsers:'')+'\n'+(lines||'Nothing queued.')+'\nRead-only plan. No operation was applied or removed. No financial values or user identifiers displayed.';}
+    }catch(e){if(o)o.textContent='Outbox plan blocked: authentication, storage, or cloud verification could not complete. No operation was applied or removed.';toast('Outbox plan failed')}
   };
 })();

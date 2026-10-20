@@ -131,6 +131,51 @@ with two test entries skipped and one real entry planned).
 
 ## 3. Conflict handling
 
+**Queued-change guard (2026-10-20).** The outbox planner now compares the
+queued payload and the fresh cloud record against a verified, owner-matched
+version-2 per-record baseline. Cloud-only changes block for PULL; divergent
+changes block for CONFLICT. A local delete cannot overwrite a cloud edit, and
+an upsert cannot silently recreate a cloud-deleted baseline record. Existing
+cloud records without a baseline cannot be overwritten or deleted. Equal
+canonical local/cloud content is UNCHANGED or CONVERGED rather than an update.
+
+Invalid baseline identity/ownership/fingerprints and invalid cloud response
+shapes fail closed. A failed read reports RECORD ABSENCE NOT PROVEN without
+echoing raw API errors. The planner UI reports classifications and counts,
+including malformed blocked entries, without payloads or record/user IDs.
+
+Client-side preflight does not eliminate read/write races. The default real
+executor is therefore restricted to disposable `phase6-test-` operations;
+production operations (including outbox cleanup) are refused until atomic
+server-side compare-and-write and baseline reconciliation are implemented.
+Injected transports remain available for isolated rehearsals only. No live
+cloud writes, baseline writes, or outbox mutations were performed in this step.
+
+Verification: `node tests/sync-outbox.cjs` passes 32 dependency-free isolated
+checks covering the three-way matrix, deletions, invalid/missing baselines,
+ownership and identity mismatches, invalid/read-failure responses, canonical
+key ordering, redacted UI output, execution refusal, and production lockout.
+All JavaScript and service-worker syntax checks and manifest/config JSON
+parsing pass. The actual Privacy & Sync panel was also exercised on a disposable
+origin in light and dark themes with simulated conflicting records: BLOCKED
+and CONFLICT rendered, identifiers/payloads remained redacted, and no fixture
+storage writes occurred. Interactive conflict resolution remains unimplemented.
+
+**Authorized demo reset (2026-10-20).** The user confirmed that the current
+data was demo/test-only and authorized resetting both local and cloud demo
+records. An on-device backup was retained under `cap_demo_reset_backup_v1`.
+Only the signed-in user's app-record rows were deleted, in dependency order,
+and absence was verified per table; the auth identity and profile were kept.
+The built-in demo was reseeded locally, three opening entries were created,
+and the matching migration plan was uploaded and verified.
+
+A version-2 baseline was initialized only after two clean validations and
+matching per-record fingerprints. After reload: 46 local/baseline/cloud
+records, zero missing/unexpected/mismatched records, zero foreign-key errors,
+zero unaccounted balances, empty outbox, and Cloud Sync OFF. A redacted result
+was rendered in the actual Privacy & Sync panel. No production execution or
+conflict-resolution readiness is implied by this demo baseline.
+
 - Three-way compare against the baseline (already implemented).
 - Divergence opens a resolution prompt with the differing fields only,
   keep local / keep cloud.
