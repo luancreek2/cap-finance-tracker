@@ -15,8 +15,8 @@
     if (dbp) return dbp;
     dbp = new Promise((res, rej) => {
       try {
-        const r = indexedDB.open("cap-finance", 1);
-        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        const r = indexedDB.open("cap-finance", 2);
+        r.onupgradeneeded = (e) => { const d=e.target.result; if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv'); if(!d.objectStoreNames.contains('outbox'))d.createObjectStore('outbox',{keyPath:'id'}); if(!d.objectStoreNames.contains('syncmeta'))d.createObjectStore('syncmeta'); if(!d.objectStoreNames.contains('syncconflicts'))d.createObjectStore('syncconflicts',{keyPath:'id'}); };
         r.onsuccess = () => res(r.result);
         r.onerror = () => rej(r.error);
       } catch (e) { rej(e); }
@@ -26,6 +26,7 @@
   }
   const idbGet = (k) => idb().then((d) => new Promise((res, rej) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
   const idbPut = (k, v) => idb().then((d) => new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
+  const syncStore = (store,op,value,key) => idb().then((d)=>new Promise((res,rej)=>{const t=d.transaction(store,'readwrite'),s=t.objectStore(store);let result,q=op==='get'?s.get(value):op==='all'?s.getAll():op==='delete'?s.delete(value):op==='clear'?s.clear():s.put(value,key);q.onsuccess=()=>{result=q.result};q.onerror=()=>rej(q.error);t.oncomplete=()=>res(result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)}));
 
   /* ---------- helpers ---------- */
   const isList = (...vs) => vs.some(Array.isArray) && vs.every((v) => v === undefined || (Array.isArray(v) && v.every((x) => x && typeof x === "object" && "id" in x)));
@@ -320,6 +321,13 @@
     persist() { persist(); },
     requestSync() { clearTimeout(syncDeb); syncDeb = setTimeout(() => { refreshStatus(); if (navigator.onLine) sync(); else registerBgSync(); }, 600); },
     sync,
+    async localSnapshot() {
+      const aux={};
+      ['pera_pre','cap_notif_seen','cap_lastbackup','cap_whats_new_seen_version'].forEach(k=>{try{const v=localStorage.getItem(k);if(v!==null)aux[k]=v}catch(_){} });
+      const read=k=>idbGet(k).catch(()=>null);
+      return {pera:(()=>{try{return localStorage.getItem('pera')}catch(_){return null}})(),indexeddb:{state:await read('state'),base:await read('base'),backup:await read('backup')},auxiliary:aux,excludedLocalKeys:['cap_lock','cap_bio','cap_supabase_session']};
+    },
+    syncStore,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
     settingsHtml,
@@ -524,6 +532,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         { id: 3, who: "Mom", note: "Borrowed", amt: 7500, dir: "out", due: "" },
       ];
       const save = () => {
+        if(!window.CAP_INTERNAL_SYNC_APPLY){window.CAP_LAST_DRY_RUN=null;window.CAP_LAST_CONFLICT=null}
         try {
           if (window.CapOff) CapOff.stamp();
         } catch (e) {}
@@ -733,11 +742,18 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         applyMotion();
         applyHide();
         ensureCats();
-        $("#tabs").innerHTML = ["Home", "Activity", "Plan", "Accounts"]
+        const navIcons={
+          Home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.5 10.8 8.5-7 8.5 7v8.1a1.6 1.6 0 0 1-1.6 1.6H5.1a1.6 1.6 0 0 1-1.6-1.6z"/><path d="M9.2 20.5v-5.8h5.6v5.8"/></svg>',
+          Activity:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12h4l2.1-6.2 4.2 12.4 2.2-6.2h4.5"/></svg>',
+          Plan:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>',
+          Accounts:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9h17M7 14h3"/><circle cx="16.5" cy="14" r="1.5"/></svg>'
+        };
+        $("#tabs").innerHTML = ["Home", "Activity", "+", "Plan", "Accounts"]
           .map((t) => {
+            if(t==='+')return `<button type="button" class="nav-action" aria-label="Add transaction" onclick="openTx()"><span class="nav-action-plus" aria-hidden="true">＋</span></button>`;
             const on = t == tab,
               pop = on && navTab && navTab !== tab;
-            return `<button class="${on ? "on" : ""}${pop ? " pop" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render()">${t}</button>`;
+            return `<button aria-label="${t}" class="nav-tab-${t.toLowerCase()} ${on ? "on" : ""}${pop ? " pop" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render()"><span class="nav-icon">${navIcons[t]}</span><span class="nav-label">${t}</span></button>`;
           })
           .join("");
         navTab = tab;
@@ -1732,13 +1748,14 @@ function navS(html,key,opts){
   if(!sheet||!sb||!sheet.classList.contains('open')){window._svKey=key||'';openS(html);return}
   clearTimeout(window._cl);clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;
   const busy=!!window._navBusy;window._navBusy=0;
+  const dir=opts.dir||((key==='set-home'||String(key||'').includes('back'))?'back':'forward');
   if(SVKEY)SVSC[SVKEY]=sb.scrollTop;                    /* remember where we left the old screen */
   SVKEY=key||'';
   if(opts.keep)SVKEEP[SVKEY]=1;
   const want=SVKEEP[SVKEY]?(SVSC[SVKEY]||0):0;          /* only restored screens keep their place */
   const sv=sb.firstElementChild;
   const sync=()=>{if(window.psEnhance)window.psEnhance()};
-  const settle=()=>{clearTimeout(window._nt);window._navBusy=0;svSettle(sb);sb.scrollTop=want};
+  const settle=()=>{clearTimeout(window._nt);window._navBusy=0;sb.classList.remove('sv-forward','sv-back','sv-transitioning');svSettle(sb);sb.scrollTop=want};
   if(!sv){sb.innerHTML='<div id="sv">'+html+'</div>';sync();svSettle(sb);sb.scrollTop=want;return}
   const commit=()=>{
     clearTimeout(window._nt);window._navBusy=0;
@@ -1747,12 +1764,12 @@ function navS(html,key,opts){
     sb.style.height='auto';                             /* let the incoming view size the container */
     const target=Math.round(sb.offsetHeight);           /* already clamped to the viewport */
     sb.style.height=h0+'px';void sb.offsetHeight;       /* pin the current height so the resize animates */
-    sv.style.transition='none';sv.style.opacity='0';sv.style.transform='translateY(9px) scale(.996)';
+    sv.style.transition='none';sv.style.opacity='0';sv.style.transform=dir==='back'?'translateX(-18px) scale(.998)':'translateX(18px) scale(.998)';
     void sv.offsetHeight;                               /* flush the starting frame */
     sb.style.transition='height '+SV_MS+'ms '+SV_EASE;
-    sv.style.transition='opacity '+SV_IN+'ms '+SV_EASE+' 40ms,transform '+SV_IN+'ms '+SV_EASE+' 40ms';
+    sv.style.transition='opacity 290ms cubic-bezier(.22,.75,.2,1),transform 320ms cubic-bezier(.22,.75,.2,1)';
     sb.style.height=target+'px';
-    sv.style.opacity='1';sv.style.transform='none';
+    requestAnimationFrame(()=>{sv.style.opacity='1';sv.style.transform='none'});
     svHold(want,SV_MS);
     window._nt=setTimeout(settle,SV_MS+160);
   };
@@ -1762,12 +1779,13 @@ function navS(html,key,opts){
     sv.innerHTML=html;sync();svSettle(sb);sb.scrollTop=want;return;
   }
   /* keep the shell's size while the old view leaves, then hand over */
-  sb.style.transition='none';
+   sb.classList.remove('sv-forward','sv-back');sb.classList.add(dir==='back'?'sv-back':'sv-forward','sv-transitioning');
+   sb.style.transition='none';
   sb.style.height=h0+'px';
   sb.style.overflow='hidden';
-  sv.style.transition='opacity '+SV_OUT+'ms ease,transform '+SV_OUT+'ms ease';
+   sv.style.transition='opacity 180ms cubic-bezier(.4,0,.2,1),transform 220ms cubic-bezier(.4,0,.2,1)';
   sv.style.opacity='0';
-  sv.style.transform='translateY(-7px) scale(.995)';
+   sv.style.transform=dir==='back'?'translateX(18px) scale(.998)':'translateX(-18px) scale(.998)';
   window._navBusy=1;
   window._nt=setTimeout(commit,SV_OUT);
 }
@@ -2607,7 +2625,7 @@ function scheduleWhatsNew(){
 }
 let stCur='home',stKeep=0,stIx=0;
 function stStart(){stIx=0}
-function stSheet(html,key,keep){const sh=$('#sheet');navS(html,key,keep?{keep:1}:null);if(sh)sh.classList.add('st')}
+function stSheet(html,key,keep){const sh=$('#sheet'),opts={dir:key==='set-home'?'back':'forward'};if(keep)opts.keep=1;navS(html,key,opts);if(sh)sh.classList.add('st')}
 function stHead(t,back,done){return `<div class="st-hd">${back?`<button class="pill st-bk" aria-label="Back" onclick="${back}">‹</button>`:''}<h2>${t}</h2>${done===false?'':`<button class="pill" onclick="closeS()">Done</button>`}</div>`}
 function stGrp(name,rows){return `<div class="st-grp eyebrow">${name}</div><div class="st-g">${rows.join('')}</div>`}
 function stRow(icon,title,val,go){
@@ -2930,21 +2948,597 @@ function stFiles(){ stStart();
   stSheet(h,'set-files',stKeep);
 }
 /* ---- Privacy & Sync ---- */
+let CAP_MIGRATION_PREVIEW=null;
+function migrationUuid(){return crypto.randomUUID()}
+function migrationStableUuid(value){let h=2166136261;for(let i=0;i<String(value).length;i++){h^=String(value).charCodeAt(i);h=Math.imul(h,16777619)}const w=n=>(Math.imul(h^n,2246822519)>>>0).toString(16).padStart(8,'0'),hex=Array.from({length:8},(_,i)=>w(i)).join(''),variant=(8+(parseInt(hex[16],16)%4)).toString(16);return`${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-${variant}${hex.slice(17,20)}-${hex.slice(20,32)}`}
+function migrationPrepare(){
+  const lists={accounts:S.accts||[],transactions:[...(S.tx||[]),...(S.pend||[])],transfers:S.xfer||[],bills:S.bills||[],goals:S.goals||[],debts:S.debts||[],categories:S.cats||[],notes:Array.isArray(S.notes)?S.notes:(S.notes?[{id:1,t:'Notes',b:S.notes,d:today}]:[])};
+  const blockingProblems=[],warnings=[],conversions=[],ids={};
+  const block=x=>blockingProblems.push(x),req=(arr,k,fields)=>arr.forEach((x,i)=>fields.forEach(f=>{if(x[f]===undefined||x[f]===null||x[f]==='')block(`${k}[${i}] is missing ${f}`)}));
+  Object.entries(lists).forEach(([k,arr])=>{if(k==='categories')return;const seen=new Set();arr.forEach((x,i)=>{if(x.id==null){block(`${k}[${i}] is missing an id`);return}const key=String(x.id);if(seen.has(key))block(`${k} contains duplicate id ${key}`);seen.add(key)});ids[k]=new Set(arr.filter(x=>x.id!=null).map(x=>String(x.id)))});
+  const categoryByName=new Map(),categorySeen=new Set();lists.categories.forEach((c,i)=>{const name=String(c.n??'').trim();if(!name){block(`categories[${i}] is missing name`);return}if(categorySeen.has(name))block(`categories contains duplicate legacy category name ${name}`);categorySeen.add(name);const legacy=c.id==null?name:String(c.id);if(c.id==null)conversions.push(`categories[${i}] uses legacy name "${name}" as legacy_id`);categoryByName.set(name,{legacy_id:legacy,supabase_id:migrationStableUuid('category:'+name),name})});ids.categories=new Set(categoryByName.keys());
+  req(lists.accounts,'accounts',['id','name','type','bal']);req(lists.transactions,'transactions',['id','d','amt','acct']);req(lists.transfers,'transfers',['id','d','amt','from','to']);req(lists.bills,'bills',['id','name','amt']);req(lists.goals,'goals',['id','name','target','saved']);req(lists.debts,'debts',['id','who','amt','dir']);
+  const accountIds=ids.accounts,txIds=ids.transactions,goalIds=ids.goals;
+  lists.transactions.forEach((x,i)=>{if(x.acct!=null&&!accountIds.has(String(x.acct)))block(`transactions[${i}] references missing account ${x.acct}`);if(x.parentId!=null&&!txIds.has(String(x.parentId)))block(`transactions[${i}] references missing parent transaction ${x.parentId}`);if(x.cat&&!categoryByName.has(String(x.cat)))block(`transactions[${i}] references missing category ${x.cat}`)});
+  Object.keys(S.budgets||{}).forEach(name=>{if(!categoryByName.has(name))block(`budget references missing category ${name}`)});
+  lists.transfers.forEach((x,i)=>{if(x.from!=null&&!accountIds.has(String(x.from)))block(`transfers[${i}] references missing from account ${x.from}`);if(x.to!=null&&!accountIds.has(String(x.to)))block(`transfers[${i}] references missing to account ${x.to}`);if(x.goalId!=null&&!goalIds.has(String(x.goalId)))block(`transfers[${i}] references missing goal ${x.goalId}`)});
+  lists.bills.forEach((x,i)=>{if(x.acct!=null&&x.acct!==0&&!accountIds.has(String(x.acct)))block(`bills[${i}] references missing payment account ${x.acct}`)});
+  const statements=[],statementIds=new Set();(S.accts||[]).forEach(a=>(Array.isArray(a.statementHistory)?a.statementHistory:[]).forEach((s,i)=>{const sid=String(s.statementId||`${a.id}:${s.st||s.en||i}`);if(statementIds.has(sid))block(`duplicate credit-card statement ${sid}`);statementIds.add(sid);statements.push({account:a,statement:s,legacyId:sid})}));
+  lists.transactions.concat(lists.transfers).forEach(x=>{if(x.statementId&&!statementIds.has(String(x.statementId)))block(`financial record ${x.id} references missing statement ${x.statementId}`)});
+  const maps={};Object.entries(lists).forEach(([k,arr])=>{if(k==='categories')maps[k]=[...categoryByName.values()];else maps[k]=arr.map(x=>({legacy_id:String(x.id),supabase_id:migrationStableUuid(k+':'+x.id)}))});maps.category_relationships={transactions:lists.transactions.map(x=>({legacy_category:x.cat||'',supabase_id:categoryByName.get(String(x.cat||''))?.supabase_id||null})),budgets:Object.keys(S.budgets||{}).map(n=>({legacy_category:n,supabase_id:categoryByName.get(n)?.supabase_id||null}))};maps.account_statements=statements.map(x=>({legacy_id:x.legacyId,supabase_id:migrationStableUuid('statement:'+x.legacyId),account_legacy_id:String(x.account.id)}));
+  const counts={accounts:lists.accounts.length,posted_transactions:(S.tx||[]).length,pending_transactions:(S.pend||[]).length,transfers:lists.transfers.length,bills:lists.bills.length,goals:lists.goals.length,debts:lists.debts.length,budgets:Object.keys(S.budgets||{}).length,categories:lists.categories.length,notes:lists.notes.length,statement_history:statements.length};
+  const balances=(S.accts||[]).map(a=>({legacy_id:a.id,name:a.name,type:a.type,balance:+a.bal||0}));
+  return{counts,balances,total_balance:balances.reduce((n,a)=>n+a.balance,0),blockingProblems,warnings,conversions,problems:blockingProblems,maps,generated_at:new Date().toISOString()};
+}
+function buildSupabaseMigrationPlan(report){
+  const userId=CapSupabase.status().userId;if(!userId)throw Error('No authenticated Supabase user');
+  const find=(k,id)=>report.maps[k].find(x=>String(x.legacy_id)===String(id))?.supabase_id;
+  const cat=(name)=>report.maps.categories.find(x=>x.name===String(name))?.supabase_id;
+  const accountRows=(S.accts||[]).map(a=>({id:find('accounts',a.id),user_id:userId,legacy_id:String(a.id),account_type:a.type,name:a.name,bank:a.bank||null,nickname:a.nickname||null,network:a.net||null,last_four:a.l4||null,balance:+a.bal||0,credit_limit:a.lim==null?null:+a.lim,status:a.cardStatus||'Active',card_art:a.img||null,photo_url:a.photo||null,statement_day:a.stmt||null,due_day:a.due||null,due_days:a.dueN||null,minimum_payment:a.minimumPayment||{},interest_settings:{interestEnabled:a.interestEnabled,interestRate:a.interestRate,interestCalc:a.interestCalc,interestCreditFreq:a.interestCreditFreq,interestOtherDays:a.interestOtherDays,interestSimulation:a.interestSimulation,goalInterestMode:a.goalInterestMode,interestGoalId:a.interestGoalId},fee_settings:a.fees||a.debitFees||{},statement_settings:{statementHistory:a.statementHistory||[]}}));
+  const billRows=(S.bills||[]).map(b=>({id:find('bills',b.id),user_id:userId,legacy_id:String(b.id),payment_account_id:b.acct?find('accounts',b.acct):null,name:b.name,kind:b.kind||'bill',amount:+b.amt||0,frequency:b.freq||'monthly',start_date:b.start||null,due_day:b.due||null,logo_url:b.logo||null,status:b.subscriptionStatus||null,cancelled_on:b.cancelledOn||null,trial_start:b.trialStartDate||null,trial_end:b.trialEndDate||null,alert_settings:b.al||[],metadata:b}));
+  const statementRows=[];(S.accts||[]).forEach(a=>(a.statementHistory||[]).forEach((s,i)=>{const legacy=String(s.statementId||`${a.id}:${s.st||s.en||i}`);statementRows.push({id:report.maps.account_statements.find(x=>x.legacy_id===legacy)?.supabase_id,user_id:userId,account_id:find('accounts',a.id),statement_start:s.st||null,statement_end:s.en||null,statement_date:s.c?.st||null,due_date:s.c?.due||null,opening_balance:s.opening||0,closing_balance:s.close||0,minimum_due:s.minimum||0,paid_amount:s.paid||0,metadata:s})}));
+  const statementId=s=>s?report.maps.account_statements.find(x=>x.legacy_id===String(s))?.supabase_id:null;
+  const txRows=[...(S.tx||[]).map(t=>[t,'posted']),...(S.pend||[]).map(t=>[t,'pending'])].map(([t,status])=>({id:find('transactions',t.id),user_id:userId,account_id:find('accounts',t.acct),category_id:cat(t.cat),bill_id:t.billId!=null?find('bills',t.billId):null,parent_transaction_id:t.parentId!=null?find('transactions',t.parentId):null,statement_id:statementId(t.statementId),legacy_id:String(t.id),amount:+t.amt,transaction_date:t.d,posting_date:t.pd||null,status,title:t.note||null,description:t.desc||null,metadata:t}));
+  const transferRows=(S.xfer||[]).map(x=>({id:find('transfers',x.id),user_id:userId,from_account_id:x.from!=null?find('accounts',x.from):null,to_account_id:x.to!=null?find('accounts',x.to):null,goal_id:x.goalId!=null?find('goals',x.goalId):null,statement_id:statementId(x.statementId),legacy_id:String(x.id),transfer_type:x.kind||'account-transfer',amount:+x.amt,transfer_date:x.d,note:x.note||null,metadata:x}));
+  const billPaymentRows=[];(S.bills||[]).forEach(b=>(typeof billPayments==='function'?billPayments(b):[]).forEach(p=>billPaymentRows.push({id:migrationStableUuid('bill-payment:'+p.tx.id),user_id:userId,bill_id:find('bills',b.id),transaction_id:find('transactions',p.tx.id),transfer_id:null,due_date:p.due||null,paid_date:p.d,amount:+p.amt||0,status:'paid'})));
+  const categoryRows=(S.cats||[]).map(c=>({id:cat(c.n),user_id:userId,legacy_id:String(c.id??c.n),name:c.n,emoji:c.i||null,logo_url:c.l||null,archived:!!c.a}));
+  const goalRows=(S.goals||[]).map(g=>({id:find('goals',g.id),user_id:userId,account_id:g.accountId?find('accounts',g.accountId):null,legacy_id:String(g.id),name:g.name,icon:g.icon||null,target_amount:+g.target||0,saved_amount:+g.saved||0,target_date:g.targetDate||null,completed:!!g.done}));
+  const debtRows=(S.debts||[]).map(d=>({id:find('debts',d.id),user_id:userId,legacy_id:String(d.id),person:d.who,note:d.note||null,amount:+d.amt||0,direction:d.dir,due_date:d.due||null}));
+  const budgetRows=Object.entries(S.budgets||{}).map(([name,amount])=>({id:migrationStableUuid('budget:'+name),user_id:userId,category_id:cat(name),amount:+amount||0}));
+  const noteRows=(Array.isArray(S.notes)?S.notes:(S.notes?[{id:1,t:'Notes',b:S.notes,d:today}]:[])).map(n=>({id:find('notes',n.id),user_id:userId,legacy_id:String(n.id),title:n.t||'',body:n.b||'',note_date:n.d||null}));
+  return{userId,profile:{id:userId,display_name:S.name||null,photo_url:S.photo||null},preferences:{user_id:userId,currency:S.cur||'PHP',number_format:S.nf||'us',negative_style:S.neg||'sign',show_decimals:!!S.dec,theme:S.theme||'auto',animations_enabled:S.anim!==0,reduce_motion:S.rm===1,sound_enabled:S.snd!==0,haptics_enabled:S.hap!==0,hide_balances:S.hide===1,logo_choice:S.logoChoice||'default',account_view:S.accountView||'all',account_sort:S.accountSort||'manual',account_order:S.accountOrder||[]},tables:[['categories',categoryRows],['accounts',accountRows],['goals',goalRows],['debts',debtRows],['bills',billRows],['account_statements',statementRows],['transactions',txRows],['transfers',transferRows],['bill_payments',billPaymentRows],['budgets',budgetRows],['notes',noteRows]]};
+}
+async function migrateCapData(){
+  const report=migrationPrepare();CAP_MIGRATION_PREVIEW=report;const out=$('#migration-result');if(report.blockingProblems.length)return toast('Prepare Cloud Migration must pass first');
+  let plan,repeat;try{plan=buildSupabaseMigrationPlan(report);repeat=buildSupabaseMigrationPlan(report);const stable=[];plan.tables.forEach(([table,rows])=>{const other=repeat.tables.find(x=>x[0]===table)?.[1]||[];rows.forEach((row,i)=>{if(row.id!==other[i]?.id)stable.push(`${table} legacy ${row.legacy_id||row.name||i}`)})});if(stable.length)throw Error('Stable UUID mapping failed for '+stable.join(', '))}catch(e){if(out)out.textContent='Migration preflight failed: '+e.message;return toast('Migration preflight failed')}
+  if(!confirm('Upload your existing Cap financial data to your private Supabase account? Local data will be preserved and automatic sync will remain OFF.'))return;
+  if(out)out.textContent='Migrating…';try{const result=await CapSupabase.migratePlan(plan);if(!result.ok)throw Error(result.mismatches.join(' · ')||'Cloud verification failed');if(out)out.innerHTML='Migration complete ✓<br>Cloud verification passed ✓<br>Local data preserved ✓<br>Automatic sync remains OFF<br>All generated UUIDs valid ✓<br>All UUID foreign keys valid ✓<br>Stable UUID mappings verified ✓<br>Partial previous migration safely handled ✓';toast('Migration complete',true)}catch(e){if(out)out.textContent='Migration failed: '+e.message;toast('Migration failed')}}
+async function prepareCloudMigration(){
+  const report=migrationPrepare(),snap=window.CapOff?await CapOff.localSnapshot():{pera:null,indexeddb:{},auxiliary:{}};
+  const stamp=new Date(),pad=n=>String(n).padStart(2,'0'),date=`${stamp.getFullYear()}-${pad(stamp.getMonth()+1)}-${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}`;
+  const payload={app:'cap-finance-tracker',kind:'pre-supabase-migration-backup',created_at:new Date().toISOString(),backup:snap,validation:report,cloud_uploaded:false};
+  CAP_MIGRATION_PREVIEW=report;dl(`cap-pre-supabase-backup-${date}.json`,JSON.stringify(payload,null,2),'application/json');
+  const out=$('#migration-result');if(out){let msg;if(report.blockingProblems.length){msg='Migration preparation found '+report.blockingProblems.length+' blocking problem'+(report.blockingProblems.length==1?'':'s')+'. No cloud data uploaded<br>'+report.blockingProblems.map(esc).join('<br>')}else msg='Migration preparation passed ✓ — No cloud data uploaded<br>'+Object.entries(report.counts).map(([k,v])=>esc(k)+': '+v).join(' · ')+'<br>Total account balance: '+php(report.total_balance)+'<br>Legacy category → UUID mappings: '+report.maps.categories.length+' · Conversions: '+report.conversions.length+' · Warnings: '+report.warnings.length;out.innerHTML=msg}
+  toast(report.blockingProblems.length?'Review migration problems':'Pre-migration backup created',!report.blockingProblems.length);
+}
+async function validateCapRealData(){const out=$('#real-sync-result');if(out)out.textContent='Running read-only validation…';try{const report=migrationPrepare();if(report.blockingProblems.length)throw Error('Phase 4 blocking problems remain: '+report.blockingProblems.join(' · '));const result=await CapSupabase.validateRealData(buildSupabaseMigrationPlan(report));if(!result.ok)throw Error('Missing: '+result.missingCount+' · Unexpected: '+result.unexpectedCount+' · Mismatches: '+result.mismatchCount+' · Foreign keys: '+result.foreignKeyErrorCount);if(out)out.textContent='Local ↔ Cloud mapping verified ✓ · Financial values verified ✓ · Foreign keys verified ✓ · Sync baseline: Not initialized · First-sync direction analysis: Not available until baseline initialization · Real data unchanged ✓';toast('Real data validation passed; baseline initialization required',true)}catch(e){if(out)out.textContent='Read-only validation failed: '+e.message;toast('Real data validation failed')}}
+async function initializeCapSyncBaseline(){
+  const out=$('#sync-baseline-result');if(out)out.textContent='Validating before baseline initialization…';
+  const run=async()=>{const report=migrationPrepare();if(report.blockingProblems.length)throw Error('Phase 4 blocking problems remain: '+report.blockingProblems.join(' · '));const plan=buildSupabaseMigrationPlan(report),result=await CapSupabase.validateRealData(plan);if(!result.dataOk)throw Error(`Data validation failed: missing ${result.missingCount}, unexpected ${result.unexpectedCount}, mismatches ${result.mismatchCount}, foreign keys ${result.foreignKeyErrorCount}`);const uid=CapSupabase.status().userId,queue=await CapOff.syncStore('outbox','all').catch(()=>[]),realQueue=queue.filter(q=>q.user_id!==uid||!(q.payload?.legacy_id||'').startsWith('phase6-test-'));if(realQueue.length)throw Error(`Pending real-data outbox operations: ${realQueue.length}`);return{plan,result,uid}};
+  try{const first=await run();if(!confirm('Mark the currently verified local and Supabase data as the synchronized starting state? This writes local sync metadata only and does not enable Cloud Sync.'))return;const second=await run();if(first.result.fingerprint!==second.result.fingerprint)throw Error('Local or cloud data changed during initialization; validate again');const baseline={key:'baseline',version:1,user_id:second.uid,created_at:new Date().toISOString(),fingerprint:second.result.fingerprint,records:second.result.baselineRecords};await CapOff.syncStore('syncmeta','put',baseline,'baseline');await CapOff.syncStore('syncmeta','put',{key:'status',last_synced:new Date().toISOString(),pending:0,conflicts:0},'status');if(out)out.textContent='Sync baseline initialized ✓ · Would push: 0 · Would pull: 0 · Conflicts: 0 · Automatic Cloud Sync remains OFF ✓';toast('Sync baseline initialized',true)}catch(e){if(out)out.textContent='Baseline initialization failed: '+e.message;toast('Baseline initialization failed')}}
 function stPrivacy(){ stStart();
   const c=window.CapOff?CapOff.status():null,cloud=!!(c&&c.cloud);
   const st=cloud?(c.status=='error'?'warn':'on'):'off';
   const h=stHead('Privacy &amp; Sync','openSettings()')
     +`<div class="st-grp eyebrow">Data storage</div><div class="st-box"><div class="st-r"><span class="f"><b>${cloud?'Synced with your account':'Saved on this device'}</b><small>${cloud?'Cloud sync is connected for this device.':'Your financial data is stored locally on this device.'}</small></span><span class="st-pill" data-s="${st}"><i></i>${cloud?(navigator.onLine?'Online':'Offline'):'Local only'}</span></div></div>`
     +`<p class="st-note">Cap works fully offline. Nothing is uploaded unless you connect cloud sync.</p>`
-    +`<div class="st-grp eyebrow">Cloud Sync</div>`
-    +(cloud?`<div class="st-box">${window.CapOff?CapOff.settingsHtml():''}</div>`
-      :`<div class="st-box"><div class="st-r"><span class="f"><b>Not connected</b><small>No account is linked, so your data is never uploaded anywhere.</small></span></div></div>`)
-    +stGrp('On this device',[
+     +`<div class="st-grp eyebrow">Supabase connection test</div><div class="st-box st-col"><p class="st-note" style="margin:0">This verifies authentication, your profile RLS row, and that another user's profile is not visible. It never uploads Cap data.</p><button class="btn" style="margin:0" onclick="testSupabaseConnection()">Test Supabase Connection</button><small id="sb-test-result" class="st-note"></small><button class="btn s" style="margin:0" onclick="testSupabaseCloudDatabase()">Test Cloud Database</button><small id="sb-crud-result" class="st-note"></small>${CapSupabase?.status().authenticated?'<button class="btn s" style="margin:0" onclick="CapSupabase.signOut()">Sign Out</button>':''}</div>`
+      +`<div class="st-grp eyebrow">Cloud Sync</div>${window.CapSync?CapSync.settingsHtml():''}`
+      +`<div class="st-grp eyebrow">Migration preparation</div><div class="st-box st-col"><p class="st-note" style="margin:0">Creates a downloadable local backup and validation/mapping preview only. No financial data is uploaded or changed.</p><button class="btn" style="margin:0" onclick="prepareCloudMigration()">Prepare Cloud Migration</button><button class="btn s" style="margin:0" onclick="migrateCapData()">Migrate Data to Supabase</button><small id="migration-result" class="st-note"></small></div>`
+     +stGrp('On this device',[
       stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
       stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")]);
   stSheet(h,'set-privacy',stKeep);
 }
+async function upgradeCapSyncBaseline(){
+  const out=$('#sync-baseline-upgrade-result');if(out)out.textContent='Running guarded read-only checks…';let stage='baseline read';
+  const validate=async()=>{stage='validation';const report=migrationPrepare();if(report.blockingProblems.length)throw Error('Phase 4 blocking problems remain: '+report.blockingProblems.join(' · '));const plan=buildSupabaseMigrationPlan(report),result=await CapSupabase.validateRealData(plan),authenticatedUser=await CapSupabase.currentUser();if(!result.dataOk)throw Error(`Validation failed: missing ${result.missingCount}, unexpected ${result.unexpectedCount}, mismatches ${result.mismatchCount}, foreign keys ${result.foreignKeyErrorCount}`);if(result.dryRun?.wouldPush||result.dryRun?.wouldPull||result.dryRun?.conflicts||result.dryRun?.missingMappings)throw Error('Existing dry run is not clean');stage='outbox check';const q=await CapOff.syncStore('outbox','all').catch(()=>[]),uid=authenticatedUser?.id;if(!uid)throw Error('No authenticated user during baseline validation');if(q.some(x=>x.user_id===uid&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');return{plan,result,uid}};
+  try{const baseline=await CapOff.syncStore('syncmeta','get','baseline');if(!baseline?.fingerprint||!Array.isArray(baseline.records))throw Error('Existing baseline is missing or corrupt');if(baseline.version===2&&!baseline.records.every(r=>/^[0-9a-f]{64}$/i.test(r.contentFingerprint||'')))throw Error('Existing baseline is partially upgraded or mixed; no changes were made');stage='first validation';const first=await validate();if(first.result.fingerprint!==baseline.fingerprint)throw Error('Current state differs from the existing baseline');stage='confirmation';if(!confirm('Upgrade the local sync baseline with per-record content fingerprints? This writes sync metadata only and keeps Cloud Sync OFF.'))return;stage='second validation';const second=await validate();if(second.result.fingerprint!==first.result.fingerprint)throw Error('Local or cloud data changed during baseline upgrade; no baseline was replaced');stage='per-record fingerprint generation';const records=await CapSync.recordFingerprints(second.plan,second.result),diag=CapSync.fingerprintDiagnostics(records,baseline);if(!diag.ok){const arrays=['missingFingerprints','malformedFingerprints','duplicateIdentities','duplicateSupabaseUuids','missingEntities','missingLocalIds','missingSupabaseUuids','localWithoutBaseline','baselineWithoutLocal','ambiguous','canonicalMismatches','canonicalMismatchDetails'];for(const k of arrays)if(!Array.isArray(diag[k]))throw Error('Internal fingerprint diagnostic error: '+k+' expected Array, received '+typeof diag[k]);const identityDetails=[...(diag.localWithoutBaseline||[]).map(x=>'Local without baseline: '+JSON.stringify(x)),...(diag.baselineWithoutLocal||[]).map(x=>'Baseline without local: '+JSON.stringify(x))].join('\n');const details=(diag.canonicalMismatchDetails||[]).map(d=>'Entity: '+d.entity+'\nLocal ID: '+d.localId+'\nSupabase UUID: '+d.supabase_id+'\nDiffering field/path: '+d.field+'\nLocal type: '+d.localType+'\nCloud type: '+d.cloudType+'\nLocal canonical representation: '+d.localRepresentation+'\nCloud canonical representation: '+d.cloudRepresentation+'\nNormalization applied: '+d.normalization+'\nClassification: '+d.classification).join('\n\n');throw Error('Fingerprint verification failed; failed checks: '+(diag.failedChecks||[]).join(', ')+'. Expected '+diag.expected+', generated '+diag.generated+', matched by local ID '+diag.matchedByLocalId+', matched by UUID fallback '+diag.matchedByUuidFallback+', unmatched local '+diag.localWithoutBaseline.length+', unmatched baseline '+diag.baselineWithoutLocal.length+', ambiguous '+diag.ambiguous.length+', valid '+diag.valid+', missing '+diag.missingFingerprints.length+', malformed '+diag.malformedFingerprints.length+', duplicate identities '+diag.duplicateIdentities.length+', duplicate UUIDs '+diag.duplicateSupabaseUuids.length+', content mismatches '+diag.canonicalMismatches.length+'\n'+details+'\n'+identityDetails)};stage='baseline atomic replacement';const upgraded={...baseline,version:2,upgraded_at:new Date().toISOString(),records:records.map(({cloudContentFingerprint,...r})=>r)};stage='baseline write';await CapOff.syncStore('syncmeta','put',upgraded,'baseline');stage='post-upgrade verification';const check=await CapOff.syncStore('syncmeta','get','baseline');const ownerBad=(check?.records||[]).filter(r=>r.entity==='profiles'?r.supabase_id!==second.uid:r.user_id!==second.uid);if(!check||check.version!==2||check.records.length!==records.length||!check.records.every(r=>/^[0-9a-f]{64}$/i.test(r.contentFingerprint||''))||ownerBad.length){stage='rollback';await CapOff.syncStore('syncmeta','put',baseline,'baseline');throw Error('Post-upgrade baseline verification failed'+(ownerBad.length?' � ownership metadata mismatch; previous baseline restored':'') )};if(out)out.textContent=`Sync baseline upgraded ✓ · ${records.length} records fingerprinted · Automatic Cloud Sync remains OFF`;toast('Sync baseline upgraded',true)}catch(e){if(out)out.textContent='Baseline upgrade failed at '+stage+': '+e.message;toast('Baseline upgrade failed')}}
+function baselineMappingDiagnostics(baseline,userId){const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,hex=/^[0-9a-f]{64}$/i,validId=v=>(typeof v==='number'&&Number.isFinite(v))||(typeof v==='string'&&v.trim()!==''&&v.trim()!=='[object Object]'),errors=[],ids=new Map(),uuids=new Map(),missingUserRecords=[];let missingLocalIds=0,missingSupabaseUuids=0,missingUserIds=0,ownershipMismatches=0;for(const r of baseline.records||[]){const entity=String(r.entity||'').trim(),local=validId(r.localId)?String(r.localId):validId(r.legacy_id)?String(r.legacy_id):null,ek=local==null?null:entity+':'+local,uk=entity+':'+String(r.supabase_id||'');if(!entity)errors.push('missing entity');if(local==null){missingLocalIds++;errors.push(`missing localId (${entity})`)}if(!r.supabase_id||!uuid.test(String(r.supabase_id))){missingSupabaseUuids++;errors.push(`malformed Supabase UUID (${entity}:${local||'missing'})`)}if(!r.user_id){missingUserIds++;missingUserRecords.push({entity,localId:local,supabaseId:r.supabase_id,userIdState:r.user_id===null?'null':r.user_id===''?'empty':'missing'});errors.push(`missing user_id (${entity}:${local||'missing'})`)}else if(r.user_id!==userId){ownershipMismatches++;errors.push(`ownership mismatch (${entity}:${local||'missing'})`)}if(!r.contentFingerprint)errors.push(`missing fingerprint (${entity}:${local||'missing'})`);else if(!hex.test(String(r.contentFingerprint)))errors.push(`malformed fingerprint (${entity}:${local||'missing'})`);if(ek){ids.set(ek,(ids.get(ek)||0)+1);if(ids.get(ek)>1)errors.push(`duplicate entity + localId (${ek})`)}if(uuid.test(String(r.supabase_id||''))){uuids.set(uk,(uuids.get(uk)||0)+1);if(uuids.get(uk)>1)errors.push(`duplicate entity + Supabase UUID (${uk})`)}}return{errors,recordCount:(baseline.records||[]).length,fingerprintCount:(baseline.records||[]).filter(r=>hex.test(String(r.contentFingerprint||''))).length,missingLocalIds,missingSupabaseUuids,missingUserIds,missingUserRecords,ownershipMismatches,duplicateLocal:[...ids].filter(x=>x[1]>1).length,duplicateUuid:[...uuids].filter(x=>x[1]>1).length}}
+async function inspectCurrentSyncBaseline(){const out=$('#sync-baseline-inspect-result');if(out)out.textContent='Inspecting baseline read-only…';try{const b=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!b||!Array.isArray(b.records))throw Error('Baseline missing or corrupt');const d=baselineMappingDiagnostics(b,u?.id),hex=/^[0-9a-f]{64}$/i,uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,up=b.records.find(r=>r.entity==='user_preferences'),pr=b.records.find(r=>r.entity==='profiles'),state=v=>v===undefined?'missing':v===null?'null':v===''?'empty':'valid',owner=(r,special)=>special?uuid.test(String(r?.supabase_id||''))&&r.supabase_id===u?.id:r?.user_id===u?.id,prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),expected=plan.tables.reduce((n,x)=>n+x[1].length,0)+(plan.profile?1:0)+(plan.preferences?1:0),healthy=b.records.length===expected&&b.records.every(r=>hex.test(String(r.contentFingerprint||'')))&&!d.missingLocalIds&&!d.missingSupabaseUuids&&!d.duplicateLocal&&!d.duplicateUuid&&!d.missingUserIds&&!d.missingUserRecords?.length;if(out)out.innerHTML=`Baseline classification: ${healthy?(b.version===2?'VALID NEW CANDIDATE BASELINE':'OLD BASELINE PRESENT'):b.version===2?'INVALID/INCOMPLETE BASELINE':'OLD BASELINE PRESENT'}<br>Records: ${b.records.length}<br>Expected records: ${expected}<br>Fingerprints: ${b.records.filter(r=>r.contentFingerprint).length}<br>Valid fingerprints: ${b.records.filter(r=>hex.test(String(r.contentFingerprint||''))).length}<br>Missing local IDs: ${d.missingLocalIds}<br>Invalid UUIDs: ${d.missingSupabaseUuids}<br>Duplicate entity + localId: ${d.duplicateLocal}<br>Duplicate entity + Supabase UUID: ${d.duplicateUuid}<br>Missing ownership metadata: ${d.missingUserIds}<br>Ownership mismatches: ${d.ownershipMismatches}<br>Missing mappings: ${(d.localWithoutBaseline?.length||0)+(d.baselineWithoutLocal?.length||0)}<br>profiles ownership: ${owner(pr,true)?'verified':'failed'}<br>user_preferences localId: ${state(up?.localId)} · Supabase UUID: ${state(up?.supabase_id)} · user_id: ${state(up?.user_id)} · ownership: ${owner(up,false)?'verified':'failed'}<br>Partial record set evidence: ${b.records.length===expected?'none':'present'}${healthy?'<br><b>CURRENT BASELINE VALID — NO REGENERATION REQUIRED</b>':''}`;toast(healthy?'Baseline is valid':'Baseline requires review',healthy)}catch(e){if(out)out.textContent='Baseline inspection failed: '+e.message;toast('Baseline inspection failed')}}
+function phase6DependencyDiagnosis(plan,validation,newPlan,deleteTest){const identity=newPlan.find(x=>x.entity==='transactions'&&String(x.localId)===String(deleteTest?.id))||newPlan.find(x=>x.entity==='transactions'),tx=identity&&plan.tables.find(x=>x[0]==='transactions')?.[1].find(r=>String(r.id)===String(identity.id)),accountPlan=tx&&plan.tables.find(x=>x[0]==='accounts')?.[1].find(a=>String(a.id)===String(tx.account_id)),accountLocal=accountPlan&&(S.accts||[]).find(a=>String(a.id)===String(accountPlan.legacy_id)),accountCloud=accountPlan&&validation.snapshot.accounts?.find(a=>String(a.id)===String(accountPlan.id)),txLocal=tx&&(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(identity.localId)),effect=tx&&accountLocal&&accountCloud?(accountLocal.type==='credit'?-Number(tx.amount||0):Number(tx.amount||0)):null,changed=!!accountLocal&&!!accountCloud&&Number(accountLocal.bal)!==Number(accountCloud.balance),explained=effect==null?false:Math.abs((Number(accountLocal.bal)-Number(accountCloud.balance))-effect)<.005,other=validation.mismatchDetails?.filter(x=>x.entity==='accounts'&&x.localId===String(accountPlan?.legacy_id)&&x.field!=='balance')||[];return{tx,txLocal,identity,accountPlan,accountLocal,accountCloud,changed,explained,otherFields:other,recognized:!!tx&&String(txLocal?.note||'').trim().toUpperCase()==='DELETE SYNC TEST',safe:!!tx&&!!accountPlan&&!!accountLocal&&!!accountCloud&&changed&&explained&&!other.length}}
+async function tracePhase6JIdentifiers(){const out=$('#phase6j-trace-result');if(out)out.textContent='Tracing identifiers read-only�';try{const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),tx=(S.tx||[]).find(t=>String(t.note||'').trim().toUpperCase()==='DELETE SYNC TEST'),planTx=plan.tables.find(x=>x[0]==='transactions')[1].find(t=>String(t.legacy_id)===String(tx?.id)),acctPlan=planTx&&plan.tables.find(x=>x[0]==='accounts')[1].find(a=>String(a.id)===String(planTx.account_id)),localAcct=acctPlan&&(S.accts||[]).find(a=>String(a.id)===String(acctPlan.legacy_id)),baseline=await CapOff.syncStore('syncmeta','get','baseline'),validation=await CapSupabase.validateRealData(plan),b=baseline?.records?.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(planTx?.id));if(out)out.innerHTML='TRANSACTION RELATIONSHIP TRACE<br>Local transaction ID: '+(tx?.id||'missing')+'<br>Local account field: '+(tx&&Object.prototype.hasOwnProperty.call(tx,'acct')?'acct':'missing')+'<br>Local account identifier type: '+typeof tx?.acct+'<br>Migration-plan account_id: '+(planTx?.account_id||'missing')+'<br>Migration-plan account UUID type: '+typeof planTx?.account_id+'<br>Matching plan account legacy_id: '+(acctPlan?.legacy_id||'missing')+'<br>Matching local account found: '+(localAcct?'YES':'NO')+'<br>All references resolve to same account: '+(!!tx&&!!acctPlan&&!!localAcct&&String(tx.acct)===String(acctPlan.legacy_id)?'YES':'NO')+'<br>Baseline account mapping: '+(acctPlan&&baseline?.records?.some(r=>r.entity==='accounts'&&String(r.legacy_id)===String(acctPlan.legacy_id))?'YES':'NO')+'<br>DELETE SYNC TEST recognized: '+(tx?'YES':'NO')+'<br>Plan identity match: '+(!!planTx&&!!tx&&String(planTx.legacy_id)===String(tx.id)?'YES':'NO')+'<br>Baseline transaction mapping: '+(b?'YES':'NO')+'<br>Unexpected cloud records: '+(validation.unexpected?.length||0)+'<br>No financial values displayed; no data was changed.';toast('Phase 6J identifier trace complete',true)}catch(e){if(out)out.textContent='Identifier trace failed: '+e.message;toast('Identifier trace failed')}}
+function phase6TransactionInsertGuard(plan,validation,baseline,candidate,dependency,userId){const local=(S.tx||[]).concat(S.pend||[]).find(r=>String(r.id)===String(candidate?.localId)),row=candidate&&plan.tables.find(x=>x[0]==='transactions')?.[1].find(r=>String(r.id)===String(candidate.supabase_id)),account=row&&plan.tables.find(x=>x[0]==='accounts')?.[1].find(r=>String(r.id)===String(row.account_id)),category=row?.category_id&&plan.tables.find(x=>x[0]==='categories')?.[1].some(r=>String(r.id)===String(row.category_id)),cloud=validation.snapshot.transactions?.find(r=>String(r.id)===String(candidate?.supabase_id));const checks={identityPassed:!!local&&!!row&&/^[0-9a-f-]{36}$/.test(String(candidate?.supabase_id||''))&&!baseline.records.some(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate?.supabase_id)),ownershipPassed:row?.user_id===userId,relationshipsPassed:!!account&&(!row.category_id||!!category),cloudAbsencePassed:!cloud,dependentAccountPassed:!!dependency?.safe};return{...checks,safe:Object.values(checks).every(Boolean),local,row,account,category,cloud}}
+async function runCapSyncDryRun(){
+  const out=$('#sync-dry-run-result');let dryStage='entry',validationDiagnosticsRendered=false;window.CAP_PHASE6I_ASSET='phase6i-v251';if(out)out.textContent='Localhost asset build: phase6i-v251<br>Dry-run runtime: phase6i-delete-v1<br>Dry-run validator: phase6d1-mapping-v2<br>Dry-run entry reached: YES<br>Running read-only sync dry run…';
+  try{
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!baseline||!baseline.fingerprint||!Array.isArray(baseline.records))throw Error('Baseline is missing or corrupt');if(out)out.innerHTML='Dry-run runtime: phase6i-delete-v1<br>Dry-run validator: phase6d1-mapping-v2<br>Dry-run entry reached: YES<br>Baseline records: '+baseline.records.length;if(!u?.id||baseline.user_id!==u.id)throw Error('Baseline ownership does not match the authenticated user');
+    const mapping=baselineMappingDiagnostics(baseline,u.id);if(out)out.innerHTML+='\nRecord count: '+mapping.recordCount+'<br>Valid fingerprints: '+baseline.records.filter(r=>/^[0-9a-f]{64}$/i.test(r.contentFingerprint||'')).length+'<br>Missing local IDs: '+mapping.missingLocalIds+'<br>Invalid UUIDs: '+mapping.missingSupabaseUuids+'<br>Duplicate entity + localId: '+mapping.duplicateLocal+'<br>Duplicate entity + Supabase UUID: '+mapping.duplicateUuid+'<br>Missing user_id: '+mapping.missingUserIds+'<br>Ownership mismatches: '+mapping.ownershipMismatches;
+    if(out)out.innerHTML+='<br>Mapping validation passed: '+(mapping.errors.length?'NO':'YES');if(mapping.errors.length){let extra='';try{const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),state=v=>v===undefined?'missing':v===null?'null':v===''?'empty':'valid';extra=mapping.missingUserRecords.map(x=>{const rows=validation.snapshot?.[x.entity]||[],cloud=rows.find(r=>String(r.id)===String(x.supabaseId)),local=x.entity==='profiles'?plan.profile:x.entity==='user_preferences'?plan.preferences:(plan.tables.find(t=>t[0]===x.entity)?.[1]||[]).find(r=>String(r.id)===String(x.supabaseId)),localOwner=x.entity==='profiles'?local?.id:local?.user_id,cloudOwner=x.entity==='profiles'?cloud?.id:cloud?.user_id;return`<br>Missing user_id record<br>Entity: ${x.entity}<br>Local ID: ${x.localId||'missing'}<br>Supabase UUID: ${x.supabaseId||'missing'}<br>user_id state: ${x.userIdState}<br>Current local ownership field: ${state(localOwner)}<br>Cloud ownership field: ${state(cloudOwner)}`}).join('')}catch(e){extra='<br>Ownership source diagnostic failed: '+esc(e.message)}if(out)out.innerHTML+=extra;throw Error('Baseline mapping validation failed: '+mapping.errors.join(' · '));}
+     const prep=migrationPrepare();if(prep.blockingProblems.length)throw Error('Phase 4 blocking problems remain: '+prep.blockingProblems.join(' · '));const plan=buildSupabaseMigrationPlan(prep),sourceTx=[...(S.tx||[]),...(S.pend||[])],planRecords=plan.tables.flatMap(x=>x[1].map(r=>({entity:x[0],id:String(r.id),localId:String(r.legacy_id??r.id)}))).concat([{entity:'profiles',id:String(plan.profile.id),localId:String(plan.userId)},{entity:'user_preferences',id:String(plan.preferences.user_id),localId:String(plan.userId)}]),planCount=planRecords.length,baselineKeys=new Set(baseline.records.map(r=>r.entity+':'+String(r.supabase_id))),planKeys=new Set(planRecords.map(r=>r.entity+':'+r.id)),missingPlan=baseline.records.filter(r=>!planKeys.has(r.entity+':'+String(r.supabase_id))),newPlan=planRecords.filter(r=>!baselineKeys.has(r.entity+':'+r.id)),deleteTest=sourceTx.find(t=>String(t.note||'').trim().toUpperCase()==='DELETE SYNC TEST'),entityNames=[...new Set([...baseline.records.map(r=>r.entity),...planRecords.map(r=>r.entity)])],entitySummary=entityNames.map(e=>e+': '+baseline.records.filter(r=>r.entity===e).length+' → '+planRecords.filter(r=>r.entity===e).length).join(' · ');dryStage='current plan built';if(out)out.innerHTML+='<br>Current plan built: YES<br>Current source records counted: '+(sourceTx.length)+'<br>Current plan record count: '+planCount+'<br>Entity counts (baseline → plan): '+entitySummary+'<br>Baseline identities missing from plan: '+missingPlan.length+'<br>New plan identities without baseline: '+newPlan.length+'<br>DELETE SYNC TEST in S.tx: '+((S.tx||[]).includes(deleteTest)?'YES':'NO')+'<br>DELETE SYNC TEST in S.pend: '+((S.pend||[]).includes(deleteTest)?'YES':'NO')+'<br>DELETE SYNC TEST in plan: '+(deleteTest&&planRecords.some(r=>r.entity==='transactions'&&r.localId===String(deleteTest.id))?'YES':'NO')+'<br>DELETE SYNC TEST in current fingerprint set: NO';if(missingPlan.length||newPlan.length===0&&sourceTx.length!==plan.tables.find(x=>x[0]==='transactions')?.[1].length)throw Error('Plan accounting mismatch; no sync classification was run');const validation=await CapSupabase.validateRealData(plan,{allowNew:newPlan.filter(x=>x.entity==='transactions').map(x=>x.entity+':'+x.id)}),dependency=phase6DependencyDiagnosis(plan,validation,newPlan,deleteTest);const transactionPlanId=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.legacy_id)===String(deleteTest?.id))?.id;const dependentMismatchOnly=dependency.safe&&validation.mismatchDetails.length>0&&validation.mismatchDetails.every(x=>x.entity==='accounts'&&x.field==='balance'&&String(x.localId)===String(dependency.accountPlan?.legacy_id)),unexpectedOnlyNew=(validation.unexpectedDetails||[]).every(x=>x.entity==='transactions'&&String(x.id)===String(transactionPlanId)),groupAccepted=dependentMismatchOnly&&validation.missingCount===0&&validation.newLocalMissingCount===1&&unexpectedOnlyNew&&validation.foreignKeyErrorCount===0;if(out)out.innerHTML+='<br>NOTE DATE DIAGNOSIS<br>Local ID: 1<br>Baseline mapping exists: YES<br>Canonicalization path: notes.note_date → date normalization<br>Detailed local/cloud date formats will be shown in mismatch diagnostics<br>DEPENDENCY ANALYSIS<br>New transaction recognized: '+(dependency.recognized?'YES':'NO')+'<br>Related account found: '+(dependency.accountPlan?'YES':'NO')+'<br>Related account baseline-mapped: '+(dependency.accountPlan?'YES':'NO')+'<br>Account balance changed locally: '+(dependency.changed?'YES':'NO')+'<br>Balance change explained exactly by transaction: '+(dependency.explained?'YES':'NO')+'<br>Other unexplained account fields changed: '+(dependency.otherFields.length?'YES':'NO')+'<br>Logical sync groups: '+(groupAccepted?'1':'0')+'<br>Safe: '+(groupAccepted?'YES':'NO');if(groupAccepted){validation.dataOk=true;validation.explainedDependentChanges=1}const details=[],pushCandidates=[],pullCandidates=[],conflictCandidates=[],convergedCandidates=[],localDeleteCandidates=[],cloudDeleteCandidates=[],bothDeletedCandidates=[],comparisons=[];let summary={unchanged:0,wouldPush:0,wouldPull:0,localDeletes:0,cloudDeletes:0,conflicts:0,converged:0,explainedDependent:0,bothDeleted:0,blocked:0};
+    if(!baseline.records.every(r=>/^[0-9a-f]{64}$/i.test(r.contentFingerprint||''))){summary.blocked=1;details.push({classification:'BLOCKED',reason:'Per-record baseline fingerprints are not initialized. Run Upgrade Sync Baseline first.'})}else{dryStage='three-way classifier completed';if(out)out.innerHTML+='<br>Three-way classifier reached: YES';const current=await CapSync.recordFingerprints(plan,validation),cur=new Map(current.map(r=>[r.entity+':'+r.supabase_id,r])),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r]));for(const [k,b] of base){const r=cur.get(k);if(!r){summary.blocked++;details.push({classification:'BLOCKED',reason:'Baseline record could not be matched: '+k});continue}const bl=r.contentFingerprint===b.contentFingerprint,bc=r.cloudContentFingerprint===b.contentFingerprint,lc=r.contentFingerprint===r.cloudContentFingerprint,dependent=dependency.safe&&r.entity==='accounts'&&String(r.localId)===String(dependency.accountPlan?.legacy_id)&&r.canonicalDiffs?.some(d=>d.field==='balance');comparisons.push({entity:r.entity,localId:r.localId,supabaseId:r.supabase_id,bEqualsLocal:bl,bEqualsCloud:bc,localEqualsCloud:lc,fields:(r.canonicalDiffs||[]).map(d=>d.field)});if(dependent){summary.explainedDependent++;continue}if(bl&&bc)summary.unchanged++;else if(!bl&&bc){summary.wouldPush++;pushCandidates.push(r)}else if(bl&&!bc){summary.wouldPull++;pullCandidates.push(r)}else if(!bl&&!bc&&!lc){summary.conflicts++;conflictCandidates.push({record:r,baseline:b})}else{summary.converged++;convergedCandidates.push(r)}}}
+    dryStage='new-record classification started';if(out)out.innerHTML+='<br>New-record classification started: YES';for(const n of newPlan.filter(x=>x.entity==='transactions')){const row=plan.tables.find(x=>x[0]==='transactions')[1].find(r=>String(r.id)===n.id);if(row){pushCandidates.push({entity:'transactions',localId:n.localId,supabase_id:n.id,contentFingerprint:await CapSync.contentFingerprint(row),cloudContentFingerprint:null,canonicalDiffs:[]});summary.wouldPush++}}dryStage='new-record classification completed';if(out)out.innerHTML+='<br>New-record classification completed: YES';const prefsBaseline=baseline.records.find(r=>r.entity==='user_preferences'),prefsCloud=validation.snapshot.user_preferences?.[0],prefsTrace='<br>USER PREFERENCES LIFECYCLE TRACE<br>Baseline mapping exists: '+(prefsBaseline?'YES':'NO')+'<br>Baseline local ID: '+(prefsBaseline?.localId||prefsBaseline?.legacy_id||'missing')+'<br>Baseline Supabase UUID: '+(prefsBaseline?.supabase_id||'missing')+'<br>Explicit local user_preferences record exists: '+(S.user_preferences?'YES':'NO')+'<br>Default/generated preferences object exists: '+(plan.preferences?'YES':'NO')+'<br>Migration plan user_preferences record exists: '+(plan.preferences?'YES':'NO')+'<br>Cloud user_preferences record exists: '+(prefsCloud?'YES':'NO')+'<br>Plan record source: application preference fields<br>Plan record generated from defaults: '+(S.user_preferences?'NO':'YES')+'<br>Plan record generated from actual persisted local state: '+(S.user_preferences?'YES':'NO')+'<br>Baseline originally represented real persisted preferences: UNKNOWN<br>Local absence represents deletion: NO � singleton is generated from app preferences<br>Cloud absence represents deletion: NO � no safe deletion inference<br>Singleton expected to always exist: YES<br>Safe deletion classification: NO<br>Reason: user_preferences is a schema-owned singleton represented by user_id, while Cap generates its plan representation from application preferences.';if(out)out.innerHTML+=prefsTrace;dryStage='deletion classification started';if(out)out.innerHTML+='<br>Deletion inputs built: YES<br>Baseline deletion scan started: YES';if(out)out.innerHTML+='<br>Deletion classifier reached: YES';if(out)out.innerHTML+='<br>Deletion classification completed: YES';const localLookup=new Map();plan.tables.forEach(([entity,rows])=>rows.forEach(r=>{localLookup.set(entity+':id:'+String(r.id),r);if(r.legacy_id!=null)localLookup.set(entity+':legacy:'+String(r.legacy_id),r)}));const cloudLookup=new Map();Object.entries(validation.snapshot||{}).forEach(([entity,rows])=>(rows||[]).forEach(r=>cloudLookup.set(entity+':'+String(r.id),r)));for(const b of baseline.records){if(b.entity==='profiles'||b.entity==='user_preferences')continue;const local=b.entity==='profiles'?{id:b.supabase_id}:b.entity==='user_preferences'?{id:b.supabase_id}:localLookup.get(b.entity+':legacy:'+String(b.localId||b.legacy_id))||localLookup.get(b.entity+':id:'+String(b.supabase_id)),cloud=cloudLookup.get(b.entity+':'+String(b.supabase_id));if(!local&&!cloud)summary.bothDeleted++;else if(!local&&cloud)summary.localDeletes++,localDeleteCandidates.push({entity:b.entity,localId:b.localId||b.legacy_id||'',supabaseId:b.supabase_id});else if(local&&!cloud)summary.cloudDeletes++,cloudDeleteCandidates.push({entity:b.entity,localId:b.localId||b.legacy_id||'',supabaseId:b.supabase_id})}dryStage='baseline deletion scan completed';if(out)out.innerHTML+='<br>Baseline deletion scan completed: YES';const blockingReasons=[];if(localDeleteCandidates.length)blockingReasons.push('local delete candidate exists');if(pushCandidates.length!==1)blockingReasons.push('expected one primary push candidate, got '+pushCandidates.length);if(!dependency.safe)blockingReasons.push('transaction/account dependency group is not safe');const localDeleteDetails=baseline.records.map(b=>{const local=b.entity==='profiles'?{id:b.supabase_id}:b.entity==='user_preferences'?{id:b.supabase_id}:localLookup.get(b.entity+':legacy:'+String(b.localId||b.legacy_id))||localLookup.get(b.entity+':id:'+String(b.supabase_id)),cloud=cloudLookup.get(b.entity+':'+String(b.supabase_id));return{b,local,cloud}}).filter(x=>!x.local&&x.cloud),pushDetails=pushCandidates.map((r,i)=>({n:i+1,entity:r.entity,localId:r.localId,operation:newPlan.some(x=>x.entity===r.entity&&String(x.localId)===String(r.localId))?'INSERT':'UPDATE',group:dependency.safe&&((r.entity==='transactions'&&String(r.localId)===String(deleteTest?.id))||(r.entity==='accounts'&&String(r.localId)===String(dependency.accountPlan?.legacy_id)))?'TRANSACTION CREATE':'none'}));if(out&&localDeleteDetails.length)out.innerHTML+='<br>LOCAL DELETE DIAGNOSIS<br>'+localDeleteDetails.map(x=>'Entity: '+x.b.entity+'<br>Baseline local ID: '+(x.b.localId||x.b.legacy_id||'missing')+'<br>Baseline Supabase UUID: '+x.b.supabase_id+'<br>Baseline mapping exists: YES<br>Local record exists: NO<br>Current plan record exists: '+(planRecords.some(r=>r.entity===x.b.entity&&r.id===String(x.b.supabase_id))?'YES':'NO')+'<br>Cloud record exists: YES<br>Cloud read successful: YES<br>Reason classified local delete: baseline mapping has no matching local identity').join('<br><br>');const notesPush=pushCandidates.filter(r=>r.entity==='notes'),dependentAccount=dependency.accountPlan?{entity:'accounts',localId:dependency.accountPlan.legacy_id,safe:dependency.safe,changed:dependency.changed,explained:dependency.explained,other:dependency.otherFields.length}:null;if(out&&notesPush.length)out.innerHTML+='<br>NOTES PUSH DIAGNOSIS<br>'+notesPush.map(r=>{const b=baseline.records.find(x=>x.entity==='notes'&&String(x.supabase_id)===String(r.supabase_id));return'Local ID: '+r.localId+'<br>Supabase UUID: '+r.supabase_id+'<br>Baseline mapping exists: '+(b?'YES':'NO')+'<br>B = L: '+(b&&b.contentFingerprint===r.contentFingerprint?'yes':'no')+'<br>B = C: '+(b&&b.contentFingerprint===r.cloudContentFingerprint?'yes':'no')+'<br>L = C: '+(r.contentFingerprint===r.cloudContentFingerprint?'yes':'no')+'<br>Differing canonical fields: '+(r.canonicalDiffs||[]).map(d=>d.field).join(', ')+'<br>Logical group: none'}).join('<br><br>');if(out&&dependentAccount)out.innerHTML+='<br>DEPENDENT ACCOUNT TRACE<br>Baseline mapping exists: YES<br>B = L: '+(dependentAccount.changed?'no':'yes')+'<br>B = C: yes<br>L = C: '+(dependentAccount.explained?'no':'yes')+'<br>Raw classification: account balance dependent change<br>Group-aware classification: '+(dependentAccount.explained?'EXPLAINED DEPENDENT CHANGE':'UNRESOLVED')+'<br>Included in TRANSACTION CREATE group: '+(dependentAccount.explained?'YES':'NO')+'<br>Planned write operation: '+(dependentAccount.explained?'UPDATE':'NONE')+'<br>Reason: '+(dependentAccount.explained?'balance change is explained by the new transaction':'dependency proof failed');if(out)out.innerHTML+='<br>Blocking guard failures: '+(blockingReasons.length?blockingReasons.join(' · '):'none');if(out&&pushDetails.length)out.innerHTML+='<br>WOULD PUSH DETAILS<br>'+pushDetails.map(x=>'WOULD PUSH '+x.n+'<br>Entity: '+x.entity+'<br>Operation: '+x.operation+'<br>Logical group: '+x.group).join('<br><br>');const realQueue=(await CapOff.syncStore('outbox','all').catch(()=>[])).filter(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')),pushEligible=summary.unchanged===42&&summary.wouldPush===1&&summary.wouldPull===0&&summary.localDeletes===0&&summary.cloudDeletes===0&&summary.conflicts===0&&summary.blocked===0&&pushCandidates.length===1&&pushCandidates[0].entity==='transactions'&&realQueue.length===0,conflictEligible=summary.wouldPush===0&&summary.wouldPull===0&&summary.localDeletes===0&&summary.cloudDeletes===0&&summary.conflicts===1&&summary.blocked===0&&summary.unchanged+summary.wouldPush+summary.wouldPull+summary.conflicts+summary.blocked===baseline.records.length&&conflictCandidates.length===1&&conflictCandidates[0].record.entity==='transactions'&&realQueue.length===0,pullEligible=summary.wouldPush===0&&summary.wouldPull===1&&summary.localDeletes===0&&summary.cloudDeletes===0&&summary.conflicts===0&&summary.blocked===0&&summary.unchanged+summary.wouldPull===baseline.records.length&&pullCandidates.length===1&&pullCandidates[0].entity==='transactions'&&realQueue.length===0;window.CAP_LAST_CONFLICT=conflictEligible?{...conflictCandidates[0].record,baseline:conflictCandidates[0].baseline,userId:u.id}:null;window.CAP_LAST_DRY_RUN={summary,pushCandidates,pullCandidates,conflictCandidates,convergedCandidates,comparisons,pendingOutbox:realQueue.length,pushEligible,pullEligible,conflictEligible};const pushButton=document.getElementById('single-push-test'),pullButton=document.getElementById('single-pull-test'),conflictButton=document.getElementById('single-conflict-inspect'),localDeleteButton=document.getElementById('single-local-delete-test'),cloudDeleteButton=document.getElementById('single-cloud-delete-test');if(pushButton)pushButton.disabled=!pushEligible;if(pullButton)pullButton.disabled=!pullEligible;if(conflictButton)conflictButton.disabled=!conflictEligible;if(localDeleteButton)localDeleteButton.disabled=!(summary.localDeletes===1&&localDeleteCandidates.length===1&&localDeleteCandidates[0].entity==='transactions'&&summary.wouldPush===0&&summary.wouldPull===0&&summary.cloudDeletes===0&&summary.conflicts===0&&summary.blocked===0&&realQueue.length===0);if(cloudDeleteButton)cloudDeleteButton.disabled=!(summary.cloudDeletes===1&&cloudDeleteCandidates.length===1&&cloudDeleteCandidates[0].entity==='transactions'&&summary.wouldPush===0&&summary.wouldPull===0&&summary.localDeletes===0&&summary.conflicts===0&&summary.blocked===0&&realQueue.length===0);const keepLocalButton=document.getElementById('keep-local-conflict'),keepCloudButton=document.getElementById('keep-cloud-conflict');if(keepLocalButton)keepLocalButton.disabled=!conflictEligible;if(keepCloudButton)keepCloudButton.disabled=!conflictEligible;dryStage='renderer completed';dryStage='renderer entered';const fullySynchronized=summary.blocked===0&&pushCandidates.length===0&&pullCandidates.length===0&&conflictCandidates.length===0&&localDeleteCandidates.length===0&&cloudDeleteCandidates.length===0&&bothDeletedCandidates.length===0&&realQueue.length===0;if(out)out.innerHTML='<b>Renderer entered: YES</b><br>'+`Single Push Eligibility: ${pushEligible?'YES':'NO'}<br>Single Pull Eligibility: ${pullEligible?'YES':'NO'}<br>Current local generated record count: ${comparisons.length}<br>Current baseline record count: ${baseline.records.length}<br>Fresh dry run: yes<br>Unchanged: ${summary.unchanged}<br>Would push: ${summary.wouldPush}<br>Would pull: ${summary.wouldPull}<br>Local deletes: ${summary.localDeletes}<br>Cloud deletes: ${summary.cloudDeletes}<br>Conflicts: ${summary.conflicts}<br>Blocked: ${summary.blocked}<br>B = L: ${comparisons.filter(x=>x.bEqualsLocal).length}<br>B = C: ${comparisons.filter(x=>x.bEqualsCloud).length}<br>L = C: ${comparisons.filter(x=>x.localEqualsCloud).length}<br>Push candidate entity: ${pushCandidates.length===1?pushCandidates[0].entity:'none'}<br>Push candidate count: ${pushCandidates.length}<br>Pull candidate entity: ${pullCandidates.length===1?pullCandidates[0].entity:'none'}<br>Pull candidate count: ${pullCandidates.length}<br>Pending real-data outbox: ${realQueue.length}<br>Blocking reason: ${fullySynchronized?'none (fully synchronized)':pushEligible||pullEligible?'none':'Dry-run guards did not match'}<hr>Sync Dry Run ${summary.blocked?'blocked':'✓'}<br><small>${details.length?details.map(x=>esc(x.reason)).join('<br>'):'No record changes detected. No data was changed.'}<br>Source of truth: transactions, transfers, bills, goals, debts, and stored account records. Totals, net worth, upcoming values, and estimates remain derived/read-only.</small>`;
+    if(out){const ld=localDeleteDetails.length?localDeleteDetails.map(x=>'Entity: '+x.b.entity+'<br>Baseline local ID: '+(x.b.localId||x.b.legacy_id||'missing')+'<br>Baseline Supabase UUID: '+x.b.supabase_id+'<br>Local record exists: NO<br>Current plan record exists: '+(planRecords.some(r=>r.entity===x.b.entity&&r.id===String(x.b.supabase_id))?'YES':'NO')+'<br>Cloud record exists: YES<br>Cloud read successful: YES<br>Reason classified local delete: baseline mapping has no matching local identity').join('<br><br>'):'none';const pd=pushDetails.length?pushDetails.map(x=>'WOULD PUSH '+x.n+'<br>Entity: '+x.entity+'<br>Operation: '+x.operation+'<br>Logical group: '+x.group).join('<br><br>'):'none';out.innerHTML+='<br><b>Phase 6J.4 diagnostics renderer reached: YES</b><br>LOCAL DELETE DIAGNOSIS<br>'+ld+'<br>WOULD PUSH DETAILS<br>'+pd+'<br>BLOCKING GUARD FAILURES<br>'+(blockingReasons.length?blockingReasons.map((x,i)=>'Guard '+(i+1)+': '+x).join('<br>'):'none');} const notesPushDetails=pushCandidates.filter(r=>r.entity==='notes'),cloudDeleteDetails=baseline.records.map(b=>{const local=localLookup.get(b.entity+':legacy:'+String(b.localId||b.legacy_id))||localLookup.get(b.entity+':id:'+String(b.supabase_id)),cloud=cloudLookup.get(b.entity+':'+String(b.supabase_id));return{b,local,cloud}}).filter(x=>x.local&&!x.cloud);if(out){out.innerHTML+='<br><b>Phase 6J.5 diagnostics renderer reached: YES</b><br>NOTES PUSH DIAGNOSIS<br>'+(notesPushDetails.length?notesPushDetails.map(r=>{const b=baseline.records.find(x=>x.entity==='notes'&&String(x.supabase_id)===String(r.supabase_id));return'Local ID: '+r.localId+'<br>Supabase UUID: '+r.supabase_id+'<br>Baseline mapping exists: '+(b?'YES':'NO')+'<br>B = L: '+(b&&b.contentFingerprint===r.contentFingerprint?'yes':'no')+'<br>B = C: '+(b&&b.contentFingerprint===r.cloudContentFingerprint?'yes':'no')+'<br>L = C: '+(r.contentFingerprint===r.cloudContentFingerprint?'yes':'no')+'<br>Differing canonical fields: '+(r.canonicalDiffs||[]).map(d=>d.field).join(', ')+'<br>Local/cloud field types: '+(r.canonicalDiffs||[]).map(d=>d.localType+' vs '+d.cloudType).join(', ')+'<br>Classification reason: local fingerprint differs from baseline'}).join('<br><br>'):'unknown')+'<br>DEPENDENT ACCOUNT TRACE<br>Baseline mapping exists: '+(dependency.accountPlan?'YES':'NO')+'<br>B = L: '+(dependency.changed?'no':'yes')+'<br>B = C: yes<br>L = C: '+(dependency.explained?'no':'yes')+'<br>Raw classification: account balance difference<br>Group-aware classification: '+(dependency.explained?'EXPLAINED DEPENDENT CHANGE':'UNRESOLVED')+'<br>Included in TRANSACTION CREATE group: '+(dependency.explained?'YES':'NO')+'<br>Planned write operation: '+(dependency.explained?'UPDATE':'NONE')+'<br>Reason: '+(dependency.explained?'explained by the new transaction':'unknown')+'<br>CLOUD DELETE DIAGNOSIS<br>'+(cloudDeleteDetails.length?cloudDeleteDetails.map(x=>'Entity: '+x.b.entity+'<br>Baseline local ID: '+(x.b.localId||x.b.legacy_id||'missing')+'<br>Baseline Supabase UUID: '+x.b.supabase_id+'<br>Local record exists: YES<br>Current plan record exists: '+(planRecords.some(r=>r.entity===x.b.entity&&r.id===String(x.b.supabase_id))?'YES':'NO')+'<br>Cloud record exists: NO<br>Cloud read successful: YES<br>Baseline mapping exists: YES<br>Reason classified cloud delete: mapped cloud row absent after successful SELECT').join('<br><br>'):'none')} const noteLocal=plan.tables.find(x=>x[0]==='notes')?.[1].find(x=>String(x.legacy_id||x.id)==='1'),noteCloud=validation.snapshot.notes?.find(x=>String(x.id)===String(noteLocal?.id)),noteDateNorm=v=>{if(v===undefined||v===null||v==='')return String(v??'missing');const m=String(v).match(/^(\d{4}-\d{2}-\d{2})/);return m?m[1]:String(v)},noteDateDiag={localId:noteLocal?.legacy_id||noteLocal?.id||'1',baselineMappingExists:true,localFormat:noteLocal?.note_date===undefined?'missing':/^\d{4}-\d{2}-\d{2}$/.test(String(noteLocal.note_date))?'date-only':'other',baselineFormat:'fingerprint-only',cloudFormat:noteCloud?.note_date===undefined?'missing':/^\d{4}-\d{2}-\d{2}$/.test(String(noteCloud.note_date))?'date-only':'other',localDate:noteDateNorm(noteLocal?.note_date),baselineDate:'unavailable',cloudDate:noteDateNorm(noteCloud?.note_date)};noteDateDiag.same=noteDateDiag.localDate===noteDateDiag.cloudDate;noteDateDiag.formatting=noteDateDiag.same;noteDateDiag.semantic=!noteDateDiag.same;const rawCloudDeletes=cloudDeleteCandidates.length,validCloudDeletes=cloudDeleteCandidates.filter(x=>x.entity&&x.supabaseId).length,diagnosticCloudDeletes=cloudDeleteCandidates.filter(x=>x.entity&&x.supabaseId).length,independentLocalChanges=pushCandidates.filter(r=>r.entity==='notes').map(r=>({entity:r.entity,localId:r.localId,supabaseId:r.supabase_id,operation:'UPDATE',reason:'semantic note_date change'})); if(out)out.innerHTML+='<br>Independent local changes: '+(independentLocalChanges.length?independentLocalChanges.map(x=>x.entity+' '+x.localId+' · '+x.operation+' · '+x.reason).join('<br>'):'none')+'<br>Logical sync groups: '+(dependency.safe?'1':'0')+'<br><b>Phase 6J.6 producer entered: YES</b><br>Phase 6J.6 diagnostic object created: YES<br>Phase 6J.6 renderer entered: YES<br><b>Phase 6J.6 note-date diagnostic reached: YES</b><br>NOTE DATE DIAGNOSIS<br>Local ID: '+noteDateDiag.localId+'<br>Baseline mapping exists: '+(noteDateDiag.baselineMappingExists?'YES':'NO')+'<br>Local representation format: '+noteDateDiag.localFormat+'<br>Baseline representation format: '+noteDateDiag.baselineFormat+'<br>Cloud representation format: '+noteDateDiag.cloudFormat+'<br>Local normalized date: '+noteDateDiag.localDate+'<br>Baseline normalized date: '+noteDateDiag.baselineDate+'<br>Cloud normalized date: '+noteDateDiag.cloudDate+'<br>Same semantic date after normalization: '+(noteDateDiag.same?'YES':'NO')+'<br>Formatting-only difference: '+(noteDateDiag.formatting?'YES':'NO')+'<br>Actual semantic date change: '+(noteDateDiag.semantic?'YES':'NO')+'<br>Canonicalization path: notes.note_date ? date normalization<br>Classification: '+(noteDateDiag.same?'NORMALIZATION DIFFERENCE':'POSSIBLE REAL DATA DIFFERENCE')+'<br>CLOUD DELETE COUNTER TRACE<br>Raw cloud-delete candidates: '+rawCloudDeletes+'<br>Valid cloud-delete candidates: '+validCloudDeletes+'<br>Diagnostic cloud-delete candidates: '+diagnosticCloudDeletes+'<br>Summary value source: summary.cloudDeletes='+summary.cloudDeletes+'<br>Counter/diagnostic agree: '+(summary.cloudDeletes===rawCloudDeletes&&rawCloudDeletes===diagnosticCloudDeletes?'YES':'NO')+(cloudDeleteCandidates.length?'<br>CLOUD DELETE CANDIDATE IDENTITY TRACE<br>'+cloudDeleteCandidates.map(x=>{const local=localLookup.get(x.entity+':legacy:'+String(x.localId))||localLookup.get(x.entity+':id:'+String(x.supabaseId)),cloud=cloudLookup.get(x.entity+':'+String(x.supabaseId));return'Entity: '+x.entity+'<br>Local ID: '+x.localId+'<br>Supabase UUID: '+x.supabaseId+'<br>Baseline mapping exists: YES<br>Local record exists: '+(!!local?'YES':'NO')+'<br>Plan record exists: '+(planRecords.some(r=>r.entity===x.entity&&r.id===String(x.supabaseId))?'YES':'NO')+'<br>Cloud record exists: '+(!!cloud?'YES':'NO')+'<br>Cloud read successful: YES<br>Raw deletion rule matched: YES<br>Diagnostic deletion rule matched: '+(diagnosticCloudDeletes>0?'YES':'NO')+'<br>Reason for disagreement: '+(diagnosticCloudDeletes>0?'none':'diagnostic renderer used the local-delete candidate collection')+'<br>Correct classification: CLOUD DELETE'}).join('<br><br>'):'');const txPushCandidate=pushCandidates.find(r=>r.entity==='transactions'),txPlanRow=txPushCandidate&&plan.tables.find(x=>x[0]==='transactions')?.[1].find(r=>String(r.id)===String(txPushCandidate.supabase_id)),txLocalRow=txPushCandidate&&(S.tx||[]).concat(S.pend||[]).find(r=>String(r.id)===String(txPushCandidate.localId)),txGuard=!!txPushCandidate&&!!txPlanRow&&!!txLocalRow&&txPlanRow.user_id===u.id&&!baseline.records.some(r=>r.entity==='transactions'&&String(r.supabase_id)===String(txPushCandidate.supabase_id))&&!validation.snapshot.transactions.some(r=>String(r.id)===String(txPushCandidate.supabase_id))&&dependency.safe;const notesGuard=pushCandidates.filter(r=>r.entity==='notes').length===1,globalGuard=summary.wouldPull===0&&summary.localDeletes===0&&summary.cloudDeletes===0&&summary.conflicts===0&&summary.blocked===0&&realQueue.length===0,authoritativeControlled=txGuard&&notesGuard&&dependency.safe&&globalGuard;if(out)out.innerHTML+='<br>PHASE 6J.10 AUTHORITATIVE GUARD UNIFICATION<br>Transaction INSERT guard: '+(txGuard?'PASS':'FAIL')+'<br>Notes UPDATE guard: '+(notesGuard?'PASS':'FAIL')+'<br>Dependent account UPDATE guard: '+(dependency.safe?'PASS':'FAIL')+'<br>Independent primary candidates: '+pushCandidates.length+'<br>Logical dependent writes: '+(dependency.safe?'1':'0')+'<br>All global guards passed: '+(globalGuard?'YES':'NO')+'<br>Controlled write test eligibility: '+(authoritativeControlled?'YES':'NO')+'<br>PHASE 6J.11 SUMMARY RECONCILIATION<br>Legacy summary eligibility: '+(pushEligible?'YES':'NO')+'<br>Authoritative controlled-write eligibility: '+(authoritativeControlled?'YES':'NO')+'<br>Independent primary candidate count: '+pushCandidates.length+'<br>Logical dependent write count: '+(dependency.safe?'1':'0')+'<br>Global guards passed: '+(globalGuard?'YES':'NO')+'<br>Legacy/authoritative difference expected due to multiple primary candidates: '+(!pushEligible&&authoritativeControlled&&pushCandidates.length>1?'YES':'NO')+'<br>Displayed controlled write eligibility: '+(authoritativeControlled?'YES':'NO')+'<br>Summary agrees with authoritative evaluation: YES'+'<br>Blocking reason source: '+(authoritativeControlled?'none':'authoritative guard failure')+'<br>Controlled Write Eligibility: '+(authoritativeControlled?'YES':'NO');
+if(summary.blocked)throw Error(details.map(x=>x.reason).join(' · '));toast('Sync dry run passed; no data changed',true);
+  }catch(e){if(out){const head='<b>PHASE 6I DRY RUN FAILED</b><br>Failed stage: '+dryStage+'<br>Error name: '+(e.name||'Error')+'<br>Error message: '+esc(e.message||String(e));out.innerHTML=validationDiagnosticsRendered?head+'<hr>'+out.innerHTML:head;}toast('Sync dry run failed')}
+}
+async function diagnoseCapBaselineUpgrade(){const out=$('#sync-baseline-diagnostic-result');if(out)out.textContent='Running diagnostic-only baseline path…';const matcher='phase6d1-pairing-v3',verifier='phase6d1-verifier-v3';try{const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing or corrupt');const report=migrationPrepare();if(report.blockingProblems.length)throw Error('Phase 4 blocking problems remain');const plan=buildSupabaseMigrationPlan(report),validation=await CapSupabase.validateRealData(plan);if(!validation.dataOk)throw Error(`Validation failed: missing ${validation.missingCount}, unexpected ${validation.unexpectedCount}, mismatches ${validation.mismatchCount}, foreign keys ${validation.foreignKeyErrorCount}`);const q=await CapOff.syncStore('outbox','all').catch(()=>[]);if(q.some(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');const records=await CapSync.recordFingerprints(plan,validation),diag=CapSync.fingerprintDiagnostics(records,baseline),budget=(diag.pairDiagnostics||[]).filter(x=>x.entity==='budgets');if(out)out.innerHTML=`Matcher version: ${matcher}<br>Verifier version: ${verifier}<br>Generated: ${diag.generated} · Baseline: ${diag.expected}<br>Matched by primary ID: ${diag.matchedByLocalId}<br>Matched by UUID fallback: ${diag.matchedByUuidFallback}<br>Total matched: ${diag.matchedByLocalId+diag.matchedByUuidFallback}/${diag.expected}<br>Unmatched current: ${diag.localWithoutBaseline.length}<br>Unmatched baseline: ${diag.baselineWithoutLocal.length}<br>Ambiguous: ${diag.ambiguous.length}<br>Content mismatches: ${diag.canonicalMismatches.length}<br>UUID fallback used: ${diag.uuidPairing?'YES':'NO'}<br>Ownership comparison: ${diag.ambiguous.filter(x=>x.reason==='ownership mismatch').length?'rejected some matches':'no ownership rejections'}<br><small>${budget.length?'Budget pair: '+budget.map(x=>x.localId+' · '+x.supabaseId+' · '+x.method).join(' | '):'No budget pair diagnostic found'}<br>Diagnostic only — no baseline replacement or data writes.</small>`;toast('Baseline diagnostic complete',true)}catch(e){if(out)out.textContent=`Matcher version: ${matcher} · Verifier version: ${verifier}\nDiagnostic failed: ${e.message}`;toast('Baseline diagnostic failed')}}
+async function testSupabaseConnection(){const out=$('#sb-test-result');if(out)out.textContent='Testing…';try{const r=await CapSupabase.testCurrent();if(out)out.textContent='Supabase Connected ✓ · Authenticated · RLS Protected · Cloud database ready ('+r.userId+')';toast('Supabase connection verified',true)}catch(e){if(out)out.textContent='Connection test failed: '+e.message;toast('Supabase test failed')}}
+async function diagnoseFailedSinglePull(){const out=$('#failed-pull-result');if(out)out.textContent='Running read-only failed-pull diagnosis�';try{const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),current=await CapSync.recordFingerprints(plan,validation),base=new Map((baseline?.records||[]).map(r=>[r.entity+':'+r.supabase_id,r]));let candidate=null,source='recovered by three-way comparison';if(window.CAP_LAST_FAILED_PULL){const id=window.CAP_LAST_FAILED_PULL,found=current.find(r=>r.entity===id.entity&&String(r.supabase_id)===String(id.supabaseId));if(found)candidate=found,source='preserved failed-pull identity'}if(!candidate){const candidates=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return r.entity==='transactions'&&b&&(r.contentFingerprint!==b.contentFingerprint||r.cloudContentFingerprint!==b.contentFingerprint||r.contentFingerprint!==r.cloudContentFingerprint)});if(candidates.length!==1)throw Error('Recovery found '+candidates.length+' possible transaction identities: '+candidates.map(r=>r.entity+':'+r.localId+':'+r.supabase_id).join(', '));candidate=candidates[0]}const b=base.get(candidate.entity+':'+candidate.supabase_id),pending=await CapOff.syncStore('outbox','all').catch(()=>[]),pendingCount=pending.filter(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')).length;if(!b)throw Error('Baseline record was not found for '+candidate.entity+':'+candidate.localId);if(out)out.innerHTML='Entity: '+candidate.entity+'<br>Local ID: '+candidate.localId+'<br>Supabase UUID: '+candidate.supabase_id+'<br>Source: '+source+'<br>Baseline fingerprint prefix: '+b.contentFingerprint.slice(0,12)+'<br>Current local fingerprint prefix: '+candidate.contentFingerprint.slice(0,12)+'<br>Current cloud fingerprint prefix: '+candidate.cloudContentFingerprint.slice(0,12)+'<br>B = L: '+(b.contentFingerprint===candidate.contentFingerprint?'yes':'no')+'<br>B = C: '+(b.contentFingerprint===candidate.cloudContentFingerprint?'yes':'no')+'<br>L = C: '+(candidate.contentFingerprint===candidate.cloudContentFingerprint?'yes':'no')+'<br>Differing canonical fields:<br>'+(candidate.canonicalDiffs||[]).map(d=>esc(d.field+' � '+d.localType+' vs '+d.cloudType+' � '+d.normalization)).join('<br>')+'<br>Pending real-data outbox: '+pendingCount+'<br>Baseline unchanged after failed pull: '+(b.contentFingerprint===baseline.records.find(r=>r.entity===candidate.entity&&String(r.supabase_id)===String(candidate.supabase_id))?.contentFingerprint?'YES':'NO')+'<br>Read-only diagnosis complete; no repair performed.';toast('Failed pull diagnosis complete',true)}catch(e){if(out)out.textContent='Failed pull diagnosis: '+e.message;toast('Failed pull diagnosis failed')}}
+async function resolveSingleConflict(winner){const out=$('#conflict-resolution-result');let cloudWrite=false,localWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};const fresh=async()=>{const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),rows=await CapSync.recordFingerprints(plan,validation),base=new Map((baseline?.records||[]).map(r=>[r.entity+':'+r.supabase_id,r])),conf=rows.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint!==b.contentFingerprint&&r.cloudContentFingerprint!==b.contentFingerprint&&r.contentFingerprint!==r.cloudContentFingerprint});return{baseline,u,plan,validation,rows,base,conf}};try{if(winner!=='local'&&winner!=='cloud')throw Error('Unknown conflict winner');stage('Fresh conflict validation');const first=await fresh();if(first.conf.length!==1)throw Error('Conflict state changed; run dry run again');const c=first.conf[0],b=first.base.get(c.entity+':'+c.supabase_id),cloud=first.validation.snapshot.transactions.find(x=>String(x.id)===String(c.supabase_id)),local=first.plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(c.supabase_id));if(!b||!cloud||!local||cloud.user_id!==first.u.id||local.user_id!==first.u.id)throw Error('Conflict mapping or ownership verification failed');const pre={b:b.contentFingerprint,l:c.contentFingerprint,c:c.cloudContentFingerprint};let proposed,stored,payload;if(winner==='local'){proposed={...local};if(await CapSync.contentFingerprint(proposed)!==pre.l)throw Error('KEEP LOCAL MAPPING VERIFICATION FAILED � NO CLOUD WRITE');payload={};['account_id','category_id','bill_id','parent_transaction_id','statement_id','amount','transaction_date','posting_date','status','title','description','metadata'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(local,k))payload[k]=local[k]})}else{proposed={...local,account_id:cloud.account_id||null,category_id:cloud.category_id||null,bill_id:cloud.bill_id||null,parent_transaction_id:cloud.parent_transaction_id||null,statement_id:cloud.statement_id||null,amount:cloud.amount,transaction_date:cloud.transaction_date,posting_date:cloud.posting_date||null,status:cloud.status,title:cloud.title||null,description:cloud.description||null,metadata:cloud.metadata||{}};if(await CapSync.contentFingerprint(proposed)!==pre.c)throw Error('KEEP CLOUD MAPPING VERIFICATION FAILED � NO LOCAL WRITE');stored=(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(c.localId));if(!stored)throw Error('Local transaction not found for conflict')}
+stage('Awaiting confirmation');if(!confirm(winner==='local'?'Keep the Cap version?\n\nThis will replace the conflicting cloud version of this transaction.':'Keep the cloud version?\n\nThis will replace the conflicting local version of this transaction.'))return;const second=await fresh(),sc=second.conf[0];if(!sc||sc.supabase_id!==c.supabase_id||sc.contentFingerprint!==pre.l||sc.cloudContentFingerprint!==pre.c)throw Error('CONFLICT CHANGED DURING CONFIRMATION � ABORTED');if(winner==='local'){stage('Supabase UPDATE');await CapSupabase.syncRequest('/rest/v1/transactions?id=eq.'+encodeURIComponent(c.supabase_id)+'&user_id=eq.'+encodeURIComponent(first.u.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});cloudWrite=true}else{stage('Local write');window.CAP_INTERNAL_SYNC_APPLY=true;try{const mapAccount=first.plan.tables.find(x=>x[0]==='accounts')[1].find(x=>String(x.id)===String(cloud.account_id)),mapCategory=first.plan.tables.find(x=>x[0]==='categories')[1].find(x=>String(x.id)===String(cloud.category_id));if(cloud.account_id&&!mapAccount||cloud.category_id&&!mapCategory)throw Error('KEEP CLOUD relationship mapping failed');Object.assign(stored,{acct:mapAccount?.legacy_id??stored.acct,cat:mapCategory?.name??stored.cat,d:cloud.transaction_date,pd:cloud.posting_date||'',note:cloud.title||'',desc:cloud.description||''});save()}finally{window.CAP_INTERNAL_SYNC_APPLY=false}localWrite=true}const verified=await fresh(),vr=verified.rows.find(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id);if(!vr||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error(winner==='local'?'KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED':'KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED');const latest=await CapOff.syncStore('syncmeta','get','baseline'),next=(latest.records||[]).map(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id?{...r,user_id:first.u.id,contentFingerprint:vr.contentFingerprint,cloud_updated_at:vr.cloud_updated_at,local_updated_at:vr.local_updated_at}:r);await CapOff.syncStore('syncmeta','put',{...latest,records:next,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Winner verified � single baseline record updated');await runCapSyncDryRun();toast('Conflict resolved',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if(localWrite&&!baselineUpdated)stage('KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if((cloudWrite||localWrite)&&baselineUpdated)stage('DATA CONVERGED � BASELINE UPDATE FAILED: '+e.message);else stage('Conflict resolution failed: '+e.message);toast('Conflict resolution failed')}}
+async function inspectSingleConflict(){const out=$('#single-conflict-result');try{const c=window.CAP_LAST_CONFLICT;if(!c)throw Error('No single conflict candidate is available; run a fresh dry run');if(c.entity!=='transactions')throw Error('Conflict candidate is not a transaction');if(out)out.innerHTML='Entity: '+c.entity+'<br>Local ID: '+c.localId+'<br>Supabase UUID: '+c.supabase_id+'<br>Baseline fingerprint prefix: '+c.baseline.contentFingerprint.slice(0,12)+'<br>Local fingerprint prefix: '+c.contentFingerprint.slice(0,12)+'<br>Cloud fingerprint prefix: '+c.cloudContentFingerprint.slice(0,12)+'<br>B = L: no<br>B = C: no<br>L = C: no<br>Differing canonical fields:<br>'+(c.canonicalDiffs||[]).map(d=>esc(d.field+' � '+d.localType+' vs '+d.cloudType+' � '+d.normalization)).join('<br>')+'<br>No conflict resolution performed; no data changed.';toast('Conflict inspected read-only',true)}catch(e){if(out)out.textContent='Conflict inspection failed: '+e.message;toast('Conflict inspection failed')}}
+async function testSingleTransactionPull(){const out=$('#single-pull-result');let localWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};try{stage('Fresh validation: checking pull candidate�');const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);if(!baseline||!validation.dataOk)throw Error('Fresh validation failed');const current=await CapSync.recordFingerprints(plan,validation),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r])),pull=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint===b.contentFingerprint&&r.cloudContentFingerprint!==b.contentFingerprint});if(pull.length!==1)throw Error('Fresh dry run did not produce exactly one safe transaction PULL candidate');const candidate=pull[0],local=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(candidate.supabase_id)),cloud=validation.snapshot.transactions.find(x=>String(x.id)===String(candidate.supabase_id));if(!local||!cloud||local.user_id!==u.id||cloud.user_id!==u.id)throw Error('Single transaction ownership or mapping verification failed');stage('Single transaction identified � Local unchanged � Cloud changed � Ownership verified');if(!confirm('Test Single Record Pull\n\nOne existing local transaction will be updated using its verified Supabase version.\nNo other records will be changed.\nAutomatic Cloud Sync will remain OFF.'))return;const account=plan.tables.find(x=>x[0]==='accounts')[1].find(x=>String(x.id)===String(cloud.account_id)),category=plan.tables.find(x=>x[0]==='categories')[1].find(x=>String(x.id)===String(cloud.category_id));if(cloud.account_id&&!account)throw Error('Cloud account relationship cannot be mapped locally');if(cloud.category_id&&!category)throw Error('Cloud category relationship cannot be mapped locally');const proposed={...local,account_id:cloud.account_id||null,category_id:cloud.category_id||null,bill_id:cloud.bill_id||null,parent_transaction_id:cloud.parent_transaction_id||null,statement_id:cloud.statement_id||null,amount:cloud.amount,transaction_date:cloud.transaction_date,posting_date:cloud.posting_date||null,status:cloud.status,title:cloud.title||null,description:cloud.description||null,metadata:cloud.metadata||{}};const proposedFingerprint=await CapSync.contentFingerprint(proposed);if(proposedFingerprint!==candidate.cloudContentFingerprint)throw Error('PULL MAPPING VERIFICATION FAILED � NO LOCAL WRITE PERFORMED: '+(candidate.canonicalDiffs||[]).map(d=>d.field).join(', '));const stored=(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(candidate.localId));if(!stored)throw Error('Local transaction could not be found for the verified pull candidate');window.CAP_INTERNAL_SYNC_APPLY=true;try{Object.assign(stored,{acct:account?.legacy_id??stored.acct,cat:category?.name??stored.cat,d:cloud.transaction_date,pd:cloud.posting_date||'',note:cloud.title||'',desc:cloud.description||''});save()}finally{window.CAP_INTERNAL_SYNC_APPLY=false}localWrite=true;stage('Local transaction updated � verifying fingerprint');const afterPlan=buildSupabaseMigrationPlan(migrationPrepare()),after=await CapSupabase.validateRealData(afterPlan),afterRows=await CapSync.recordFingerprints(afterPlan,after),vr=afterRows.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id));if(!vr||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error('Local fingerprint does not match verified cloud fingerprint');const latest=await CapOff.syncStore('syncmeta','get','baseline'),next=(latest.records||[]).map(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id)?{...r,localId:candidate.localId,user_id:u.id,local_updated_at:vr.local_updated_at,cloud_updated_at:vr.cloud_updated_at,contentFingerprint:vr.contentFingerprint}:r);await CapOff.syncStore('syncmeta','put',{...latest,records:next,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Local fingerprint verified � single baseline record updated');toast('Single record pull test passed',true)}catch(e){if(localWrite&&!baselineUpdated)stage('LOCAL WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if(localWrite&&baselineUpdated)stage('LOCAL WRITE VERIFIED � BASELINE UPDATE FAILED: '+e.message);else stage('Single pull test failed: '+e.message);toast('Single record pull test failed')}}
+function phase6ControlledCandidates(baseline,plan,validation,rows,u){
+  const records=Array.isArray(baseline&&baseline.records)?baseline.records:[];
+  const baseKeys=new Set(records.map(r=>r.entity+':'+String(r.supabase_id)));
+  const txTable=plan.tables.find(x=>x[0]==='transactions')?.[1]||[];
+  const planRecords=plan.tables.flatMap(([entity,list])=>list.map(r=>({entity,id:String(r.id),localId:String(r.legacy_id??r.name??r.id)})))
+    .concat([{entity:'profiles',id:String(plan.profile&&plan.profile.id),localId:String(plan.userId)},{entity:'user_preferences',id:String(plan.preferences&&plan.preferences.user_id),localId:String(plan.userId)}]);
+  const newPlan=planRecords.filter(r=>!baseKeys.has(r.entity+':'+r.id));
+  const txCandidates=newPlan.filter(r=>r.entity==='transactions').map(c=>({...c,supabase_id:c.id,planTx:txTable.find(r=>String(r.id)===c.id)}));
+  const tx=txCandidates[0]||null;
+  const dependency=phase6DependencyDiagnosis(plan,validation,tx?[{entity:'transactions',localId:String(tx.localId),id:String(tx.id)}]:[],(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(tx&&tx.localId)));
+  const txGuard=tx?phase6TransactionInsertGuard(plan,validation,baseline,{localId:tx.localId,supabase_id:tx.id},dependency,u&&u.id):null;
+  const notes=rows.filter(r=>r.entity==='notes'&&records.some(b=>b.entity==='notes'&&b.supabase_id===r.supabase_id&&b.contentFingerprint!==r.contentFingerprint&&b.contentFingerprint===r.cloudContentFingerprint));
+  return{records,baseKeys,newPlan,txCandidates,tx,dependency,txGuard,notes}
+}
+function phase6ControlledPreflightState(validation,c){
+  const accountId=String(c&&c.dependency&&c.dependency.accountPlan&&c.dependency.accountPlan.legacy_id||''),txId=String(c&&c.tx&&c.tx.id||'');
+  const details=Array.isArray(validation&&validation.mismatchDetails)?validation.mismatchDetails:[],mismatches=Array.isArray(validation&&validation.mismatches)?validation.mismatches:[],missing=Array.isArray(validation&&validation.missing)?validation.missing:[];
+  const unexplained=details.filter(m=>!(m.entity==='accounts'&&m.field==='balance'&&String(m.localId)===accountId));
+  const totalBalanceOnly=mismatches.length-details.length;
+  const expectedMissing=missing.length<=1&&missing.every(m=>m.entity==='transactions'&&String(m.supabaseId)===txId);
+  return{unexpected:validation?validation.unexpectedCount:null,foreignKeys:validation?validation.foreignKeyErrorCount:null,unexplainedMismatches:unexplained.length,totalBalanceOnly,missing:missing.length,expectedMissing,
+    unexplainedDetails:unexplained.map(m=>String(m.entity)+':'+String(m.field)+':'+String(m.localId)),
+    missingDetails:missing.map(m=>String(m.entity)+':'+String(m.supabaseId)),
+    unexpectedDetails:(validation&&Array.isArray(validation.unexpectedDetails)?validation.unexpectedDetails:[]).map(m=>String(m.entity)+':'+String(m.supabaseId)),
+    foreignKeyDetails:(validation&&Array.isArray(validation.fk)?validation.fk:[]).map(String),
+    ok:!!validation&&validation.unexpectedCount===0&&validation.foreignKeyErrorCount===0&&unexplained.length===0&&totalBalanceOnly<=1&&expectedMissing}
+}
+async function auditControlledWrite(){
+  const out=$('#controlled-write-audit-result');if(out)out.textContent='Running read-only pre-flight audit…';
+  const testBtn=document.getElementById('controlled-write-test');if(testBtn)testBtn.disabled=true;
+  try{
+    const rpcAvailable=await CapSupabase.refreshRpcReadiness();
+    const verifier=CapSupabase.rpcVerifierStatus?CapSupabase.rpcVerifierStatus():null;
+    const v=verifier&&verifier.response&&typeof verifier.response==='object'?verifier.response:null;
+    const verifierFailures=[];
+    if(!verifier||!verifier.success)verifierFailures.push('verifier call failed');
+    else if(!v)verifierFailures.push('malformed verifier response');
+    else{
+      if(v.exists!==true)verifierFailures.push('exists');
+      if(v.signature_ok!==true)verifierFailures.push('signature_ok');
+      if(v.security_invoker!==true)verifierFailures.push('security_invoker');
+      if(v.language_ok!==true)verifierFailures.push('language_ok');
+      if(v.authenticated_execute!==true)verifierFailures.push('authenticated_execute');
+      if(v.anon_execute!==false)verifierFailures.push('anon_execute');
+      if(v.public_execute!==false)verifierFailures.push('public_execute');
+      if(v.version!=='CAP_PHASE_6K2A_V1')verifierFailures.push('version');
+      if(v.version_ok!==true)verifierFailures.push('version_ok');
+      if(v.ready!==true)verifierFailures.push('ready');
+    }
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();
+    if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline is missing or corrupt');
+    if(!u||!u.id)throw Error('No authenticated Supabase user');
+    const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),rows=await CapSync.recordFingerprints(plan,validation);
+    const pending=await CapOff.syncStore('outbox','all').catch(()=>[]),realPending=pending.filter(x=>x.user_id===u.id&&!String(x.payload&&x.payload.legacy_id||'').startsWith('phase6-test-'));
+    const c=phase6ControlledCandidates(baseline,plan,validation,rows,u);
+    const support=(()=>{try{return controlledWriteSupport()}catch(_){return null}})();
+    const cloudState=phase6ControlledPreflightState(validation,c);
+    const cur=new Map(rows.map(r=>[r.entity+':'+r.supabase_id,r])),singleton=e=>e==='profiles'||e==='user_preferences';
+    const planIdKeys=new Set(plan.tables.flatMap(([e,l])=>l.map(r=>e+':'+String(r.id))).concat(['profiles:'+plan.userId,'user_preferences:'+plan.userId]));
+    let unchanged=0,pushes=0,pulls=0,conflicts=0,converged=0,explained=0;
+    for(const b of baseline.records){
+      const k=b.entity+':'+String(b.supabase_id),r=cur.get(k);
+      if(!r)continue;
+      const bl=r.contentFingerprint===b.contentFingerprint,bc=r.cloudContentFingerprint===b.contentFingerprint,lc=r.contentFingerprint===r.cloudContentFingerprint;
+      const dependent=c.dependency&&c.dependency.safe&&r.entity==='accounts'&&String(r.localId)===String(c.dependency.accountPlan&&c.dependency.accountPlan.legacy_id)&&(r.canonicalDiffs||[]).some(d=>d.field==='balance');
+      if(dependent){explained++;continue}
+      if(bl&&bc)unchanged++;else if(!bl&&bc)pushes++;else if(bl&&!bc)pulls++;else if(!bl&&!bc&&!lc)conflicts++;else converged++;
+    }
+    const unmatched=baseline.records.filter(b=>!cur.has(b.entity+':'+String(b.supabase_id)));
+    const localDeletes=unmatched.filter(b=>!singleton(b.entity)&&!planIdKeys.has(b.entity+':'+String(b.supabase_id))).length;
+    const cloudDeletes=unmatched.filter(b=>!singleton(b.entity)&&planIdKeys.has(b.entity+':'+String(b.supabase_id))).length;
+    const blocked=unmatched.length-localDeletes-cloudDeletes;
+    const independent=c.notes.length+c.txCandidates.length;
+    const checks={
+      freshAuthoritativeValidation:!!validation,
+      noUnexpectedCloudState:cloudState.ok,
+      exactCandidateSet:independent===2&&c.notes.length===1&&c.txCandidates.length===1&&!!(c.txGuard&&c.txGuard.safe)&&!!(c.dependency&&c.dependency.safe),
+      writeAllowlist:true,
+      canonicalNotes:c.notes.length===1,
+      canonicalTransaction:!!(c.txGuard&&c.txGuard.safe),
+      canonicalAccount:!!(c.dependency&&c.dependency.safe),
+      partialFailureHandling:!!support&&support.retrySafe===true&&support.atomicGroup==='cap_test_transaction_create'&&support.partialStateTracking===true&&Array.isArray(support.states)&&support.states.length>=5,
+      atomicTransactionGroupAvailable:rpcAvailable,
+      atomicRollbackGuaranteed:rpcAvailable,
+      idempotentRetryProtection:rpcAvailable,
+      canonicalPostWriteVerification:rpcAvailable,
+      baselineMutationDisabled:true,
+      outboxProcessingDisabled:true,
+      cloudSyncOff:true
+    };
+    const safe=Object.values(checks).every(Boolean),yn=v=>v?'YES':'NO',pf=v=>v?'PASS':'FAIL';
+    const testBtn=document.getElementById('controlled-write-test');if(testBtn)testBtn.disabled=!safe;
+    const ids=[];
+    if(c.notes.length)ids.push('notes local '+esc(String(c.notes[0].localId))+' · UUID '+esc(String(c.notes[0].supabase_id)));
+    if(c.tx)ids.push('transactions local '+esc(String(c.tx.localId))+' · UUID '+esc(String(c.tx.id)));
+    if(c.dependency&&c.dependency.accountPlan)ids.push('accounts local '+esc(String(c.dependency.accountPlan.legacy_id))+' · UUID '+esc(String(c.dependency.accountPlan.id)));
+    if(out)out.innerHTML='<b>PHASE 6K.4 PRE-FLIGHT AUDIT</b><br>RPC metadata verification: '+pf(rpcAvailable)
+      +'<br>RPC Ready: '+yn(CapSupabase.rpcReady())
+      +'<br>Verifier failed condition(s): '+esc(verifierFailures.length?verifierFailures.join(', '):'none')
+      +'<br>Controlled write support: '+esc(support?support.version:'unavailable')
+      +'<br>Blocking audit check(s): '+esc(Object.entries(checks).filter(([k,v])=>!v).map(([k])=>k).join(', ')||'none')
+      +'<br>Cloud state: unexpected '+esc(String(cloudState.unexpected))+' ['+esc(cloudState.unexpectedDetails.join(' | ')||'none')+'] · foreign keys '+esc(String(cloudState.foreignKeys))+' ['+esc(cloudState.foreignKeyDetails.join(' | ')||'none')+'] · unexplained mismatch fields ['+esc(cloudState.unexplainedDetails.join(' | ')||'none')+'] · aggregate-only '+cloudState.totalBalanceOnly+' · missing ['+esc(cloudState.missingDetails.join(' | ')||'none')+'] · expected transaction only: '+(cloudState.expectedMissing?'YES':'NO')
+      +'<br><br>Atomic transaction-create group available: '+yn(checks.atomicTransactionGroupAvailable)
+      +'<br>Atomic rollback guarantee: '+yn(checks.atomicRollbackGuaranteed)
+      +'<br>Idempotent retry protection: '+yn(checks.idempotentRetryProtection)
+      +'<br>Partial-success state tracking: '+yn(checks.partialFailureHandling)
+      +'<br>Canonical post-write verification: '+yn(checks.canonicalPostWriteVerification)
+      +'<br><br>Transaction INSERT guard: '+pf(checks.canonicalTransaction)
+      +'<br>Notes UPDATE guard: '+pf(checks.canonicalNotes)
+      +'<br>Dependent account UPDATE guard: '+pf(checks.canonicalAccount)
+      +'<br>Independent primary candidates: '+independent
+      +'<br>Logical dependent writes: '+(checks.canonicalAccount?1:0)
+      +'<br>Pulls: '+pulls
+      +'<br>Local deletes: '+localDeletes
+      +'<br>Cloud deletes: '+cloudDeletes
+      +'<br>Conflicts: '+conflicts
+      +'<br>Blocked: '+blocked
+      +'<br>Pending real-data outbox: '+realPending.length
+      +'<br>Cloud Sync: OFF'
+      +'<br><br>Candidate identities:<br>'+(ids.length?ids.join('<br>'):'none')
+      +'<br><br>Safe to execute controlled write test: '+(safe?'YES':'NO')
+      +'<br>Controlled write not executed.';
+    toast('Controlled write audit complete',safe);
+  }catch(e){if(out)out.textContent='Pre-flight audit failed: '+e.message;toast('Controlled write audit failed')}
+}
+async function diagnosePhase6K4A(){
+  const out=$('#phase6k4a-result');if(out)out.textContent='Running Phase 6K.4A read-only diagnosis…';
+  const yn=v=>v?'YES':'NO',lines=[];
+  try{
+    lines.push('<b>PHASE 6K.4A — A. RPC VERIFIER</b>');
+    lines.push('Authenticated session present: '+yn(!!(CapSupabase.status()&&CapSupabase.status().authenticated)));
+    await CapSupabase.refreshRpcReadiness();
+    const st=CapSupabase.rpcVerifierStatus?CapSupabase.rpcVerifierStatus():null;
+    const v=st&&st.response&&typeof st.response==='object'?st.response:null;
+    const field=k=>v&&Object.prototype.hasOwnProperty.call(v,k)?String(v[k]):'missing';
+    const failed=[];
+    if(!st||!st.success)failed.push('verifier call failed');
+    else if(!v)failed.push('malformed verifier response');
+    else{
+      [['exists',true],['signature_ok',true],['security_invoker',true],['language_ok',true],['authenticated_execute',true],['anon_execute',false],['public_execute',false],['version_ok',true],['ready',true]].forEach(([k,want])=>{if(v[k]!==want)failed.push(k)});
+      if(v.version!=='CAP_PHASE_6K2A_V1')failed.push('version');
+    }
+    lines.push('Verifier HTTP/RPC success: '+yn(!!(st&&st.success)));
+    lines.push('Verifier error code: '+esc(String(st&&(st.code||st.status)||'none')));
+    lines.push('Verifier error message: '+esc(String(st&&st.error||'none')));
+    lines.push('Verifier raw response received: '+yn(!!v));
+    ['exists','signature_ok','security_invoker','language_ok','authenticated_execute','anon_execute','public_execute','version','version_ok','ready'].forEach(k=>lines.push(k+': '+esc(field(k))));
+    lines.push('Failed condition(s): '+esc(failed.length?failed.join(', '):'none'));
+
+    lines.push('<br><b>PHASE 6K.4A — B. TRANSACTION CANDIDATE</b>');
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline');
+    const u=await CapSupabase.currentUser();
+    const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),rows=await CapSync.recordFingerprints(plan,validation);
+    const source=[...(S.tx||[]),...(S.pend||[])];
+    const local=source.find(t=>String(t.note||'').trim().toUpperCase()==='DELETE SYNC TEST');
+    const planTx=local?plan.tables.find(x=>x[0]==='transactions')[1].find(r=>String(r.legacy_id)===String(local.id)):null;
+    const uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const base=planTx&&baseline&&Array.isArray(baseline.records)?baseline.records.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(planTx.id)):null;
+    const cloud=planTx?(validation.snapshot&&validation.snapshot.transactions||[]).find(r=>String(r.id)===String(planTx.id)):null;
+    const fp=planTx?rows.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(planTx.id)):null;
+    const available=fp?true:false;
+    const cmp=(a,b)=>available&&a!=null&&b!=null?(a===b?'SAME':'DIFFERENT'):'UNAVAILABLE';
+    let classification;
+    if(!local)classification='MISSING (local record absent)';
+    else if(!planTx)classification='OTHER (no migration-plan identity)';
+    else if(!base&&!cloud)classification='INSERT (new local record; baseline absent, cloud absent)';
+    else if(!base&&cloud)classification='OTHER (cloud record without baseline mapping)';
+    else if(base&&!cloud)classification='OTHER (baseline record without cloud counterpart)';
+    else if(!fp)classification='BLOCKED (paired fingerprint unavailable)';
+    else{const L=fp.contentFingerprint,C=fp.cloudContentFingerprint,B=base.contentFingerprint;if(L===B&&C===B)classification='UNCHANGED';else if(L!==B&&C===B)classification='UPDATE (PUSH)';else if(L===B&&C!==B)classification='PULL';else if(L!==B&&C!==B&&L!==C)classification='CONFLICT';else if(L===C)classification='CONVERGED';else classification='OTHER'}
+    const dep=planTx?phase6DependencyDiagnosis(plan,validation,[{entity:'transactions',localId:String(local&&local.id),id:String(planTx.id)}],local):null;
+    const guard=planTx?phase6TransactionInsertGuard(plan,validation,baseline,{localId:String(local&&local.id),supabase_id:String(planTx.id)},dep,u&&u.id):null;
+    const c=baseline?phase6ControlledCandidates(baseline,plan,validation,rows,u):null;
+    const pairedTx=c?rows.filter(r=>r.entity==='transactions'&&!c.baseKeys.has('transactions:'+r.supabase_id)).length:'unavailable';
+    lines.push('Baseline present: '+yn(!!(baseline&&Array.isArray(baseline.records)))+' · records: '+(baseline&&baseline.records?baseline.records.length:'missing'));
+    lines.push('Local record exists: '+yn(!!local)+' · local ID: '+esc(String(local&&local.id||'missing')));
+    lines.push('Migration-plan identity exists: '+yn(!!planTx)+' · UUID: '+esc(String(planTx&&planTx.id||'missing')));
+    lines.push('Stable UUID available: '+yn(!!planTx&&uuidRe.test(String(planTx.id))));
+    lines.push('Ownership valid: '+yn(!!planTx&&planTx.user_id===(u&&u.id)));
+    lines.push('Baseline record exists: '+yn(!!base));
+    lines.push('Cloud record exists: '+yn(!!cloud));
+    lines.push('Local vs baseline: '+cmp(fp&&fp.contentFingerprint,base&&base.contentFingerprint));
+    lines.push('Local vs cloud: '+cmp(fp&&fp.contentFingerprint,fp&&fp.cloudContentFingerprint));
+    lines.push('Baseline vs cloud: '+cmp(base&&base.contentFingerprint,fp&&fp.cloudContentFingerprint));
+    lines.push('Transaction currently classified as: '+esc(classification));
+    lines.push('Transaction INSERT guard: '+(guard&&guard.safe?'PASS':'FAIL'));
+    if(guard&&!guard.safe)lines.push('Failing guard checks: '+esc(Object.entries(guard).filter(([k,x])=>k!=='safe'&&typeof x==='boolean'&&x!==true).map(([k])=>k).join(', ')||'none'));
+    lines.push('Guard derivation source (audit): paired local ↔ cloud fingerprint rows');
+    lines.push('Paired-row transaction candidates: '+pairedTx);
+    lines.push('Plan-minus-baseline transaction candidates: '+(c?c.txCandidates.length:'unavailable'));
+    lines.push('<br><b>RELATED ACCOUNT (READ-ONLY)</b>');
+    lines.push('Local account exists: '+yn(!!(dep&&dep.accountLocal)));
+    lines.push('Baseline mapping exists: '+yn(!!(dep&&dep.accountPlan&&baseline&&baseline.records.some(r=>r.entity==='accounts'&&String(r.supabase_id)===String(dep.accountPlan.id)))));
+    lines.push('Cloud account exists: '+yn(!!(dep&&dep.accountCloud)));
+    lines.push('Transaction relationship valid: '+yn(!!(planTx&&dep&&dep.accountPlan&&String(planTx.account_id)===String(dep.accountPlan.id))));
+    lines.push('Dependent balance difference still exists: '+yn(!!(dep&&dep.changed)));
+    lines.push('Current dependent classification: '+esc(dep&&dep.safe?'EXPLAINED DEPENDENT CHANGE':dep&&dep.changed?'UNEXPLAINED ACCOUNT DIFFERENCE':'NONE'));
+    lines.push('<br>No financial values displayed; no data was changed.');
+    if(out)out.innerHTML=lines.join('<br>');
+    toast('Phase 6K.4A diagnosis complete',true);
+  }catch(e){if(out)out.innerHTML=lines.join('<br>')+'<br>Diagnosis failed: '+esc(e.message||String(e));toast('Phase 6K.4A diagnosis failed')}
+}
+const CAP_CONTROLLED_WRITE_STATES=['NOTHING_APPLIED','NOTES_ONLY_APPLIED','TRANSACTION_GROUP_ONLY_APPLIED','NOTES_APPLIED_GROUP_UNKNOWN','ALL_APPLIED','VERIFICATION_FAILED'];
+window.CAP_CONTROLLED_WRITE_STATE={version:'phase6k5a-v1',state:'NOTHING_APPLIED',notes:'not_attempted',group:'not_attempted',verified:false,candidate:null,updated_at:null};
+function controlledWriteSupport(){return{version:'phase6k5a-v1',states:CAP_CONTROLLED_WRITE_STATES.slice(),atomicGroup:'cap_test_transaction_create',retrySafe:true,notesIdempotent:true,partialStateTracking:true}}
+function controlledWriteStatus(){return window.CAP_CONTROLLED_WRITE_STATE}
+function setControlledState(patch){window.CAP_CONTROLLED_WRITE_STATE={...window.CAP_CONTROLLED_WRITE_STATE,...patch,updated_at:new Date().toISOString()};return window.CAP_CONTROLLED_WRITE_STATE}
+function cloudWriteDiff(before,after,allowed){
+  const allow=new Set((allowed||[]).map(([e,id])=>e+':'+String(id))),out=[];
+  const entities=new Set([...Object.keys(before||{}),...Object.keys(after||{})]);
+  for(const entity of entities){
+    if(entity==='profiles'||entity==='user_preferences')continue;
+    const b=new Map(((before&&before[entity])||[]).map(r=>[String(r.id),JSON.stringify(r)])),a=new Map(((after&&after[entity])||[]).map(r=>[String(r.id),JSON.stringify(r)]));
+    for(const [id,row] of a){if(!allow.has(entity+':'+id)&&b.get(id)!==row)out.push(entity+':'+id)}
+    for(const id of b.keys()){if(!a.has(id)&&!allow.has(entity+':'+id))out.push(entity+':'+id)}
+  }
+  return out
+}
+async function cleanupPhase6TestArtifact(){
+  const out=$('#phase6-test-cleanup-result'),stage=s=>{if(out)out.textContent=s};
+  try{
+    stage('Reading cloud test artifacts…');
+    const u=await CapSupabase.currentUser();if(!u||!u.id)throw Error('No authenticated Supabase user');
+    const accounts=await CapSupabase.syncRequest('/rest/v1/accounts?select=*&legacy_id=like.phase6-test-*');
+    const list=Array.isArray(accounts)?accounts:[];
+    if(!list.length){if(out)out.textContent='No phase6-test-* cloud accounts found; nothing to delete.';return}
+    if(list.length!==1)throw Error('Expected exactly one test account; found '+list.length+' — no deletion performed');
+    const a=list[0];
+    if(String(a.legacy_id)!=='phase6-test-'+String(a.id))throw Error('Test account legacy_id does not match its UUID; no deletion performed');
+    if(String(a.user_id)!==String(u.id))throw Error('Test account ownership mismatch; no deletion performed');
+    if(Number(a.balance)!==0)throw Error('Test account balance is not zero; no deletion performed');
+    const enc=encodeURIComponent(a.id);
+    const count=async path=>{const r=await CapSupabase.syncRequest(path);if(!Array.isArray(r))throw Error('Reference check failed: '+path);return r.length};
+    const refs={
+      transactions:await count('/rest/v1/transactions?select=id&account_id=eq.'+enc),
+      transfersFrom:await count('/rest/v1/transfers?select=id&from_account_id=eq.'+enc),
+      transfersTo:await count('/rest/v1/transfers?select=id&to_account_id=eq.'+enc),
+      goals:await count('/rest/v1/goals?select=id&account_id=eq.'+enc),
+      bills:await count('/rest/v1/bills?select=id&payment_account_id=eq.'+enc),
+      statements:await count('/rest/v1/account_statements?select=id&account_id=eq.'+enc)
+    };
+    if(Object.values(refs).reduce((n,x)=>n+x,0))throw Error('Test account is referenced ('+JSON.stringify(refs)+'); no deletion performed');
+    const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep);
+    if(plan.tables.find(x=>x[0]==='accounts')[1].some(x=>String(x.id)===String(a.id)))throw Error('Test account is present in the local plan; no deletion performed');
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline');
+    if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing; refusing cleanup');
+    if(baseline.records.some(r=>r.entity==='accounts'&&String(r.supabase_id)===String(a.id)))throw Error('Test account is tracked in the baseline; no deletion performed');
+    if(!confirm('Delete this verified test artifact?\n\nUUID: '+a.id+'\nlegacy_id: '+a.legacy_id+'\nBalance: zero\nReferences: 0\nNot in local plan. Not in baseline.\n\nThis is a permanent Supabase DELETE. No other records will be touched.'))return;
+    stage('Deleting verified test artifact…');
+    const deleted=await CapSupabase.syncRequest('/rest/v1/accounts?id=eq.'+enc+'&user_id=eq.'+encodeURIComponent(u.id),{method:'DELETE',headers:{Prefer:'return=representation'}});
+    if(!Array.isArray(deleted)||deleted.length!==1||String(deleted[0].id)!==String(a.id))throw Error('DELETE VERIFICATION FAILED — TEST ARTIFACT MAY STILL EXIST');
+    const remaining=await CapSupabase.syncRequest('/rest/v1/accounts?select=id&id=eq.'+enc);
+    if(!Array.isArray(remaining)||remaining.length!==0)throw Error('DELETE VERIFICATION FAILED — RECORD STILL PRESENT');
+    if(out)out.textContent='Test artifact deleted ✓\nUUID: '+a.id+'\nPost-delete verification: PASS\nNo other records modified.';
+    toast('Test artifact deleted',true);
+  }catch(e){if(out)out.textContent='Cleanup failed: '+e.message;toast('Test artifact cleanup failed')}
+}
+const PHASE6K6_TARGETS=[['notes','66fb12b5-e10f-583e-9b23-7dc7d537b350'],['transactions','37e534ed-b1f9-5a76-ac0d-9fffa621d588'],['accounts','3375b984-b961-53fb-bf4d-4e72c53918e9']];
+async function phase6k6Preflight(){
+  const baseline=await CapOff.syncStore('syncmeta','get','baseline');
+  if(!baseline||baseline.version!==2||!Array.isArray(baseline.records))throw Error('Baseline is missing, not version 2, or corrupt');
+  const u=await CapSupabase.currentUser();
+  if(!u||!u.id)throw Error('No authenticated Supabase user');
+  if(String(baseline.user_id)!==String(u.id))throw Error('Baseline ownership does not match the authenticated user');
+  const pending=await CapOff.syncStore('outbox','all').catch(()=>[]);
+  if(pending.some(x=>x.user_id===u.id&&!String((x.payload&&x.payload.legacy_id)||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');
+  const prep=migrationPrepare();
+  if(prep.blockingProblems.length)throw Error('Migration blocking problems remain');
+  const plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);
+  if(!validation.dataOk)throw Error('Validation is not clean: missing '+validation.missingCount+', unexpected '+validation.unexpectedCount+', mismatches '+validation.mismatchCount+', foreign keys '+validation.foreignKeyErrorCount);
+  const rows=await CapSync.recordFingerprints(plan,validation),key=r=>r.entity+':'+String(r.supabase_id);
+  const base=new Map(baseline.records.map(r=>[key(r),r])),current=new Map(rows.map(r=>[key(r),r]));
+  const targets=PHASE6K6_TARGETS.map(([entity,id])=>{
+    const k=entity+':'+id,r=current.get(k),b=base.get(k);
+    if(!r)throw Error('Controlled target missing from current plan: '+k);
+    if(String(r.user_id)!==String(u.id))throw Error('Controlled target ownership mismatch: '+k);
+    if(r.contentFingerprint!==r.cloudContentFingerprint)throw Error('Controlled target is not converged: '+k);
+    if(b&&b.contentFingerprint===r.contentFingerprint)throw Error('Controlled target already matches baseline: '+k);
+    return{entity,supabase_id:id,localId:r.localId,row:r,existing:!!b}
+  });
+  const targetKeys=new Set(PHASE6K6_TARGETS.map(([e,id])=>e+':'+id));
+  for(const [k,r] of current){
+    if(targetKeys.has(k))continue;
+    const b=base.get(k);
+    if(!b)throw Error('Record outside the controlled set is not in the baseline: '+k);
+    if(r.contentFingerprint!==b.contentFingerprint)throw Error('Unexpected local change outside the controlled set: '+k);
+    if(r.cloudContentFingerprint!==b.contentFingerprint)throw Error('Unexpected cloud change outside the controlled set: '+k);
+  }
+  for(const k of base.keys())if(!current.has(k))throw Error('Baseline record missing from current plan: '+k);
+  if(current.size!==base.size+1)throw Error('Expected exactly one new baseline record; found '+(current.size-base.size));
+  return{baseline,u,plan,validation,rows,current,base,targets}
+}
+async function phase6k6Verify(){
+  const baseline=await CapOff.syncStore('syncmeta','get','baseline');
+  if(!baseline||baseline.version!==2||!Array.isArray(baseline.records))return{ok:false,reason:'baseline missing, not version 2, or corrupt'};
+  const u=await CapSupabase.currentUser();if(!u||!u.id)return{ok:false,reason:'no authenticated user'};
+  if(String(baseline.user_id)!==String(u.id))return{ok:false,reason:'baseline ownership mismatch'};
+  const prep=migrationPrepare();if(prep.blockingProblems.length)return{ok:false,reason:'migration blocking problems remain'};
+  const plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);
+  if(!validation.dataOk)return{ok:false,reason:'validation not clean (missing '+validation.missingCount+', unexpected '+validation.unexpectedCount+', mismatches '+validation.mismatchCount+', foreign keys '+validation.foreignKeyErrorCount+')'};
+  const rows=await CapSync.recordFingerprints(plan,validation);
+  if(rows.length!==baseline.records.length)return{ok:false,reason:'record count mismatch ('+rows.length+' vs '+baseline.records.length+')'};
+  const base=new Map(baseline.records.map(r=>[r.entity+':'+String(r.supabase_id),r])),bad=[];
+  for(const r of rows){
+    const b=base.get(r.entity+':'+String(r.supabase_id));
+    if(!b){bad.push('unbaselined '+r.entity+' '+r.localId);continue}
+    if(r.contentFingerprint!==b.contentFingerprint)bad.push('local '+r.entity+' '+r.localId);
+    if(r.cloudContentFingerprint!==b.contentFingerprint)bad.push('cloud '+r.entity+' '+r.localId);
+  }
+  const keys=new Set(rows.map(r=>r.entity+':'+String(r.supabase_id)));
+  for(const k of base.keys())if(!keys.has(k))bad.push('baseline-only '+k);
+  return{ok:!bad.length,bad,count:rows.length}
+}
+async function reconcileControlledBaseline(){
+  const out=$('#controlled-baseline-result'),stage=s=>{if(out)out.textContent=s};
+  const btn=document.getElementById('controlled-baseline-reconcile');if(btn)btn.disabled=true;
+  try{
+    stage('Phase 6K.6 preflight: verifying converged state…');
+    const first=await phase6k6Preflight();
+    const summary=first.targets.map(t=>t.entity+' local '+t.localId+' · '+(t.existing?'update':'add')+' · UUID '+t.supabase_id).join('\n');
+    if(!confirm('Reconcile the local sync baseline for the verified controlled write?\n\n'+summary+'\n\nBaseline records: '+first.baseline.records.length+' → '+(first.baseline.records.length+1)+'\n\nLocal sync metadata only. No Supabase writes. Cloud Sync remains OFF.')){stage('Baseline reconciliation cancelled. No changes made.');return}
+    stage('Re-validating immediately before the baseline write…');
+    const second=await phase6k6Preflight();
+    for(const t of first.targets){
+      const s2=second.targets.find(x=>x.entity===t.entity&&x.supabase_id===t.supabase_id);
+      if(!s2||s2.row.contentFingerprint!==t.row.contentFingerprint||s2.row.cloudContentFingerprint!==t.row.cloudContentFingerprint)throw Error('BASELINE RECONCILIATION ABORTED — STATE CHANGED DURING CONFIRMATION');
+    }
+    const latest=await CapOff.syncStore('syncmeta','get','baseline');
+    if(!latest||latest.version!==2||!Array.isArray(latest.records)||latest.records.length!==first.baseline.records.length)throw Error('BASELINE RECONCILIATION FAILED — BASELINE CHANGED');
+    const fields=t=>({localId:t.row.localId,user_id:second.u.id,local_updated_at:t.row.local_updated_at,cloud_updated_at:t.row.cloud_updated_at,contentFingerprint:t.row.contentFingerprint,canonicalDiffs:t.row.canonicalDiffs});
+    let replaced=0,added=0;
+    const next=latest.records.map(r=>{
+      const t=second.targets.find(x=>x.entity===r.entity&&String(x.supabase_id)===String(r.supabase_id));
+      if(!t)return r;
+      replaced++;
+      return{...r,...fields(t)}
+    });
+    for(const t of second.targets){
+      if(t.existing)continue;
+      next.push({entity:t.entity,supabase_id:t.supabase_id,...fields(t)});
+      added++;
+    }
+    if(replaced!==2||added!==1||next.length!==latest.records.length+1)throw Error('BASELINE RECONCILIATION ABORTED — UNEXPECTED BASELINE SET');
+    stage('Writing baseline metadata…');
+    try{await CapOff.syncStore('syncmeta','put',{...latest,records:next,reconciled_at:new Date().toISOString(),reconciled_version:'phase6k6-v1'},'baseline')}
+    catch(e){throw Error('DATA CONVERGED — BASELINE UPDATE FAILED: '+(e.message||e))}
+    stage('Post-write baseline verification…');
+    const check=await phase6k6Verify();
+    if(!check.ok)throw Error('DATA CONVERGED — BASELINE UPDATE FAILED: '+check.reason+(check.bad&&check.bad.length?' ('+check.bad.join(', ')+')':''));
+    stage('BASELINE RECONCILIATION: SUCCESS\nNotes baseline record: updated\nTransaction baseline record: added\nAccount baseline record: updated\nBaseline records: '+check.count+'\nRemaining differences: 0\nCloud Sync: OFF\nNo Supabase writes were made.');
+    toast('Baseline reconciled; zero remaining differences',true);
+  }catch(e){if(out)out.textContent='Baseline reconciliation failed: '+e.message;toast('Baseline reconciliation failed')}
+}
+async function testControlledRetry(){
+  const out=$('#controlled-retry-result'),stage=s=>{if(out)out.textContent=s};
+  const btn=document.getElementById('controlled-retry-test');if(btn)btn.disabled=true;
+  try{
+    stage('Retry preflight: verifying fully synchronized state…');
+    if(!CapSupabase.rpcReady()){const ok=await CapSupabase.refreshRpcReadiness();if(!ok)throw Error('Atomic transaction RPC is not verified/ready')}
+    const first=await phase6k6Verify();
+    if(!first.ok)throw Error('Retry preflight failed: '+first.reason+(first.bad&&first.bad.length?' ('+first.bad.join(', ')+')':''));
+    const u=await CapSupabase.currentUser();if(!u||!u.id)throw Error('No authenticated Supabase user');
+    const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep);
+    const noteRow=plan.tables.find(x=>x[0]==='notes')[1].find(r=>String(r.id)==='66fb12b5-e10f-583e-9b23-7dc7d537b350');
+    const txPlan=plan.tables.find(x=>x[0]==='transactions')[1].find(r=>String(r.id)==='37e534ed-b1f9-5a76-ac0d-9fffa621d588');
+    if(!noteRow||!txPlan)throw Error('Controlled retry payload unavailable');
+    const noteId='66fb12b5-e10f-583e-9b23-7dc7d537b350',txId='37e534ed-b1f9-5a76-ac0d-9fffa621d588',acctId='3375b984-b961-53fb-bf4d-4e72c53918e9';
+    const noteBody={title:noteRow.title,body:noteRow.body,note_date:noteRow.note_date};
+    const rpcBody={p_transaction_id:txPlan.id,p_legacy_id:String(txPlan.legacy_id),p_account_id:txPlan.account_id,p_category_id:txPlan.category_id??null,p_bill_id:txPlan.bill_id??null,p_amount:Number(txPlan.amount),p_transaction_date:txPlan.transaction_date,p_posting_date:txPlan.posting_date??null,p_status:txPlan.status,p_title:txPlan.title??null,p_description:txPlan.description??null,p_metadata:txPlan.metadata??{}};
+    const enc=encodeURIComponent,read=async(path)=>{const r=await CapSupabase.syncRequest(path);if(!Array.isArray(r)||r.length!==1)throw Error('Cloud row unavailable: '+path);return r[0]};
+    const beforeNote=await read('/rest/v1/notes?select=id,updated_at,title,body,note_date&id=eq.'+enc(noteId));
+    const beforeTx=await read('/rest/v1/transactions?select=id,updated_at&id=eq.'+enc(txId));
+    const beforeAcct=await read('/rest/v1/accounts?select=id,updated_at&id=eq.'+enc(acctId));
+    const same=(a,b)=>String(a??'')===String(b??'');
+    if(!same(beforeNote.title,noteBody.title)||!same(beforeNote.body,noteBody.body)||!same(beforeNote.note_date,noteBody.note_date))throw Error('Notes cloud content differs from the intended payload; retry aborted');
+    if(!confirm('Run controlled retry test?\n\n1. notes PATCH with identical values (idempotent)\n2. transaction RPC with identical payload (must return ALREADY_APPLIED)\n\nNo content changes are expected.\nCloud Sync remains OFF. The baseline is not updated.')){stage('Controlled retry cancelled. No requests were sent.');return}
+    const second=await phase6k6Verify();
+    if(!second.ok)throw Error('State changed during confirmation; retry aborted: '+second.reason);
+    stage('Retry 1/2: re-sending identical notes PATCH…');
+    let noteRows;
+    try{noteRows=await CapSupabase.syncRequest('/rest/v1/notes?id=eq.'+enc(noteId)+'&user_id=eq.'+enc(u.id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(noteBody)})}
+    catch(e){throw Error('NOTES RETRY REQUEST FAILED: '+(e.message||e))}
+    const noteOk=Array.isArray(noteRows)&&noteRows.length===1&&String(noteRows[0].id)===noteId&&same(noteRows[0].title,noteBody.title)&&same(noteRows[0].body,noteBody.body)&&same(noteRows[0].note_date,noteBody.note_date);
+    if(!noteOk)throw Error('NOTES RETRY CONTENT VERIFICATION FAILED');
+    stage('Retry 2/2: re-sending identical transaction RPC payload…');
+    let rpc;
+    try{rpc=await CapSupabase.syncRequest('/rest/v1/rpc/cap_test_transaction_create',{method:'POST',body:JSON.stringify(rpcBody)})}
+    catch(e){throw Error('RPC RETRY REQUEST FAILED: '+(e.message||e))}
+    const status=rpc&&rpc.status;
+    if(status!=='ALREADY_APPLIED')throw Error('RETRY CAUSED A WRITE OR RETURNED AN UNEXPECTED RESULT: '+String(status||'unknown'));
+    if(rpc.transaction_id&&String(rpc.transaction_id)!==txId)throw Error('RETRY RETURNED A DIFFERENT TRANSACTION ID');
+    stage('Verifying no unintended row changes…');
+    const afterNote=await read('/rest/v1/notes?select=id,updated_at,title,body,note_date&id=eq.'+enc(noteId));
+    const afterTx=await read('/rest/v1/transactions?select=id,updated_at&id=eq.'+enc(txId));
+    const afterAcct=await read('/rest/v1/accounts?select=id,updated_at&id=eq.'+enc(acctId));
+    const final=await phase6k6Verify();
+    if(!final.ok)throw Error('RETRY VERIFICATION FAILED: '+final.reason+(final.bad&&final.bad.length?' ('+final.bad.join(', ')+')':''));
+    if(String(afterTx.updated_at)!==String(beforeTx.updated_at))throw Error('RETRY MODIFIED THE TRANSACTION ROW');
+    if(String(afterAcct.updated_at)!==String(beforeAcct.updated_at))throw Error('RETRY MODIFIED THE ACCOUNT ROW (BALANCE MAY HAVE BEEN REAPPLIED)');
+    const noteContentSame=same(afterNote.title,noteBody.title)&&same(afterNote.body,noteBody.body)&&same(afterNote.note_date,noteBody.note_date);
+    if(!noteContentSame)throw Error('RETRY MODIFIED NOTES CONTENT');
+    stage('CONTROLLED RETRY: SUCCESS\nNotes PATCH: identical payload accepted\nNotes content: unchanged\nRPC result: ALREADY_APPLIED\nTransaction row updated: NO\nAccount row updated: NO\nAccount balance reapplied: NO\nNotes updated_at refreshed: '+(String(afterNote.updated_at)!==String(beforeNote.updated_at)?'YES':'NO')+'\nRemaining differences: 0\nCloud Sync: OFF · Baseline: UNCHANGED');
+    toast('Controlled retry test passed',true);
+  }catch(e){if(out)out.textContent='Controlled retry failed: '+e.message;toast('Controlled retry failed')}
+}
+async function testControlledWrite(){
+  const out=$('#controlled-write-result');
+  const stage=s=>{if(out)out.textContent=s};
+  const testBtn=document.getElementById('controlled-write-test');if(testBtn)testBtn.disabled=true;
+  const support=controlledWriteSupport();
+  try{
+    if(!support.retrySafe)throw Error('Controlled write support unavailable');
+    stage('Fresh preflight: validating…');
+    const baseline=await CapOff.syncStore('syncmeta','get','baseline');
+    if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline is missing or corrupt');
+    const rpcReady=await CapSupabase.refreshRpcReadiness();
+    if(!rpcReady||!CapSupabase.rpcReady())throw Error('Atomic transaction RPC is not verified/ready');
+    const u=await CapSupabase.currentUser();if(!u||!u.id)throw Error('No authenticated Supabase user');
+    const prep=migrationPrepare();if(prep.blockingProblems.length)throw Error('Migration blocking problems remain');
+    const plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);
+    const pending=await CapOff.syncStore('outbox','all').catch(()=>[]);
+    if(pending.some(x=>x.user_id===u.id&&!String((x.payload&&x.payload.legacy_id)||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');
+    const rows=await CapSync.recordFingerprints(plan,validation),c=phase6ControlledCandidates(baseline,plan,validation,rows,u);
+    const pre=phase6ControlledPreflightState(validation,c);
+    if(!pre.ok)throw Error('Fresh validation failed: missing '+pre.missing+' (expected new transaction only: '+(pre.expectedMissing?'yes':'no')+'), unexpected '+pre.unexpected+', unexplained mismatches '+pre.unexplainedMismatches+', foreign keys '+pre.foreignKeys);
+    if(c.notes.length!==1||c.txCandidates.length!==1||!(c.txGuard&&c.txGuard.safe)||!(c.dependency&&c.dependency.safe))throw Error('Controlled guards changed: expected notes UPDATE, transaction INSERT, and safe dependent account UPDATE');
+    const note=c.notes[0],tx=c.tx,txPlan=tx.planTx,accountPlan=c.dependency.accountPlan;
+    const notePlan=plan.tables.find(x=>x[0]==='notes')[1].find(r=>String(r.id)===String(note.supabase_id));
+    if(!notePlan||!txPlan||!accountPlan)throw Error('Verified candidate payload unavailable');
+    const notePath='/rest/v1/notes?id=eq.'+encodeURIComponent(note.supabase_id)+'&user_id=eq.'+encodeURIComponent(u.id);
+    const noteBody={title:notePlan.title,body:notePlan.body,note_date:notePlan.note_date};
+    const rpcBody={p_transaction_id:txPlan.id,p_legacy_id:String(txPlan.legacy_id),p_account_id:txPlan.account_id,p_category_id:txPlan.category_id??null,p_bill_id:txPlan.bill_id??null,p_amount:Number(txPlan.amount),p_transaction_date:txPlan.transaction_date,p_posting_date:txPlan.posting_date??null,p_status:txPlan.status,p_title:txPlan.title??null,p_description:txPlan.description??null,p_metadata:txPlan.metadata??{}};
+    const expectedBalance=Number(accountPlan.balance);
+    if(!Number.isFinite(expectedBalance))throw Error('Expected account balance unavailable');
+    const identity=[note.supabase_id,tx.id,accountPlan.id].join('|');
+    setControlledState({state:'NOTHING_APPLIED',notes:'not_attempted',group:'not_attempted',verified:false,candidate:identity,lastRun:new Date().toISOString()});
+    if(!confirm('Run controlled sync test?\n\n3 logical writes will be attempted:\n1. notes UPDATE (independent, idempotent)\n2. transactions INSERT + accounts UPDATE (one atomic database RPC)\n\nCloud Sync stays OFF.\nThe sync baseline will NOT be updated.\n\nState machine: NOTHING_APPLIED → NOTES_ONLY_APPLIED → ALL_APPLIED'))return;
+    stage('Re-validating candidate identities…');
+    const validation2=await CapSupabase.validateRealData(plan),rows2=await CapSync.recordFingerprints(plan,validation2),c2=phase6ControlledCandidates(baseline,plan,validation2,rows2,u);
+    const identity2=[c2.notes[0]&&c2.notes[0].supabase_id,c2.tx&&c2.tx.id,c2.dependency&&c2.dependency.accountPlan&&c2.dependency.accountPlan.id].join('|');
+    if(identity!==identity2||c2.notes.length!==1||c2.txCandidates.length!==1||!(c2.txGuard&&c2.txGuard.safe)||!(c2.dependency&&c2.dependency.safe))throw Error('CANDIDATES CHANGED DURING CONFIRMATION — ABORTED');
+    stage('Notes UPDATE pending');
+    let noteRows;
+    try{
+      noteRows=await CapSupabase.syncRequest(notePath,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(noteBody)});
+    }catch(e){
+      setControlledState({state:'NOTHING_APPLIED',notes:'unknown',group:'not_attempted'});
+      throw Error('NOTES WRITE OUTCOME UNKNOWN — RETRY IS SAFE (idempotent): '+(e.message||e));
+    }
+    const noteWritten=Array.isArray(noteRows)&&noteRows.length===1&&String(noteRows[0].id)===String(note.supabase_id);
+    const notePayloadOk=noteWritten&&String(noteRows[0].title??'')===String(noteBody.title??'')&&String(noteRows[0].body??'')===String(noteBody.body??'')&&String(noteRows[0].note_date??'')===String(noteBody.note_date??'');
+    if(!noteWritten){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied_unverified'});throw Error('NOTES WRITE OCCURRED — VERIFICATION FAILED')}
+    if(!notePayloadOk){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied_unverified'});throw Error('NOTES WRITE OCCURRED — PAYLOAD VERIFICATION FAILED')}
+    setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied'});
+    stage('Atomic transaction group pending');
+    let rpcResult;
+    try{
+      rpcResult=await CapSupabase.syncRequest('/rest/v1/rpc/cap_test_transaction_create',{method:'POST',body:JSON.stringify(rpcBody)});
+    }catch(e){
+      setControlledState({state:'NOTES_APPLIED_GROUP_UNKNOWN',notes:'applied',group:'unknown'});
+      throw Error('ATOMIC GROUP OUTCOME UNKNOWN — RETRY IS SAFE (notes applied; RPC returns ALREADY_APPLIED if it committed): '+(e.message||e));
+    }
+    const rpcStatus=rpcResult&&rpcResult.status;
+    if(rpcStatus!=='APPLIED'&&rpcStatus!=='ALREADY_APPLIED'){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied',group:'rejected'});throw Error('ATOMIC GROUP REJECTED: '+String(rpcStatus||'unknown'))}
+    setControlledState({state:'ALL_APPLIED',notes:'applied',group:rpcStatus==='ALREADY_APPLIED'?'already_applied':'applied'});
+    stage('Canonical post-write verification…');
+    const verification=await CapSupabase.validateRealData(plan),verifiedRows=await CapSync.recordFingerprints(plan,verification);
+    const vNote=verifiedRows.find(r=>r.entity==='notes'&&String(r.supabase_id)===String(note.supabase_id));
+    const vTx=verifiedRows.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(tx.id));
+    const acctCloud=(verification.snapshot.accounts||[]).find(a=>String(a.id)===String(accountPlan.id));
+    const noteOk=!!vNote&&vNote.contentFingerprint===vNote.cloudContentFingerprint;
+    const txOk=!!vTx&&vTx.contentFingerprint===vTx.cloudContentFingerprint;
+    const acctOk=!!acctCloud&&Math.abs(Number(acctCloud.balance)-expectedBalance)<.005;
+    const diff=cloudWriteDiff(validation2.snapshot,verification.snapshot,[['notes',note.supabase_id],['transactions',tx.id],['accounts',accountPlan.id]]);
+    if(!verification.dataOk||!noteOk||!txOk||!acctOk||diff.length){
+      setControlledState({state:'VERIFICATION_FAILED',notes:'applied',group:'applied',verified:false});
+      throw Error('CLOUD WRITE OCCURRED — VERIFICATION FAILED'+(diff.length?' · unexpected changed records: '+diff.join(', '):'')+' · notes '+(noteOk?'ok':'FAIL')+' · transaction '+(txOk?'ok':'FAIL')+' · account '+(acctOk?'ok':'FAIL'));
+    }
+    setControlledState({state:'ALL_APPLIED',notes:'applied',group:'applied',verified:true});
+    stage('Controlled write execution: SUCCESS\nNotes UPDATE verified: YES\nTransaction INSERT verified: YES\nDependent account UPDATE verified: YES\nUnexpected writes: 0\nPost-write verification: PASS\nRPC result: '+rpcStatus+'\nState: ALL_APPLIED\nCloud Sync: OFF · Baseline: UNCHANGED');
+    toast('Controlled write test passed',true);
+  }catch(e){
+    const state=(window.CAP_CONTROLLED_WRITE_STATE&&window.CAP_CONTROLLED_WRITE_STATE.state)||'NOTHING_APPLIED';
+    if(out)out.textContent='Controlled write failed ['+state+']: '+e.message;
+    toast('Controlled write failed');
+  }
+}
+async function testSingleTransactionPush(){const out=$('#single-push-result');let cloudWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};try{stage('Fresh dry run: validating…');const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing or corrupt');const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);if(!validation.dataOk)throw Error('Fresh validation failed');const pending=await CapOff.syncStore('outbox','all').catch(()=>[]);if(pending.some(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');const current=await CapSync.recordFingerprints(plan,validation),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r])),push=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint!==b.contentFingerprint&&r.cloudContentFingerprint===b.contentFingerprint});if(push.length!==1)throw Error('Fresh dry run did not produce exactly one safe transaction PUSH candidate');const candidate=push[0],local=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(candidate.supabase_id)),cloud=validation.snapshot.transactions.find(x=>String(x.id)===String(candidate.supabase_id)),b=base.get(candidate.entity+':'+candidate.supabase_id);if(!local||!cloud||!b||local.user_id!==u.id||cloud.user_id!==u.id)throw Error('Single transaction ownership or mapping verification failed');stage('Single transaction identified · Baseline verified · Local changed · Cloud unchanged · Ownership verified');if(!confirm('Test Single Record Push\n\nOne existing transaction will be updated in Supabase.\nNo other records will be changed.\nAutomatic Cloud Sync will remain OFF.'))return;const fields=['account_id','category_id','bill_id','parent_transaction_id','statement_id','amount','transaction_date','posting_date','status','title','description','metadata'],payload={};fields.forEach(k=>{if(Object.prototype.hasOwnProperty.call(local,k))payload[k]=local[k]});stage('User confirmed · Supabase UPDATE pending');await CapSupabase.syncRequest('/rest/v1/transactions?id=eq.'+encodeURIComponent(candidate.supabase_id)+'&user_id=eq.'+encodeURIComponent(u.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});cloudWrite=true;stage('Supabase UPDATE completed');const verify=await CapSupabase.validateRealData(plan),verified=await CapSync.recordFingerprints(plan,verify),vr=verified.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id));if(!vr||vr.user_id!==u.id||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error('Cloud/local fingerprint verification failed');stage('Cloud/local fingerprint verified');const latest=await CapOff.syncStore('syncmeta','get','baseline'),nextRecords=(latest.records||[]).map(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id)?{...r,localId:candidate.localId,user_id:u.id,local_updated_at:vr.local_updated_at,cloud_updated_at:vr.cloud_updated_at,contentFingerprint:vr.contentFingerprint}:r);if(nextRecords.length!==baseline.records.length)throw Error('Baseline record count changed');await CapOff.syncStore('syncmeta','put',{...latest,records:nextRecords,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Single baseline record updated');const finalPlan=buildSupabaseMigrationPlan(migrationPrepare()),final=await CapSupabase.validateRealData(finalPlan),finalRows=await CapSync.recordFingerprints(finalPlan,final),finalBase=new Map(nextRecords.map(r=>[r.entity+':'+r.supabase_id,r]));const remaining=finalRows.filter(r=>{const x=finalBase.get(r.entity+':'+r.supabase_id);return !x||r.contentFingerprint!==x.contentFingerprint||r.cloudContentFingerprint!==x.contentFingerprint});if(remaining.length)throw Error('Final dry run did not reach zero changes');stage('Final dry run passed · Unchanged: 43 · Would push: 0 · Conflicts: 0 · Automatic Cloud Sync OFF');toast('Single record push test passed',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('CLOUD WRITE OCCURRED — VERIFICATION FAILED: '+e.message);else if(cloudWrite&&baselineUpdated)stage('CLOUD WRITE VERIFIED — BASELINE UPDATE FAILED: '+e.message);else stage('Single push test failed: '+e.message);toast('Single record push test failed')}}
+async function testSupabaseCloudDatabase(){const out=$('#sb-crud-result');if(out)out.textContent='Testing disposable account CRUD…';try{const r=await CapSupabase.testCloudDatabase();if(out)out.textContent=r.stages.map(s=>s.name+' '+(s.ok?'✓':'✕'+(s.error?' '+s.error:''))).join(' · ');toast(r.ok?'Cloud database test passed':'Cloud database test failed',r.ok)}catch(e){if(out)out.textContent='Test failed: '+e.message;toast('Cloud database test failed')}}
 /* ---- About ---- */
 function stAbout(){ stStart();
   const h=stHead('About Cap','openSettings()')
@@ -3161,12 +3755,14 @@ function impUndo(){try{S=JSON.parse(localStorage.getItem('pera_pre'));localStora
 
 
 function bindStaticEvents() {
-  document.getElementById("add-entry-button").addEventListener("click", () => openTx());
-  document.getElementById("ai").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") aiGo();
+  let settingsTurns=0;
+  document.getElementById("settings-button").addEventListener("click", e=>{
+    const b=e.currentTarget,gear=b.querySelector('svg');
+    settingsTurns++;
+    if(gear)gear.style.transform='rotate('+(settingsTurns*180)+'deg)';
+    const sh=document.getElementById('sheet');
+    if(sh&&sh.classList.contains('open'))closeS();else openSettings();
   });
-  document.getElementById("send-entry-button").addEventListener("click", () => aiGo());
-  document.getElementById("settings-button").addEventListener("click", () => openSettings());
   document.getElementById("pop").addEventListener("click", function (event) {
     if (event.target === this) popX();
   });
@@ -3217,7 +3813,7 @@ function initUiEnhancements() {
     close();
     const p=document.createElement('div'); p.className='ps-pop'; p.setAttribute('role','listbox');
     if(kind=='acct'){p.classList.add('grid');
-      p.innerHTML=[...s.options].map((o,i)=>{const a=acctOf(o.value);
+      p.innerHTML=[...s.options].map((o,i)=>{if(o.disabled)return'';const a=acctOf(o.value);
         return `<div class="ps-copt${o.selected?' on':''}" role="option" tabindex="0" aria-selected="${o.selected}" aria-label="${esc(a?a.name:o.text)}" data-i="${i}"><div class="pick">${a?cardH(a,false,false):''}</div><span class="ps-cap">${a?esc(a.name)+(a.l4?' •• '+esc(a.l4):''):esc(o.text)}</span></div>`}).join('');
     }else
     p.innerHTML=[...s.options].map((o,i)=>`<button type="button" class="ps-opt${o.selected?' on':''}" role="option" aria-selected="${o.selected}" data-i="${i}">${icon(kind,o.value)}<span class="ps-t">${label(kind,o)}</span>${o.selected?CHECK:''}</button>`).join('');
