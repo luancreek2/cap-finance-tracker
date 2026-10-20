@@ -170,6 +170,45 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     if(Object.keys(row).some(k=>!['id','user_id','created_at','updated_at',...fields].includes(k)))throw Error('Unsupported note field');
     return Object.fromEntries(fields.map(k=>[k,row[k]]));
   }
+  /* Safe, content-free comparison of two local notes snapshots. Sync metadata
+     (_u/_mt) is reported separately from actual note content. */
+  function notesSnapshotDiff(before,current){
+    const strip=(k,v)=>(k==='_u'||k==='_mt')?undefined:v;
+    const text=v=>JSON.stringify(v,strip),raw=v=>JSON.stringify(v);
+    const result={same:raw(before)===raw(current),shape:'invalid',contentMatches:false,metadataOnly:false,orderChanged:false,beforeCount:null,currentCount:null,added:0,removed:0,contentChanged:0,changedFields:[],metadataFields:[]};
+    if(typeof before==='string'&&typeof current==='string'){
+      result.shape='text';result.contentMatches=before===current;result.same=result.contentMatches;return result;
+    }
+    if(Array.isArray(before)&&Array.isArray(current)){
+      result.shape='list';result.beforeCount=before.length;result.currentCount=current.length;
+      const idOf=n=>n&&typeof n==='object'&&!Array.isArray(n)&&n.id!==undefined&&n.id!==null?String(n.id):null;
+      const bi=before.map(idOf),ci=current.map(idOf);
+      if(bi.some(x=>x===null)||ci.some(x=>x===null)||new Set(bi).size!==bi.length||new Set(ci).size!==ci.length){result.shape='invalid';return result;}
+      result.orderChanged=bi.join('\u0000')!==ci.join('\u0000');
+      const bm=new Map(before.map((n,i)=>[bi[i],n])),cm=new Map(current.map((n,i)=>[ci[i],n]));
+      result.added=[...cm.keys()].filter(k=>!bm.has(k)).length;
+      result.removed=[...bm.keys()].filter(k=>!cm.has(k)).length;
+      const fields=new Set(),meta=new Set();
+      for(const [id,b] of bm){
+        const c=cm.get(id);if(!c)continue;
+        if(text(b)!==text(c))result.contentChanged++;
+        for(const k of new Set([...Object.keys(b),...Object.keys(c)])){
+          if(JSON.stringify(b[k])===JSON.stringify(c[k]))continue;
+          if(k==='_u'||k==='_mt')meta.add(k);else fields.add(k);
+        }
+      }
+      result.changedFields=[...fields].sort();result.metadataFields=[...meta].sort();
+      result.contentMatches=result.added===0&&result.removed===0&&result.contentChanged===0&&!result.orderChanged;
+      result.metadataOnly=result.contentMatches&&!result.same;
+      return result;
+    }
+    if(before&&current&&typeof before==='object'&&typeof current==='object'&&!Array.isArray(before)&&!Array.isArray(current)){
+      result.shape='object';result.contentMatches=text(before)===text(current);result.same=raw(before)===raw(current);result.metadataOnly=result.contentMatches&&!result.same;
+      for(const k of new Set([...Object.keys(before),...Object.keys(current)]))if(JSON.stringify(before[k])!==JSON.stringify(current[k]))(k==='_u'||k==='_mt'?result.metadataFields:result.changedFields).push(k);
+      result.changedFields.sort();result.metadataFields.sort();return result;
+    }
+    result.shape='mixed';return result;
+  }
   const notePushBusy=new Set();
   /* Adapter-only rehearsal core: deliberately NO live transport/storage
      defaults and no button. A future explicit apply phase must supply them. */
@@ -584,9 +623,12 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         const records=baseline?.records||[],target=records.filter(r=>r.entity==='notes'&&r.supabase_id===context.original.id);
         const originalFingerprint=await contentFingerprint(canonical(context.original,'','notes'));
         const unchanged=JSON.stringify(records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)))===JSON.stringify(context.baseline.records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)));
+        // save() stamps changed local records with _u; that sync metadata is not
+        // note content and must not make a verified restoration look failed.
+        let notesRestored=false;try{notesRestored=notesSnapshotDiff(JSON.parse(context.originalLocal),S.notes).contentMatches;}catch(_){}
         return localStateIsCurrent()&&u?.id===context.owner&&baseline?.user_id===context.owner&&entries.length===0&&target.length===1&&target[0].contentFingerprint===originalFingerprint&&
           JSON.stringify(noteContent(local))===JSON.stringify(noteContent(context.original))&&JSON.stringify(noteContent(remote))===JSON.stringify(noteContent(context.original))&&
-          JSON.stringify(S.notes)===context.originalLocal&&notesFinancialSnapshot()===context.financial&&unchanged&&(await status()).mode==='off';
+          notesRestored&&notesFinancialSnapshot()===context.financial&&unchanged&&(await status()).mode==='off';
       },
       finish:async()=>{
         const current=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
@@ -615,6 +657,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       localOriginal:c.localOriginal===true,
       localNotesJson:c.localNotesJson===true,
       localNotesCanonical:c.localNotesCanonical===true,
+      localNotesMetadataOnly:c.localNotesMetadataOnly===true,
       localSnapshotCompared:c.localSnapshotCompared===true,
       financialCompared:c.financialCompared===true,
       financialUnchanged:c.financialUnchanged===true,
@@ -640,16 +683,18 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     else if(!checks.financialCompared)status='BLOCKED — FINANCIAL SNAPSHOT NOT COMPARED';
     else if(!checks.baselineCompared)status='BLOCKED — BASELINE NOTE RECORD NOT COMPARED';
     else if(!checks.localOriginal)status='CLOUD RESTORED — LOCAL NOTE DIFFERS';
-    else if(!checks.localNotesJson)status=checks.localNotesCanonical?'CLOUD RESTORED — LOCAL SNAPSHOT FORMAT DIFFERS':'CLOUD RESTORED — LOCAL NOTE SNAPSHOT DIFFERS';
+    else if(!checks.localNotesJson&&!checks.localNotesMetadataOnly)status=checks.localNotesCanonical?'CLOUD RESTORED — LOCAL SNAPSHOT FORMAT DIFFERS':'CLOUD RESTORED — LOCAL NOTE SNAPSHOT DIFFERS';
     else if(!checks.financialUnchanged)status='CLOUD RESTORED — FINANCIAL SNAPSHOT DIFFERS';
     else if(!checks.baselineOriginal)status='CLOUD RESTORED — BASELINE RECORD DIFFERS';
     else if(checks.unrelatedBaselineCompared&&!checks.unrelatedBaselineUnchanged)status='CLOUD RESTORED — UNRELATED BASELINE DIFFERS';
     else if(!checks.localStateCurrent)status='CLOUD RESTORED — PERSISTED LOCAL STATE DIFFERS';
     else if(!checks.syncOff)status='CLOUD RESTORED — CLOUD SYNC MODE NOT OFF';
+    else if(!checks.localNotesJson&&checks.localNotesMetadataOnly&&checks.unrelatedBaselineCompared)status='CONVERGED — NOTE/BASELINE/CLOUD RESTORED; LOCAL SYNC METADATA ONLY; CHECKPOINT REMAINS';
+    else if(!checks.localNotesJson&&checks.localNotesMetadataOnly)status='CONVERGED — NOTE/BASELINE/CLOUD RESTORED; LOCAL SYNC METADATA ONLY; PREFLIGHT BASELINE NOT STORED; CHECKPOINT REMAINS';
     else if(!checks.unrelatedBaselineCompared)status='CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; PREFLIGHT BASELINE NOT STORED; CHECKPOINT REMAINS';
     else status='CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; CHECKPOINT REMAINS';
     const converged=status.startsWith('CONVERGED');
-    return {status,checks,safeToCleanCheckpoint:status==='CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; CHECKPOINT REMAINS',limitedEvidence:converged&&status.includes('PREFLIGHT BASELINE NOT STORED')};
+    return {status,checks,safeToCleanCheckpoint:status==='CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; CHECKPOINT REMAINS',metadataOnlyConverged:converged&&status.includes('LOCAL SYNC METADATA ONLY'),limitedEvidence:converged&&status.includes('PREFLIGHT BASELINE NOT STORED')};
   }
   async function inspectNotesTestRecovery(){
     const u=await CapSupabase.currentUser(),owner=u?.id||null;
@@ -675,12 +720,14 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     }
     let localOriginal=false;
     if(originalValid&&base.checkpointOwned){try{localOriginal=JSON.stringify(noteContent(noteFromPlan(original.legacy_id)))===JSON.stringify(noteContent(original))}catch(_){}}
-    let localNotesJson=false,localNotesCanonical=false,localSnapshotCompared=false;
+    let localNotesJson=false,localNotesCanonical=false,localNotesMetadataOnly=false,localNotesDiff=null,localSnapshotCompared=false;
     try{
       const before=JSON.parse(checkpoint.originalLocal);
       localSnapshotCompared=true;
       localNotesJson=JSON.stringify(S.notes)===checkpoint.originalLocal;
-      localNotesCanonical=await contentFingerprint(before)===await contentFingerprint(S.notes);
+      localNotesDiff=notesSnapshotDiff(before,S.notes);
+      localNotesCanonical=localNotesDiff.contentMatches;
+      localNotesMetadataOnly=localNotesDiff.metadataOnly;
     }catch(_){}
     let financialCompared=false,financialUnchanged=false,financialDifferences=[];
     try{
@@ -703,19 +750,19 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       }catch(_){}
     }
     let syncOff=false;try{syncOff=(await status()).mode==='off'}catch(_){}
-    const input={...base,cloudRead,cloudOriginal,cloudTemporary,originalValid,localOriginal,localNotesJson,localNotesCanonical,localSnapshotCompared,financialCompared,financialUnchanged,baselineCompared,baselineOriginal,unrelatedBaselineCompared,unrelatedBaselineUnchanged,localStateCurrent:localStateIsCurrent(),syncOff};
+    const input={...base,cloudRead,cloudOriginal,cloudTemporary,originalValid,localOriginal,localNotesJson,localNotesCanonical,localNotesMetadataOnly,localSnapshotCompared,financialCompared,financialUnchanged,baselineCompared,baselineOriginal,unrelatedBaselineCompared,unrelatedBaselineUnchanged,localStateCurrent:localStateIsCurrent(),syncOff};
     const report=notesRecoveryReport(input);
-    return {...input,...report,phase:['prepared','test','restore'].includes(checkpoint.phase)?checkpoint.phase:'unknown',pendingMatches:Array.isArray(entries)&&checkpoint.operationId?entries.filter(e=>e?.id===checkpoint.operationId).length:0,financialDifferences};
+    return {...input,...report,phase:['prepared','test','restore'].includes(checkpoint.phase)?checkpoint.phase:'unknown',pendingMatches:Array.isArray(entries)&&checkpoint.operationId?entries.filter(e=>e?.id===checkpoint.operationId).length:0,financialDifferences,localNotesDiff};
   }
   window.inspectCapNotesTestRecovery=async()=>{
     const out=document.getElementById('controlled-notes-result');if(!out||!window.CAP_DEV_TOOLS)return;
     out.style.whiteSpace='pre-line';out.textContent='Inspecting notes-test recovery read-only…';
     try{
-      const r=await inspectNotesTestRecovery(),c=r.checks;
+      const r=await inspectNotesTestRecovery(),c=r.checks,nd=r.localNotesDiff||{};
       const pending=r.outboxCount<0?'not read':r.outboxCount===0?'none':r.pendingMatches===1?'one exact entry':'other entries present';
       const cloud=!r.checkpointPresent?'not checked':c.cloudRead==='verified'?(c.cloudOriginal?'matches original':c.cloudTemporary?'matches temporary marker':'different content'):c.cloudRead==='absent'?'verified absent':c.cloudRead==='blocked'?'BLOCKED — READ NOT VERIFIED':'not read';
       const local=!r.checkpointPresent?'not checked':!c.originalValid?'not comparable':c.localOriginal?'matches original':'different content';
-      const snapshot=!r.checkpointPresent?'not checked':!c.localSnapshotCompared?'not compared':c.localNotesJson?'matches':c.localNotesCanonical?'canonical match; JSON differs':'differs';
+      const snapshot=!r.checkpointPresent?'not checked':!c.localSnapshotCompared?'not compared':c.localNotesJson?'matches':c.localNotesMetadataOnly?'differs (sync metadata only: '+((nd.metadataFields||[]).join(', ')||'metadata')+')':c.localNotesCanonical?'differs (format/order only)':nd.shape==='list'?'differs (content: '+(nd.contentChanged||0)+' changed · '+(nd.added||0)+' added · '+(nd.removed||0)+' removed'+(nd.changedFields?.length?'; fields: '+nd.changedFields.join(', '):'')+')':'differs (shape or text content)';
       const financial=!r.checkpointPresent?'not checked':!c.financialCompared?'not compared':c.financialUnchanged?'unchanged':'differs: '+(r.financialDifferences.length?r.financialDifferences.join(', '):'unknown field');
       const baseline=!r.checkpointPresent?'not checked':!c.baselineCompared?'not compared':c.baselineOriginal?'matches original':'differs';
       const other=!r.checkpointPresent?'not checked':!c.unrelatedBaselineCompared?'not stored in checkpoint':c.unrelatedBaselineUnchanged?'unchanged':'differs';
@@ -857,7 +904,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     }finally{executingOutbox.delete(operationId)}
   }
   function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="testCapSyncEngine()">Test Sync Engine</button><small id="sync-engine-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
-  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,controlledNoteRoundTrip,inspectNotesTestBlocker,cleanupStaleTestOutbox,buildDemoRefreshCandidate,refreshLocalDemo,notesRecoveryReport,inspectNotesTestRecovery,ORDER};
+  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,controlledNoteRoundTrip,inspectNotesTestBlocker,cleanupStaleTestOutbox,buildDemoRefreshCandidate,refreshLocalDemo,notesRecoveryReport,notesSnapshotDiff,inspectNotesTestRecovery,ORDER};
   /* Read-only balance consistency report. Shows balances and drift on this
      device only; never writes. Gated behind ?dev=1 in the settings panel. */
   window.checkBalanceConsistency=()=>{

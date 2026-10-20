@@ -8,7 +8,7 @@ is required after the notes RPC setup.
 
 ## Run only when ready for real writes
 
-1. Reload the app to pick up shell v306 (two reloads may be needed).
+1. Reload the app to pick up shell v307 (two reloads may be needed).
 2. Open Privacy & Sync → developer tools → **Plan Outbox (read-only)**.
 3. Confirm **Inspect notes-test blocker (read-only)** reports a clean baseline,
    zero pending outbox entries, and no recovery checkpoint.
@@ -86,7 +86,16 @@ Typical classifications:
 - `CLOUD RESTORED — PERSISTED LOCAL STATE DIFFERS`
 - `CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; CHECKPOINT REMAINS`
 - `CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; PREFLIGHT BASELINE NOT STORED; CHECKPOINT REMAINS`
+- `CONVERGED — NOTE/BASELINE/CLOUD RESTORED; LOCAL SYNC METADATA ONLY; CHECKPOINT REMAINS`
+- `CONVERGED — NOTE/BASELINE/CLOUD RESTORED; LOCAL SYNC METADATA ONLY; PREFLIGHT BASELINE NOT STORED; CHECKPOINT REMAINS`
 - `BLOCKED — CLOUD STATE NOT PROVEN`
+
+`Local note snapshot: differs (sync metadata only: _u)` means the app’s change
+tracker updated the note’s sync timestamp, not its title, body, or date.
+`Local note: matches original` and `Cloud note: matches original` remain the
+authoritative content checks. A content difference instead reports changed,
+added, or removed notes and the safe field names (`t`, `b`, `d`, and so on),
+never the values.
 
 Checkpoints created before the recovery inspector do not contain the preflight
 baseline snapshot. For those, the inspector still checks the baseline note
@@ -133,7 +142,7 @@ Do not update a baseline by hand.
 
 After the user authorized removing only the three verified old account-harness
 entries, the diagnostic can offer **Remove 3 verified stale test entries
-(confirm)**. Reload to shell v306, run the read-only diagnostic, and use that
+(confirm)**. Reload to shell v307, run the read-only diagnostic, and use that
 button only for this approved scope. It verifies all evidence before and after
 a native confirmation under the same cross-tab test lock. Exactly three unique
 owned harness entries are required; a prefix alone never qualifies a record.
@@ -166,7 +175,8 @@ response; the pending entry is intentionally retained for safe recovery.
 
 ## Rehearsal evidence
 
-- `node tests/notes-controlled.cjs`: 24 simulated bridge/controller checks.
+- `node tests/notes-controlled.cjs`: 25 simulated bridge/controller checks,
+  including expected local `_u` sync metadata.
   Includes cancellation, changed data during confirmation, stale local state,
   unavailable lock, invalid baselines, pending/recovery blocking, queue/save
   failures, racing cloud edits, lost responses, failed acknowledgement,
@@ -176,9 +186,10 @@ response; the pending entry is intentionally retained for safe recovery.
   caused zero mocked writes; confirmed light/dark runs each made two mocked
   writes, restored the original note, and left no queue/checkpoint. No user
   identifiers or note content appeared in diagnostics.
-- `node tests/notes-recovery.cjs` passes 29 pure classification checks for the
-  read-only recovery inspector, including pending operations, temporary cloud
-  content, missing updates, evidence gaps, and exact convergence.
+- `node tests/notes-recovery.cjs` passes 47 pure recovery and notes-snapshot
+  checks, including pending operations, temporary cloud content, missing
+  updates, evidence gaps, exact/limited convergence, sync-metadata-only drift,
+  content changes, added/removed notes, and reordering.
 - `node tests/demo-refresh.cjs` and `tests/demo-refresh-idb.cjs` pass 23
   reconstruction/confirmation checks and 15 atomic IndexedDB checks. A native
   disposable-origin run reconstructed 46 records from 44, retained the 44-record

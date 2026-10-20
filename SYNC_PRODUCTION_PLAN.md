@@ -144,14 +144,25 @@ checkpoint, retry a write, or alter any data. Checkpoints written before this
 tool do not contain the preflight baseline, so the inspector compares the
 baseline note record directly and reports unrelated baseline records as not
 stored, using a limited-evidence convergence status; the blocker diagnostic
-must then confirm the full baseline/cloud counts. Twenty-nine pure
-classification checks cover pending operations, temporary/missing/unknown
-cloud states, evidence gaps, and both full and limited convergence. A native
+must then confirm the full baseline/cloud counts. Forty-seven pure recovery
+and notes-snapshot checks cover pending operations, temporary/missing/unknown
+cloud states, evidence gaps, full and limited convergence, sync-metadata-only
+drift, content changes, added/removed notes, and reordering. A native
 disposable-origin rehearsal produced the expected converged, temporary-cloud,
-and pending-outbox diagnostics with no identifier or content leakage and no
-mutation request. The user's specific recovery state remains pending this
-inspection; no retry, reset, baseline change, or checkpoint cleanup is
-authorized yet.
+pending-outbox, metadata-only, and content-change diagnostics with no
+identifier or content leakage and no mutation request. The user's specific
+recovery state remains pending this inspection; no retry, reset, baseline
+change, or checkpoint cleanup is authorized yet.
+
+**Diagnosis of the stopped restoration check (2026-10-20).** The final local
+comparison used raw `S.notes` JSON. `save()` stamps changed local note objects
+with `_u` sync metadata; restoring the note body leaves that timestamp changed.
+Cloud/local note content, the baseline note record, financial snapshot, outbox,
+and persisted state were all clean. The controlled test now compares note
+content with `_u`/`_mt` stripped, and the recovery inspector reports
+sync-metadata-only drift separately from content changes. The existing
+checkpoint still requires read-only confirmation before any checkpoint-only
+cleanup; no retry, reset, baseline change, or cleanup is authorized yet.
 
 **Adapter-only notes push/finalization (2026-10-20).** The notes core now
 performs guarded preflight, readiness, local/auth/queue/baseline rechecks,

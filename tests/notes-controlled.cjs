@@ -22,7 +22,7 @@ async function fixture({ stringNotes = false } = {}) {
     navigator: { locks: { request: async (name, options, callback) => { assert.equal(options.ifAvailable, true); return callback(f.lock ? {} : null); } } },
     migrationPrepare: () => ({ blockingProblems: [] }),
     buildSupabaseMigrationPlan: () => ({ userId: f.owner, tables: [['notes', [row()]]] }),
-    save: () => { f.saves++; if (f.breakSave) throw Error('private save error'); },
+    save: () => { f.saves++; if (f.breakSave) throw Error('private save error'); if (f.stampOnSave && Array.isArray(S.notes) && S.notes[0]) S.notes[0]._u = 1000 + f.saves; },
     confirm: () => { f.confirms++; if (f.changeDuringConsent) f.cloud.body = 'changed-remotely'; return f.consent; },
     CapOff: {
       syncStore: async (store, op, value, recordKey) => {
@@ -89,6 +89,13 @@ async function test(label, body) { await body(); passed++; }
     assert.deepEqual(pick(f.cloud), pick(f.original)); assert.equal(JSON.stringify(f.context.S.notes), f.originalLocal);
     assert.equal(f.meta.get('baseline').records.length, 1); assert.equal(f.meta.get('baseline').revision, 2);
     assert.ok(!f.output.textContent.includes(owner)); assert.ok(!f.output.textContent.includes('original-secret'));
+  });
+  await test('round trip ignores expected local sync metadata', async () => {
+    const f = await fixture(); f.stampOnSave = true; await f.run();
+    assert.ok(f.output.textContent.includes('PASS — NOTE RESTORED'));
+    assert.equal(f.writes, 2); assert.equal(f.saves, 2); assert.equal(f.context.S.notes[0]._u, 1002);
+    assert.notEqual(JSON.stringify(f.context.S.notes), f.originalLocal);
+    assert.equal(f.meta.has(key), false); assert.equal(f.meta.get('baseline').records.length, 1);
   });
   await test('cancel leaves everything untouched', async () => {
     const f = await fixture(); f.consent = false; await f.run();
