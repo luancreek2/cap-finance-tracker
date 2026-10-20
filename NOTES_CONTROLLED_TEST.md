@@ -6,12 +6,14 @@ No additional SQL installation is required after the notes RPC setup.
 
 ## Run only when ready for real writes
 
-1. Reload the app to pick up shell v300 (two reloads may be needed).
+1. Reload the app to pick up shell v304 (two reloads may be needed).
 2. Open Privacy & Sync → developer tools → **Plan Outbox (read-only)**.
-3. Click **Controlled demo notes test (real writes)**.
-4. Read the native confirmation and confirm only for demo/test data. Keep
+3. Confirm **Inspect notes-test blocker (read-only)** reports a clean baseline,
+   zero pending outbox entries, and no recovery checkpoint.
+4. Click **Controlled demo notes test (real writes)**.
+5. Read the native confirmation and confirm only for demo/test data. Keep
    other app tabs idle; do not edit the note, navigate away, or reload mid-test.
-5. Send the resulting status. Expected:
+6. Send the resulting status. Expected:
    `PASS — NOTE RESTORED; BOTH PUSHES VERIFIED`.
 
 The initial preflight is read-only. Canceling before confirmation changes no
@@ -61,11 +63,41 @@ localhost URL. A 44-record baseline is not inherently invalid just because a
 different profile has 46 records; diagnose against the current plan, never
 reset or hard-code the expected count to force a match.
 
+### Local-only demo reconciliation
+
+When the diagnostic reports missing, unexpected, or mismatched app records,
+**Refresh this browser’s demo (local only)** can rebuild this profile's demo
+collections from the authenticated cloud snapshot. It is not production sync
+and is never automatic.
+
+- It first reads the cloud snapshot read-only, page by page, until an explicit
+  empty page. A repeated or unowned record blocks the preview.
+- It reconstructs a local candidate and requires every record's full content
+  fingerprint to match the cloud, a valid stable mapping, and a ledger that
+  explains every account balance. A count-only match is not enough.
+- Nothing is replaced until a native confirmation. Cloud Sync must be OFF, the
+  outbox empty, the baseline owned and valid, and no controlled-test or
+  refresh checkpoint present.
+- A verified on-device backup of local state, baseline, and balance anchors is
+  committed first. Local state and the replacement baseline then commit in one
+  IndexedDB transaction, followed by read-back verification.
+- Old local-only demo records and old balance anchors leave the active dataset
+  but remain in the backup. No Supabase row, auth session, or cloud baseline is
+  changed.
+- Canceling changes nothing. A pre-replacement failure retains the backup and
+  leaves local state/baseline intact. A post-replacement verification failure
+  reports `LOCAL WRITE OCCURRED — VERIFICATION FAILED` and leaves its recovery
+  checkpoint for inspection. There is no automatic retry, rollback, or reset.
+
+After a PASS, reload once, rerun the read-only blocker diagnostic, and continue
+only when it reports a clean baseline, zero mismatches, and an empty outbox.
+Do not update a baseline by hand.
+
 ### Approved, narrowly scoped stale-entry cleanup
 
 After the user authorized removing only the three verified old account-harness
 entries, the diagnostic can offer **Remove 3 verified stale test entries
-(confirm)**. Reload to shell v302, run the read-only diagnostic, and use that
+(confirm)**. Reload to shell v304, run the read-only diagnostic, and use that
 button only for this approved scope. It verifies all evidence before and after
 a native confirmation under the same cross-tab test lock. Exactly three unique
 owned harness entries are required; a prefix alone never qualifies a record.
@@ -108,5 +140,11 @@ response; the pending entry is intentionally retained for safe recovery.
   caused zero mocked writes; confirmed light/dark runs each made two mocked
   writes, restored the original note, and left no queue/checkpoint. No user
   identifiers or note content appeared in diagnostics.
-- Existing suites also pass: 32 pipeline, 18 IndexedDB, 49 outbox, 25 readiness,
+- `node tests/demo-refresh.cjs` and `tests/demo-refresh-idb.cjs` pass 23
+  reconstruction/confirmation checks and 15 atomic IndexedDB checks. A native
+  disposable-origin run reconstructed 46 records from 44, retained the 44-record
+  backup, matched all fingerprints, cleared unresolved checkpoints, survived
+  reload, and made zero mutation requests. Cancellation, a repeated pagination
+  page, and a changed local/cloud state blocked without replacement.
+- Existing suites also pass: 32 pipeline, 18 IndexedDB, 49 outbox, 26 readiness,
   and 41 SQL integration checks. No live write test is implied by rehearsal.

@@ -265,6 +265,34 @@ zero unaccounted balances, empty outbox, and Cloud Sync OFF. A redacted result
 was rendered in the actual Privacy & Sync panel. No production execution or
 conflict-resolution readiness is implied by this demo baseline.
 
+**Profile-local demo reconciliation (2026-10-20).** A second browser profile
+still held older demo data (44-record baseline; 1 missing, 3 unexpected, 12
+mismatched records). The dev-only Plan Outbox panel now offers **Refresh this
+browser’s demo (local only)**. It reads the authenticated cloud snapshot
+read-only page by page to an explicit empty page, rejects repeated/unowned
+records, reconstructs a candidate, and requires full per-record content
+fingerprints plus a ledger that explains every balance before offering
+confirmation. A count-only match is insufficient.
+
+On confirmation it commits a verified on-device backup first, then replaces
+local state and the version-2 baseline in one IndexedDB transaction and verifies
+read-back. Old local-only demo records and balance anchors leave the active
+dataset but remain in the backup. No Supabase row, auth session, or cloud
+baseline is changed, and Cloud Sync stays OFF. Cancellation changes nothing. A
+pre-replacement failure retains the backup and leaves local/baseline state
+intact; a post-replacement verification failure is reported as `LOCAL WRITE
+OCCURRED — VERIFICATION FAILED` with a recovery checkpoint for inspection. No
+automatic retry, rollback, or baseline reset exists.
+
+Verification so far: 23 reconstruction/confirmation checks and 15 atomic
+IndexedDB checks, plus a native disposable-origin rehearsal that reconstructed
+46 records from 44, retained the 44-record backup, matched every fingerprint,
+survived reload, and made zero cloud mutation requests. Cancellation, a
+simulated server that ignored pagination offsets, and changed local/cloud state
+all blocked without replacement. This has **not** been run in the user's
+separate browser profile; that step still requires explicit approval. A PASS
+does not update the cloud or authorize the controlled notes test by itself.
+
 - Three-way compare against the baseline (already implemented).
 - Divergence opens a resolution prompt with the differing fields only,
   keep local / keep cloud.
@@ -301,7 +329,7 @@ execution remains locked regardless of metadata success. No SQL was installed
 in Supabase and no live app records or baseline were changed in this step.
 Manual installation instructions and remaining gates are in
 `NOTES_RPC_SETUP.md`. Local verification: 41 PostgreSQL-WASM integration checks,
-25 readiness-contract checks, the existing 49 outbox checks, and light/dark
+26 readiness-contract checks, the existing 49 outbox checks, and light/dark
 readiness UI checks. True multi-session races and live Supabase behavior remain
 unverified. Client CAS transport and per-operation baseline updates are pending.
 

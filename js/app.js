@@ -50,13 +50,13 @@
     await new Promise((resolve, reject) => {
       const t = d.transaction(['syncmeta', 'outbox'], 'readwrite');
       const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
-      const bq = meta.get('baseline'), oq = queue.get(entry.id);
-      let baseline, currentEntry, loaded = 0, failure;
+      const bq = meta.get('baseline'), oq = queue.get(entry.id), rq = meta.get('demo-local-refresh-state-v1');
+      let baseline, currentEntry, refreshRecovery, loaded = 0, failure;
       const abort = () => { failure = Error('Note acknowledgement preconditions changed'); t.abort(); };
       const ready = () => {
-        if (++loaded !== 2) return;
+        if (++loaded !== 3) return;
         try {
-          if (baseline?.version !== 2 || baseline.user_id !== userId || !Array.isArray(baseline.records)) return abort();
+          if (refreshRecovery || baseline?.version !== 2 || baseline.user_id !== userId || !Array.isArray(baseline.records)) return abort();
           const matches = baseline.records.filter(r => r.entity === 'notes' &&
             (r.supabase_id === entry.supabase_id || String(r.localId) === String(entry.local_id)));
           if (!currentEntry && matches.length === 1 && eq(matches[0], nextRecord)) {
@@ -73,6 +73,7 @@
       };
       bq.onsuccess = () => { baseline = bq.result; ready(); };
       oq.onsuccess = () => { currentEntry = oq.result; ready(); };
+      rq.onsuccess = () => { refreshRecovery = rq.result; ready(); };
       t.oncomplete = () => resolve();
       t.onabort = () => reject(failure || Error('Atomic note acknowledgement aborted'));
       t.onerror = () => { failure = Error('Atomic note acknowledgement failed'); };
@@ -112,19 +113,20 @@
     const d = await idb();
     await new Promise((resolve, reject) => {
       const t = d.transaction(['syncmeta', 'outbox'], 'readwrite'), meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
-      let baseline, recovery, loaded = 0, failure;
+      let baseline, recovery, refreshRecovery, loaded = 0, failure;
       const current = [], abort = () => { failure = Error('Cleanup preconditions changed'); t.abort(); };
       const ready = () => {
-        if (++loaded !== entries.length + 2) return;
+        if (++loaded !== entries.length + 3) return;
         try {
-          if (!eq(baseline, expectedBaseline) || recovery || entries.some((op, i) => !eq(op, current[i]) ||
+          if (!eq(baseline, expectedBaseline) || recovery || refreshRecovery || entries.some((op, i) => !eq(op, current[i]) ||
               baseline.records.some(r => r.entity === 'accounts' && (String(r.supabase_id) === op.supabase_id || String(r.localId ?? r.legacy_id) === op.local_id))) || guard() !== true) return abort();
           entries.forEach(op => queue.delete(op.id));
         } catch (_) { abort(); }
       };
-      const bq = meta.get('baseline'), rq = meta.get('controlled-notes-test-v1');
+      const bq = meta.get('baseline'), rq = meta.get('controlled-notes-test-v1'), drq = meta.get('demo-local-refresh-state-v1');
       bq.onsuccess = () => { baseline = bq.result; ready(); };
       rq.onsuccess = () => { recovery = rq.result; ready(); };
+      drq.onsuccess = () => { refreshRecovery = drq.result; ready(); };
       entries.forEach((op, i) => { const q = queue.get(op.id); q.onsuccess = () => { current[i] = q.result; ready(); }; });
       t.oncomplete = () => resolve(); t.onabort = () => reject(failure || Error('Atomic cleanup aborted'));
       t.onerror = () => { failure = Error('Atomic cleanup failed'); };
@@ -140,6 +142,82 @@
     }).catch(() => false);
     if (!verified) { const error = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED'); error.committed = true; throw error; }
     return { committed: true, verified: true, removed: entries.length };
+  }
+
+  /* Confirmed, local-only demo alignment. A verified backup commits BEFORE
+     replacement. Local state and its newly verified baseline then commit in
+     one IDB transaction. There is no cloud transport or automatic rollback. */
+  async function refreshVerifiedLocalDemo(receipt, guard, verifyCloud) {
+    if (!api || typeof guard !== 'function' || typeof verifyCloud !== 'function') throw Error('Explicit local/cloud guards required');
+    const r = clone(receipt || {}), { userId, expectedLocalJson, expectedBaseline, nextState, nextBaseline, backupKey } = r;
+    if (!userId || typeof expectedLocalJson !== 'string' || !backupKey?.startsWith('demo-local-refresh-backup:') ||
+        expectedBaseline?.user_id !== userId || expectedBaseline.version !== 2 || !Array.isArray(expectedBaseline.records) ||
+        nextBaseline?.user_id !== userId || nextBaseline.version !== 2 || !Array.isArray(nextBaseline.records) || !nextBaseline.records.length ||
+        nextBaseline.records.some(x => x.user_id !== userId || !/^[0-9a-f]{64}$/i.test(x.contentFingerprint || '')) ||
+        !Array.isArray(nextState?.accts) || !Array.isArray(nextState.tx) || !Array.isArray(nextState.pend)) throw Error('Invalid demo refresh receipt');
+    const anchors = localStorage.getItem('cap_balance_anchors_v1'), derivedFlag = localStorage.getItem('cap_derived_balance');
+    const localGuard = () => guard() === true && J(api.get()) === expectedLocalJson && localStorage.getItem('pera') === expectedLocalJson &&
+      localStorage.getItem('cap_balance_anchors_v1') === anchors && localStorage.getItem('cap_derived_balance') === derivedFlag;
+    if (!localGuard()) throw Error('Local state changed');
+    const d = await idb();
+    const backup = { kind: 'local-demo-refresh-backup', user_id: userId, created_at: new Date().toISOString(),
+      localJson: expectedLocalJson, baseline: expectedBaseline,
+      anchors, derivedFlag };
+    const checkpoint = { user_id: userId, backupKey, phase: 'backed-up' };
+    let backedUp = false, committed = false;
+    try {
+      const transaction = (mode, work) => new Promise((resolve, reject) => {
+        const t = d.transaction(['kv', 'syncmeta', 'outbox'], mode), meta = t.objectStore('syncmeta');
+        const requests = [meta.get('baseline'), meta.get('demo-local-refresh-state-v1'), meta.get('controlled-notes-test-v1'), t.objectStore('outbox').getAll(), meta.get(backupKey), t.objectStore('kv').get('state')];
+        const values = []; let loaded = 0, failure;
+        requests.forEach((q, i) => { q.onsuccess = () => {
+          values[i] = q.result;
+          if (++loaded !== requests.length) return;
+          try { work(t, values); } catch (_) { failure = Error('Demo refresh preconditions changed'); t.abort(); }
+        }; });
+        t.oncomplete = () => resolve(values); t.onabort = () => reject(failure || Error('Demo refresh transaction aborted'));
+        t.onerror = () => { failure = Error('Demo refresh transaction failed'); };
+      });
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, oldBackup, state]) => {
+        if (!eq(baseline, expectedBaseline) || active || notesRecovery || queue.length || oldBackup || !localGuard()) throw Error('Backup blocked');
+        const meta = t.objectStore('syncmeta');
+        meta.put({ ...backup, indexeddbState: state || null }, backupKey); meta.put(checkpoint, 'demo-local-refresh-state-v1');
+      });
+      backedUp = true;
+      const backupRead = await syncStore('syncmeta', 'get', backupKey);
+      if (!backupRead || backupRead.localJson !== expectedLocalJson || !eq(backupRead.baseline, expectedBaseline) ||
+          backupRead.user_id !== userId || !eq(await syncStore('syncmeta', 'get', 'demo-local-refresh-state-v1'), checkpoint)) throw Error('Backup read-back failed');
+      if (await verifyCloud() !== true || !localGuard()) throw Error('Cloud/local evidence changed after backup');
+      nextState._mt = Math.max(now(), Number(api.get()._mt) || 0) + 1;
+      const nextJson = J(nextState), applied = { ...checkpoint, phase: 'applied' };
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || notesRecovery || queue.length ||
+            currentBackup?.localJson !== expectedLocalJson || !localGuard()) throw Error('Replacement blocked');
+        t.objectStore('kv').put({ json: nextJson, mt: nextState._mt }, 'state');
+        t.objectStore('syncmeta').put(nextBaseline, 'baseline');
+        t.objectStore('syncmeta').put(applied, 'demo-local-refresh-state-v1');
+      });
+      committed = true;
+      api.set(clone(nextState)); resetTracking();
+      localStorage.setItem('pera', nextJson); lsBase = nextJson;
+      localStorage.removeItem('cap_balance_anchors_v1');
+      const verified = await transaction('readonly', (_, [baseline, active, notesRecovery, queue, currentBackup, state]) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || queue.length || !currentBackup ||
+            state?.json !== nextJson || J(api.get()) !== nextJson || localStorage.getItem('pera') !== nextJson ||
+            localStorage.getItem('cap_balance_anchors_v1') !== null || guard() !== true) throw Error('Replacement read-back failed');
+      });
+      if (!verified) throw Error('Replacement not verified');
+      await transaction('readwrite', (t, [baseline, active, notesRecovery, queue, currentBackup, state]) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || notesRecovery || queue.length || !currentBackup ||
+            state?.json !== nextJson || J(api.get()) !== nextJson || localStorage.getItem('pera') !== nextJson || guard() !== true) throw Error('Final checkpoint changed');
+        t.objectStore('syncmeta').delete('demo-local-refresh-state-v1');
+      });
+      if (await syncStore('syncmeta', 'get', 'demo-local-refresh-state-v1')) throw Error('Checkpoint cleanup not verified');
+      return { committed: true, verified: true, backupRetained: true, records: nextBaseline.records.length };
+    } catch (cause) {
+      const error = Error(committed ? 'LOCAL WRITE OCCURRED — VERIFICATION FAILED' : backedUp ? 'STOPPED — BACKUP RETAINED; LOCAL STATE AND BASELINE NOT REPLACED' : 'LOCAL DEMO REFRESH BLOCKED');
+      error.committed = committed; error.backedUp = backedUp; throw error;
+    }
   }
 
   /* ---------- helpers ---------- */
@@ -444,6 +522,7 @@
     syncStore,
     finalizeVerifiedNotePush,
     discardVerifiedTestOutbox,
+    refreshVerifiedLocalDemo,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
     settingsHtml,

@@ -62,5 +62,23 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/supabase.js'), 'utf8
   assert.equal(api.notesRpcReady(), false, 'Older success cannot override a newer failed check'); passed++;
   assert.ok(calls.every(c => c.url.endsWith('/rest/v1/rpc/cap_verify_notes_rpc') && c.options.method === 'POST' && c.options.body === '{}'));
   assert.ok(!calls.some(c => c.url.includes('cap_sync_note_put'))); passed++;
+  const originalFetch = context.fetch;
+  const profileReads = [];
+  context.fetch = async (url, options) => {
+    profileReads.push({ url, method: options.method });
+    const parsed = new URL(url);
+    let result = [];
+    if (parsed.pathname === '/auth/v1/user') result = { id: 'fixture-owner' };
+    else if (parsed.pathname === '/rest/v1/profiles') {
+      assert.equal(parsed.searchParams.get('select'), '*', 'Content validation must read full profile content, not just its ID');
+      result = [{ id: 'fixture-owner', display_name: 'Demo profile', photo_url: null }];
+    } else if (parsed.pathname === '/rest/v1/user_preferences') result = [{ user_id: 'fixture-owner' }];
+    return { ok: true, text: async () => JSON.stringify(result) };
+  };
+  const tables = ['categories','accounts','goals','debts','bills','account_statements','transactions','transfers','bill_payments','budgets','notes'].map(t => [t, []]);
+  const validation = await api.validateRealData({ userId: 'fixture-owner', tables, profile: { id: 'fixture-owner' }, preferences: { user_id: 'fixture-owner' } });
+  assert.equal(validation.snapshot.profiles[0].display_name, 'Demo profile');
+  assert.ok(profileReads.every(r => !r.method || r.method === 'GET'));
+  context.fetch = originalFetch; passed++;
   console.log(`PASS: ${passed} notes readiness checks; mutation RPC never called`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
