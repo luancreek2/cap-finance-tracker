@@ -125,6 +125,34 @@ disposable origin against a simulated cloud, including cancellation and both
 themes. Instructions, authorized scope and recovery rules are in
 `NOTES_CONTROLLED_TEST.md`. Multi-session PostgreSQL races remain pending.
 
+**First live controlled notes attempt stopped at final restoration verification
+(2026-10-20).** After the clean blocker diagnostic (46 records, empty outbox,
+zero mismatches), the user confirmed the controlled test. The temporary push
+verified, but the final restoration check returned `STOPPED — RESTORATION NOT
+VERIFIED`. There was no automatic retry, rollback, reset, or cleanup, and Cloud
+Sync remained OFF.
+
+The ordinary data validation can report zero mismatches even when local and
+cloud both still contain the temporary marker, so it is not sufficient for
+recovery. A dedicated **Inspect notes-test recovery (read-only)** control now
+checks the checkpoint phase/ownership, exact pending outbox entry, cloud and
+local note equality (reported only as original / temporary marker / different),
+local note-snapshot canonical equality, financial collection-level differences,
+the target baseline record, unrelated baseline records, persisted local state,
+and sync mode. It classifies exact convergence but does not delete the
+checkpoint, retry a write, or alter any data. Checkpoints written before this
+tool do not contain the preflight baseline, so the inspector compares the
+baseline note record directly and reports unrelated baseline records as not
+stored, using a limited-evidence convergence status; the blocker diagnostic
+must then confirm the full baseline/cloud counts. Twenty-nine pure
+classification checks cover pending operations, temporary/missing/unknown
+cloud states, evidence gaps, and both full and limited convergence. A native
+disposable-origin rehearsal produced the expected converged, temporary-cloud,
+and pending-outbox diagnostics with no identifier or content leakage and no
+mutation request. The user's specific recovery state remains pending this
+inspection; no retry, reset, baseline change, or checkpoint cleanup is
+authorized yet.
+
 **Adapter-only notes push/finalization (2026-10-20).** The notes core now
 performs guarded preflight, readiness, local/auth/queue/baseline rechecks,
 expected-content CAS, fresh cloud verification, and finalization via explicit

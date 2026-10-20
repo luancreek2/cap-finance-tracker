@@ -1,12 +1,14 @@
 # Controlled demo notes test
 
-Built and rehearsed; **not yet run against the user's Supabase data**.
-This is an explicit exception for a confirmed demo test, not production sync.
-No additional SQL installation is required after the notes RPC setup.
+Built and rehearsed. The first live attempt on 2026-10-20 stopped at final
+restoration verification. Recovery is **read-only pending inspection**; do not
+rerun the test until the checkpoint is resolved. This is an explicit exception
+for a confirmed demo test, not production sync. No additional SQL installation
+is required after the notes RPC setup.
 
 ## Run only when ready for real writes
 
-1. Reload the app to pick up shell v304 (two reloads may be needed).
+1. Reload the app to pick up shell v306 (two reloads may be needed).
 2. Open Privacy & Sync → developer tools → **Plan Outbox (read-only)**.
 3. Confirm **Inspect notes-test blocker (read-only)** reports a clean baseline,
    zero pending outbox entries, and no recovery checkpoint.
@@ -63,6 +65,40 @@ localhost URL. A 44-record baseline is not inherently invalid just because a
 different profile has 46 records; diagnose against the current plan, never
 reset or hard-code the expected count to force a match.
 
+### Interrupted controlled-test recovery
+
+If the controlled test stops after its checkpoint was created, use
+**Inspect notes-test recovery (read-only)** in the same Plan Outbox panel. It
+reads the checkpoint, outbox, cloud note, local note, baseline record, unrelated
+baseline records, financial snapshot, persisted local state, and sync mode. It
+never writes, retries, clears, deletes, or displays note content, financial
+values, or identifiers.
+
+Typical classifications:
+
+- `PENDING OPERATION REMAINS — DO NOT RETRY`
+- `CLOUD STILL TEMPORARY — RESTORE NOT APPLIED`
+- `CLOUD NOTE ABSENT — RESTORE NOT PROVEN`
+- `CLOUD RESTORED — LOCAL NOTE DIFFERS`
+- `CLOUD RESTORED — LOCAL SNAPSHOT FORMAT DIFFERS`
+- `CLOUD RESTORED — FINANCIAL SNAPSHOT DIFFERS`
+- `CLOUD RESTORED — BASELINE RECORD DIFFERS`
+- `CLOUD RESTORED — PERSISTED LOCAL STATE DIFFERS`
+- `CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; CHECKPOINT REMAINS`
+- `CONVERGED — NOTE/BASELINE/LOCAL/OUTBOX RESTORED; PREFLIGHT BASELINE NOT STORED; CHECKPOINT REMAINS`
+- `BLOCKED — CLOUD STATE NOT PROVEN`
+
+Checkpoints created before the recovery inspector do not contain the preflight
+baseline snapshot. For those, the inspector still checks the baseline note
+record directly, but reports unrelated baseline records as **not stored in
+checkpoint** and uses the limited-evidence convergence status. Follow it with
+**Inspect notes-test blocker (read-only)** to verify the full baseline/cloud
+counts and differences. Do not delete the checkpoint or change the baseline
+even for a `CONVERGED` result until both diagnostics have been reviewed. A
+blocked cloud read is never proof that the cloud note is absent or restored.
+Reloading for inspection is safe because the checkpoint is persisted, but do
+not click the controlled test again.
+
 ### Local-only demo reconciliation
 
 When the diagnostic reports missing, unexpected, or mismatched app records,
@@ -97,7 +133,7 @@ Do not update a baseline by hand.
 
 After the user authorized removing only the three verified old account-harness
 entries, the diagnostic can offer **Remove 3 verified stale test entries
-(confirm)**. Reload to shell v304, run the read-only diagnostic, and use that
+(confirm)**. Reload to shell v306, run the read-only diagnostic, and use that
 button only for this approved scope. It verifies all evidence before and after
 a native confirmation under the same cross-tab test lock. Exactly three unique
 owned harness entries are required; a prefix alone never qualifies a record.
@@ -140,6 +176,9 @@ response; the pending entry is intentionally retained for safe recovery.
   caused zero mocked writes; confirmed light/dark runs each made two mocked
   writes, restored the original note, and left no queue/checkpoint. No user
   identifiers or note content appeared in diagnostics.
+- `node tests/notes-recovery.cjs` passes 29 pure classification checks for the
+  read-only recovery inspector, including pending operations, temporary cloud
+  content, missing updates, evidence gaps, and exact convergence.
 - `node tests/demo-refresh.cjs` and `tests/demo-refresh-idb.cjs` pass 23
   reconstruction/confirmation checks and 15 atomic IndexedDB checks. A native
   disposable-origin run reconstructed 46 records from 44, retained the 44-record
