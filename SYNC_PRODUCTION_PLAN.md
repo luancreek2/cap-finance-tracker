@@ -131,6 +131,29 @@ with two test entries skipped and one real entry planned).
 
 ## 3. Conflict handling
 
+**Review-only conflict UI (2026-10-20).** A conflicting outbox plan now offers
+“Review conflicts (no changes applied)”. Each queued conflict shows its entity,
+ordinal and differing top-level field names only, never payload values or
+record/user identifiers. Unknown field names are redacted as “other fields”.
+Delete-versus-edit choices explicitly label the deleting side. A conflict
+without a verified baseline is displayed but cannot be selected.
+
+Keep local / Keep cloud note a page-session preference, NOT a resolution.
+Nothing is written to local financial state, cloud, outbox, baseline or
+`syncconflicts`. Preferences are held in memory only, bound to the owner and
+exact queue/baseline/canonical-cloud snapshot, and revalidated on every click.
+Changed data, authentication, failed reads or stale review tokens refuse the
+choice. A refresh clears preferences. Reopening the unchanged conflict shows
+the preference rather than asking again. The executor never consumes these
+preferences and remains locked for production operations.
+
+Verification: the isolated suite passes 49 checks. The actual Privacy & Sync
+panel on a disposable origin was checked in light/dark themes: both buttons
+rendered, a preference was noted, a simulated subsequent cloud edit made the
+other choice stale, no values/identifiers leaked, and no fixture storage writes
+occurred. Applying a resolution and durable resolution history remain pending
+atomic server checks, verified winning-side writes, and baseline reconciliation.
+
 **Queued-change guard (2026-10-20).** The outbox planner now compares the
 queued payload and the fresh cloud record against a verified, owner-matched
 version-2 per-record baseline. Cloud-only changes block for PULL; divergent

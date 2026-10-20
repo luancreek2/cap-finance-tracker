@@ -8,12 +8,20 @@ const { webcrypto } = require('node:crypto');
 const owner = 'test-owner-not-for-display';
 const recordId = '00000000-0000-4000-8000-000000000001';
 const baseRow = { id: recordId, user_id: owner, legacy_id: '1', body: 'base' };
-const output = { textContent: '', style: {} };
+function element(tag = 'div') {
+  let text = '';
+  return { tag, children: [], style: {}, setAttribute() {},
+    get textContent() { return text + this.children.map(x => x.textContent).join(''); },
+    set textContent(value) { text = value; this.children = []; },
+    appendChild(child) { this.children.push(child); return child; },
+  };
+}
+const output = element();
 let baseline, entry, cloud, mutations = 0, writes = 0;
 const context = {
   crypto: webcrypto, TextEncoder, URLSearchParams,
   location: { search: '' }, localStorage: { getItem: () => null },
-  document: { getElementById: () => output }, toast() {},
+  document: { getElementById: () => output, createElement: element, createTextNode: text => ({ textContent: text }) }, toast() {},
   CapSupabase: {
     currentUser: async () => ({ id: owner }),
     syncRequest: async () => cloud === null ? [] : [cloud],
@@ -102,6 +110,103 @@ async function check(label, operation, remote, expected, classification, b = bas
   assert.equal(locked.status, 'REFUSED — NOTHING WRITTEN');
   assert.ok(locked.reason.includes('Production execution is disabled'));
   assert.equal(mutations, 0);
+  passed++;
+
+  // Review preferences never mutate data or unlock execution.
+  cloud = remote;
+  let review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts.length, 1);
+  assert.equal(review.conflicts[0].fields.join(','), 'body');
+  assert.equal(review.reviewOnly, true);
+  assert.ok(!JSON.stringify(review).includes(owner));
+  assert.ok(!JSON.stringify(review).includes('cloud-edit'));
+  passed++;
+  let token = review.conflicts[0].token;
+  let choice = await sync.chooseOutboxConflict(token, 'local');
+  assert.equal(choice.status, 'PREFERENCE NOTED — NOT APPLIED');
+  assert.equal(choice.recorded, true);
+  passed++;
+  review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts[0].preference, 'local');
+  passed++;
+  token = review.conflicts[0].token;
+  choice = await sync.chooseOutboxConflict(token, 'cloud');
+  assert.equal(choice.preference, 'cloud');
+  assert.equal(mutations, 0); assert.equal(writes, 0);
+  passed++;
+  cloud = { ...remote, body: 'new-cloud-edit' };
+  choice = await sync.chooseOutboxConflict(token, 'local');
+  assert.equal(choice.status, 'STALE — REVIEW AGAIN');
+  assert.equal(choice.recorded, false);
+  passed++;
+  review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts[0].preference, null);
+  token = review.conflicts[0].token;
+  entry = { ...entry, payload: { ...local, body: 'new-local-edit' } };
+  choice = await sync.chooseOutboxConflict(token, 'local');
+  assert.equal(choice.recorded, false, 'Changed queued payload invalidates choice');
+  passed++;
+  review = await sync.inspectOutboxConflicts(); token = review.conflicts[0].token;
+  const oldBaseline = baseline;
+  baseline = { ...baseline, records: [{ ...baseline.records[0], contentFingerprint: await fingerprint({ ...baseRow, body: 'new-base' }) }] };
+  choice = await sync.chooseOutboxConflict(token, 'cloud');
+  assert.equal(choice.recorded, false, 'Changed baseline invalidates choice');
+  baseline = oldBaseline;
+  passed++;
+  review = await sync.inspectOutboxConflicts(); token = review.conflicts[0].token;
+  const originalUser = context.CapSupabase.currentUser;
+  context.CapSupabase.currentUser = async () => ({ id: 'different-owner' });
+  choice = await sync.chooseOutboxConflict(token, 'local');
+  assert.equal(choice.recorded, false, 'Changed authenticated user invalidates choice');
+  context.CapSupabase.currentUser = originalUser;
+  passed++;
+  review = await sync.inspectOutboxConflicts(); token = review.conflicts[0].token;
+  const originalRequest = context.CapSupabase.syncRequest;
+  context.CapSupabase.syncRequest = async () => { throw Error(owner + ' sensitive-value'); };
+  choice = await sync.chooseOutboxConflict(token, 'local');
+  assert.equal(choice.recorded, false);
+  assert.ok(!JSON.stringify(choice).includes('sensitive-value'));
+  context.CapSupabase.syncRequest = originalRequest;
+  passed++;
+  assert.equal((await sync.chooseOutboxConflict('unknown', 'local')).recorded, false);
+  assert.equal((await sync.chooseOutboxConflict(token, 'invalid')).recorded, false);
+  passed++;
+  entry = op(null, 'delete'); cloud = remote;
+  review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts[0].localDeleted, true);
+  assert.equal(review.conflicts[0].fields.join(','), 'record presence');
+  passed++;
+  entry = op(local); cloud = null;
+  review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts[0].cloudDeleted, true);
+  passed++;
+  baseline = null; cloud = remote;
+  review = await sync.inspectOutboxConflicts();
+  assert.equal(review.conflicts[0].reviewable, false);
+  assert.equal((await sync.chooseOutboxConflict(review.conflicts[0].token, 'local')).recorded, false);
+  baseline = oldBaseline;
+  passed++;
+  entry = op({ ...local, [owner]: 'sensitive-value' });
+  review = await sync.inspectOutboxConflicts();
+  assert.ok(review.conflicts[0].fields.includes('other fields'));
+  assert.ok(!JSON.stringify(review).includes(owner));
+  passed++;
+  await context.reviewCapOutboxConflicts();
+  assert.ok(output.textContent.includes('Keep local'));
+  assert.ok(output.textContent.includes('Keep cloud'));
+  assert.ok(!output.textContent.includes(owner));
+  assert.ok(!output.textContent.includes('sensitive-value'));
+  passed++;
+  const collectButtons = node => [ ...(node.tag === 'button' ? [node] : []), ...(node.children || []).flatMap(collectButtons) ];
+  const localButton = collectButtons(output).find(x => x.textContent === 'Keep local');
+  await localButton.onclick();
+  assert.ok(output.textContent.includes('PREFERENCE NOTED — NOT APPLIED'));
+  assert.equal(localButton.disabled, false);
+  assert.equal(mutations, 0); assert.equal(writes, 0);
+  passed++;
+  const stillBlocked = await sync.executeOutboxOperation(entry.id, { userId: owner, readCloud: async () => cloud, write: async () => { writes++; } });
+  assert.equal(stillBlocked.status, 'REFUSED — NOTHING WRITTEN');
+  assert.equal(writes, 0); assert.equal(mutations, 0);
   passed++;
   console.log(`PASS: ${passed} outbox conflict checks; zero network or storage writes`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
