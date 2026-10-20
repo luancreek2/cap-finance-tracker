@@ -78,6 +78,25 @@ import option is gone from the preview.
 
 ## 2. Outbox and push/pull worker
 
+**Adapter-only notes push/finalization (2026-10-20).** The notes core now
+performs guarded preflight, readiness, local/auth/queue/baseline rechecks,
+expected-content CAS, fresh cloud verification, and finalization via explicit
+adapters only. No live defaults or apply button are wired. Ambiguous RPC
+outcomes retain the queue/baseline; converged retries do not reapply the write.
+
+The dormant IndexedDB helper updates exactly one baseline record and removes
+the exact outbox entry in a single transaction, preserving unrelated records.
+It verifies transaction completion and read-back, rejects stale receipts,
+requires a synchronous local guard, and makes acknowledgement retries
+idempotent. Per-record fingerprints remain authoritative; the legacy aggregate
+fingerprint is marked stale rather than presented as a current global hash.
+
+Verification: 32 isolated pipeline checks, 18 isolated IndexedDB checks, and a
+native browser IndexedDB/mock-cloud rehearsal on a disposable origin. An
+injected cleanup failure rolled back both stores. No main-origin or live
+Supabase state was changed. Details and remaining gates:
+`NOTES_PUSH_REHEARSAL.md`.
+
 - Enqueue per changed record: `{entity, localId, op, payloadFingerprint, ts}`.
 - Process sequentially; group dependent writes atomically on the server
   (transaction + account delta today; derived balances should remove the need
@@ -212,6 +231,14 @@ conflict-resolution readiness is implied by this demo baseline.
   window. Never infer deletion from a failed read.
 
 ## 5. Server side
+
+**Live notes metadata verification (2026-10-20).** After the user manually ran
+the SQL script successfully, the authenticated app invoked only
+`cap_verify_notes_rpc` via the actual readiness button. All metadata gates
+passed (`ready: true`) and the result rendered in Privacy & Sync. Cloud Sync
+remained OFF and the outbox remained empty. The mutation RPC was not called;
+no app records, baseline, or outbox entries were changed. Installation and
+metadata readiness do not imply production enablement or a live write test.
 
 **Notes-only atomic RPC draft (2026-10-20).**
 `supabase_production_notes_rpc.sql` defines an authenticated SECURITY INVOKER

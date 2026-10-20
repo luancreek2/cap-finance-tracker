@@ -162,6 +162,85 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     const result=await planOutbox(entries,{userId:u.id,readCloud,baseline});
     return {...result,ignoredTestArtifacts:test.length,ignoredOtherUsers:others,dryRun:true,applied:0,removed:0};
   }
+  function noteContent(row){
+    const fields=['legacy_id','title','body','note_date'];
+    if(!row||typeof row!=='object'||Array.isArray(row)||fields.some(k=>!Object.prototype.hasOwnProperty.call(row,k))||
+      typeof row.legacy_id!=='string'||!row.legacy_id.trim()||fields.slice(1).some(k=>row[k]!==null&&typeof row[k]!=='string')||
+      row.note_date!==null&&!/^\d{4}-\d{2}-\d{2}$/.test(row.note_date))throw Error('Invalid complete note snapshot');
+    if(Object.keys(row).some(k=>!['id','user_id','created_at','updated_at',...fields].includes(k)))throw Error('Unsupported note field');
+    return Object.fromEntries(fields.map(k=>[k,row[k]]));
+  }
+  const notePushBusy=new Set();
+  /* Adapter-only rehearsal core: deliberately NO live transport/storage
+     defaults and no button. A future explicit apply phase must supply them. */
+  async function rehearseNotePush(operationId,io){
+    const refused=reason=>({status:'REFUSED — NOTHING WRITTEN',reason,wrote:false,finalized:false});
+    if(!operationId||!io||['currentUser','readState','readLocal','readCloud','ready','cas','finalize'].some(k=>typeof io[k]!=='function'))return refused('All explicit rehearsal adapters are required');
+    if(notePushBusy.has(operationId))return refused('Operation is already running');
+    notePushBusy.add(operationId);
+    let wrote=false,rpcCalled=false,owner,entry,base,desired,localFingerprint;
+    try{
+      const user=await io.currentUser();owner=user?.id;
+      if(!owner)return refused('Authentication required');
+      const state=await io.readState();
+      if(state?.baseline?.version!==2||state.baseline.user_id!==owner||!Array.isArray(state.baseline.records)||!Array.isArray(state.entries))return refused('Verified baseline and outbox required');
+      const candidates=state.entries.filter(x=>x?.id===operationId);
+      if(candidates.length!==1)return refused('Exact outbox entry required');
+      entry=JSON.parse(JSON.stringify(candidates[0]));
+      if(entry.entity!=='notes'||entry.operation!=='upsert'||entry.user_id!==owner||!entry.supabase_id||entry.payload?.id!==entry.supabase_id||entry.payload.user_id!==owner||String(entry.payload.legacy_id)!==String(entry.local_id))return refused('Only owned, explicitly mapped note upserts are supported');
+      if(state.entries.filter(x=>x?.user_id===owner&&outboxKey(x)===outboxKey(entry)).length!==1)return refused('Multiple queued versions require review');
+      desired=noteContent(entry.payload);
+      localFingerprint=await contentFingerprint(canonical(entry.payload,'','notes'));
+      const local=await io.readLocal(entry);
+      if(local?.id!==entry.supabase_id||local.user_id!==owner||local.legacy_id!==entry.payload.legacy_id||await contentFingerprint(canonical(local,'','notes'))!==localFingerprint)return refused('Queued payload no longer matches local note');
+      noteContent(local);
+      const bases=state.baseline.records.filter(r=>r.entity==='notes'&&(r.supabase_id===entry.supabase_id||String(r.localId)===String(entry.local_id)));
+      if(bases.length>1)return refused('Ambiguous note baseline');
+      base=bases[0]?JSON.parse(JSON.stringify(bases[0])):null;
+      let observed;
+      const plan=await planOutbox([entry],{userId:owner,baseline:state.baseline,readCloud:async()=>{observed=await io.readCloud(entry);return observed;}});
+      const item=plan.plan[0];
+      if(!plan.safe||!item||!['INSERT','UPDATE','NOOP'].includes(item.action))return refused('Three-way comparison requires review');
+      if(observed!==null&&observed.legacy_id!==entry.payload.legacy_id)return refused('Cloud note mapping changed');
+      const expected=observed===null?null:noteContent(observed);
+      if(await io.ready()!==true)return refused('Notes RPC readiness not verified');
+      // Recheck mutable local/auth/queue state after asynchronous preflight.
+      const unchanged=async()=>{
+        const u=await io.currentUser(),s=await io.readState(),l=await io.readLocal(entry);
+        if(u?.id!==owner||s?.baseline?.version!==2||s.baseline.user_id!==owner||!Array.isArray(s.entries)||!Array.isArray(s.baseline.records))return false;
+        const queued=s.entries.filter(x=>x?.id===entry.id),sameKey=s.entries.filter(x=>x?.user_id===owner&&outboxKey(x)===outboxKey(entry));
+        const b=s.baseline.records.filter(r=>r.entity==='notes'&&(r.supabase_id===entry.supabase_id||String(r.localId)===String(entry.local_id)));
+        return queued.length===1&&sameKey.length===1&&JSON.stringify(queued[0])===JSON.stringify(entry)&&
+          (base?b.length===1&&JSON.stringify(b[0])===JSON.stringify(base):b.length===0)&&l?.id===entry.supabase_id&&l.user_id===owner&&l.legacy_id===entry.payload.legacy_id&&await contentFingerprint(canonical(l,'','notes'))===localFingerprint;
+      };
+      if(!await unchanged())return refused('Local state changed during preflight');
+      if(item.action!=='NOOP'){
+        rpcCalled=true;
+        let response;
+        try{response=await io.cas({p_id:entry.supabase_id,p_expected:expected,p_desired:desired});}
+        catch(_){return {status:'WRITE OUTCOME UNKNOWN — NOTHING FINALIZED',wrote:null,finalized:false};}
+        const result=Array.isArray(response)?(response.length===1?response[0]:null):response;
+        if(result?.status==='CONFLICT')return {status:'CONFLICT — NOTHING FINALIZED',wrote:false,finalized:false};
+        if(!['APPLIED','ALREADY_APPLIED'].includes(result?.status))return {status:'WRITE OUTCOME UNKNOWN — NOTHING FINALIZED',wrote:null,finalized:false};
+        wrote=result.status==='APPLIED';
+      }
+      let verified;
+      try{
+        verified=await io.readCloud(entry);
+        if(verified?.id!==entry.supabase_id||verified.user_id!==owner||JSON.stringify(noteContent(verified))!==JSON.stringify(desired)||await contentFingerprint(canonical(verified,'','notes'))!==localFingerprint)throw Error('Cloud verification mismatch');
+      }catch(_){return {status:wrote?'CLOUD WRITE OCCURRED — VERIFICATION FAILED':'DATA CONVERGENCE NOT VERIFIED',wrote,finalized:false};}
+      try{
+        if(!await unchanged())throw Error('Local state changed before acknowledgement');
+        const nextRecord={...(base||{}),entity:'notes',localId:String(entry.local_id),supabase_id:entry.supabase_id,user_id:owner,
+          contentFingerprint:localFingerprint,cloud_updated_at:verified.updated_at||null,last_operation_id:entry.id};
+        const receipt={userId:owner,entry,expectedRecord:base,nextRecord};
+        const acknowledgement=await io.finalize(receipt);
+        if(acknowledgement?.committed!==true||acknowledgement.verified!==true){const error=Error('Acknowledgement not verified');error.committed=acknowledgement?.committed===true;throw error;}
+      }catch(e){return {status:e?.committed===true?'LOCAL WRITE OCCURRED — VERIFICATION FAILED':'DATA CONVERGED — BASELINE UPDATE FAILED',wrote,finalized:false};}
+      return {status:wrote?'APPLIED — VERIFIED AND FINALIZED':'ALREADY_APPLIED — VERIFIED AND FINALIZED',wrote,finalized:true};
+    }catch(_){return rpcCalled?{status:'WRITE OUTCOME UNKNOWN — NOTHING FINALIZED',wrote:null,finalized:false}:refused('Read-only preflight could not complete');}
+    finally{notePushBusy.delete(operationId)}
+  }
   /* Session-only review preferences. These are NOT resolutions and are never
      consumed by the executor. Each preference is bound to the exact queue,
      baseline, owner and canonical cloud snapshot, and rechecked on selection. */
@@ -290,7 +369,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     }finally{executingOutbox.delete(operationId)}
   }
   function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="testCapSyncEngine()">Test Sync Engine</button><small id="sync-engine-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
-  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,ORDER};
+  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,ORDER};
   /* Read-only balance consistency report. Shows balances and drift on this
      device only; never writes. Gated behind ?dev=1 in the settings panel. */
   window.checkBalanceConsistency=()=>{

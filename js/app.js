@@ -28,6 +28,76 @@
   const idbPut = (k, v) => idb().then((d) => new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
   const syncStore = (store,op,value,key) => idb().then((d)=>new Promise((res,rej)=>{const t=d.transaction(store,'readwrite'),s=t.objectStore(store);let result,q=op==='get'?s.get(value):op==='all'?s.getAll():op==='delete'?s.delete(value):op==='clear'?s.clear():s.put(value,key);q.onsuccess=()=>{result=q.result};q.onerror=()=>rej(q.error);t.oncomplete=()=>res(result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)}));
 
+  /* Dormant notes-only acknowledgement. Called only after verified cloud
+     convergence. Baseline replacement and exact outbox removal commit together.
+     guard is synchronous: the caller must recheck live local state/ownership. */
+  async function finalizeVerifiedNotePush(receipt, guard) {
+    if (typeof guard !== 'function') throw Error('Local verification guard required');
+    const { userId, entry, expectedRecord, nextRecord } = clone(receipt || {});
+    if (!userId || entry?.entity !== 'notes' || entry.operation !== 'upsert' ||
+        !entry.id || entry.user_id !== userId || entry.payload?.user_id !== userId ||
+        !entry.supabase_id || entry.payload.id !== entry.supabase_id || String(entry.payload.legacy_id) !== String(entry.local_id) ||
+        nextRecord?.entity !== 'notes' || nextRecord.user_id !== userId ||
+        nextRecord.supabase_id !== entry.supabase_id || String(nextRecord.localId) !== String(entry.local_id) ||
+        nextRecord.last_operation_id !== entry.id || !/^[0-9a-f]{64}$/i.test(nextRecord.contentFingerprint || '') ||
+        expectedRecord && (expectedRecord.entity !== 'notes' || expectedRecord.user_id !== userId ||
+          expectedRecord.supabase_id !== entry.supabase_id || String(expectedRecord.localId) !== String(entry.local_id) ||
+          !/^[0-9a-f]{64}$/i.test(expectedRecord.contentFingerprint || ''))) {
+      throw Error('Invalid note acknowledgement');
+    }
+    const d = await idb();
+    let alreadyFinalized = false;
+    await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readwrite');
+      const meta = t.objectStore('syncmeta'), queue = t.objectStore('outbox');
+      const bq = meta.get('baseline'), oq = queue.get(entry.id);
+      let baseline, currentEntry, loaded = 0, failure;
+      const abort = () => { failure = Error('Note acknowledgement preconditions changed'); t.abort(); };
+      const ready = () => {
+        if (++loaded !== 2) return;
+        try {
+          if (baseline?.version !== 2 || baseline.user_id !== userId || !Array.isArray(baseline.records)) return abort();
+          const matches = baseline.records.filter(r => r.entity === 'notes' &&
+            (r.supabase_id === entry.supabase_id || String(r.localId) === String(entry.local_id)));
+          if (!currentEntry && matches.length === 1 && eq(matches[0], nextRecord)) {
+            alreadyFinalized = true; return;
+          }
+          if (!eq(currentEntry, entry) || (expectedRecord ? matches.length !== 1 || !eq(matches[0], expectedRecord) : matches.length !== 0)) return abort();
+          // Do not accept Promise-returning guards as a truthy success.
+          if (guard() !== true) return abort();
+          const records = expectedRecord ? baseline.records.map(r => r === matches[0] ? clone(nextRecord) : r) : [...baseline.records, clone(nextRecord)];
+          meta.put({ ...baseline, records, revision: (baseline.revision || 0) + 1,
+            aggregateFingerprintStale: true, updated_at: new Date().toISOString() }, 'baseline');
+          queue.delete(entry.id);
+        } catch (_) { abort(); }
+      };
+      bq.onsuccess = () => { baseline = bq.result; ready(); };
+      oq.onsuccess = () => { currentEntry = oq.result; ready(); };
+      t.oncomplete = () => resolve();
+      t.onabort = () => reject(failure || Error('Atomic note acknowledgement aborted'));
+      t.onerror = () => { failure = Error('Atomic note acknowledgement failed'); };
+    });
+    // Read back both stores in one snapshot after commit. Never report success
+    // based on a request's onsuccess before the transaction actually completes.
+    const verified = await new Promise((resolve, reject) => {
+      const t = d.transaction(['syncmeta', 'outbox'], 'readonly');
+      const bq = t.objectStore('syncmeta').get('baseline'), oq = t.objectStore('outbox').get(entry.id);
+      let b, q;
+      bq.onsuccess = () => { b = bq.result; }; oq.onsuccess = () => { q = oq.result; };
+      t.oncomplete = () => {
+        const matches = (Array.isArray(b?.records) ? b.records : []).filter(r => r.entity === 'notes' &&
+          (r.supabase_id === entry.supabase_id || String(r.localId) === String(entry.local_id)));
+        resolve(b?.user_id === userId && !q && matches.length === 1 && eq(matches[0], nextRecord));
+      };
+      t.onabort = t.onerror = () => reject(Error('Acknowledgement read-back failed'));
+    }).catch(() => false);
+    if (!verified) {
+      const error = Error('LOCAL WRITE OCCURRED — VERIFICATION FAILED');
+      error.committed = true; throw error;
+    }
+    return { committed: true, verified: true, alreadyFinalized };
+  }
+
   /* ---------- helpers ---------- */
   const isList = (...vs) => vs.some(Array.isArray) && vs.every((v) => v === undefined || (Array.isArray(v) && v.every((x) => x && typeof x === "object" && "id" in x)));
   const isMap = (v) => v && typeof v === "object" && !Array.isArray(v);
@@ -328,6 +398,7 @@
       return {pera:(()=>{try{return localStorage.getItem('pera')}catch(_){return null}})(),indexeddb:{state:await read('state'),base:await read('base'),backup:await read('backup')},auxiliary:aux,excludedLocalKeys:['cap_lock','cap_bio','cap_supabase_session']};
     },
     syncStore,
+    finalizeVerifiedNotePush,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
     settingsHtml,

@@ -1,6 +1,7 @@
 # Atomic notes RPC: manual setup
 
-Status: locally rehearsed; **not installed in Supabase by the agent**.
+Status (2026-10-20): installed manually by the user; the authenticated app's
+live metadata verification passed. No live write-RPC test has been run.
 Cloud Sync and production execution remain OFF/locked throughout this step.
 
 ## What to do
@@ -38,8 +39,10 @@ does **not** enable writes or prove multi-device production readiness.
   settings, version, execution ACLs, notes RLS, the known ownership policy,
   table grants, and whether the authenticated role can bypass RLS. It never
   calls the write function or selects app rows.
-- No live client transport is connected to the new writer. Baseline
-  reconciliation and applying conflict-review choices remain pending.
+- No live client transport is connected to the new writer. The adapter-only
+  client pipeline and atomic local baseline/outbox acknowledgement are
+  rehearsed in `NOTES_PUSH_REHEARSAL.md`; live integration and applying
+  conflict-review choices remain pending.
 
 ## Verification performed locally
 
@@ -53,7 +56,7 @@ does **not** enable writes or prove multi-device production readiness.
 - Readiness-button success/blocked states checked in light/dark themes on a
   disposable browser origin with simulated metadata responses.
 
-Still required before production: live metadata verification, two-session
+Still required before production: two-session
 PostgreSQL race tests (including direct table writers), client CAS transport,
 verified read-back and per-operation baseline reconciliation, explicit apply
 confirmation, and the full RLS/rollout review. None is implied by these tests.
