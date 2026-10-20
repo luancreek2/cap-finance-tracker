@@ -61,6 +61,17 @@ Cloud comparison is point-in-time, not a lock on future remote edits. A remote
 edit after the final read will be detected by a subsequent preview; no cloud
 record is overwritten by this flow.
 
+## Keep-cloud conflict resolution reuse
+
+Shell v313 reuses the `manual-notes-pull-v1` checkpoint and
+`manual-notes-pull-backup:` namespace for the non-destructive **keep-cloud**
+resolution of one conflicted note. The same backup, atomic local-note + baseline
+update, cloud re-read, and checkpoint cleanup rules apply; the only difference
+is that the current local note is allowed to differ from the baseline because
+both sides changed. The recovery inspector labels such a checkpoint
+`READ-ONLY NOTE-RESOLUTION RECOVERY`. Keeping the browser version (overwriting
+the cloud) is not implemented. See `CONFLICT_RESOLUTION.md`.
+
 ## Interrupted work
 
 The backup and checkpoint contain private original state/baseline and recovery

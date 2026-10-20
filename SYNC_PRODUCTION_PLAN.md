@@ -443,9 +443,15 @@ separate browser profile; that step still requires explicit approval. A PASS
 does not update the cloud or authorize the controlled notes test by itself.
 
 - Three-way compare against the baseline (already implemented).
-- Divergence opens a resolution prompt with the differing fields only,
-  keep local / keep cloud.
-- Resolutions are recorded so the same conflict is not re-prompted.
+- A divergent note opens a **read-only on-device comparison** of the local and
+  cloud versions. **Keep cloud** is implemented in shell v313: it saves a
+  verified backup, replaces only that local note and its baseline
+  acknowledgement, and makes no Supabase write. **Keep local** (overwriting the
+  cloud) remains disabled and requires separate destructive-write design and
+  authorization.
+- Resolution checkpoints and backups are retained until separately reviewed;
+  there is no automatic merge or re-prompt suppression yet. See
+  `CONFLICT_RESOLUTION.md`.
 
 ## 4. Deletions
 

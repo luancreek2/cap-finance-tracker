@@ -84,7 +84,7 @@ function noLeak(value) {
   await test('synthetic self-check passes without touching storage or network', async () => {
     const first = await api.selfCheck(), second = await api.selfCheck();
     assert.equal(first.passed, true); assert.equal(first.pullBlocked, true); assert.equal(first.pushBlocked, true);
-    assert.equal(first.cloudOnly, true); assert.equal(first.unchanged, true); assert.equal(second.passed, true);
+    assert.equal(first.cloudOnly, true); assert.equal(first.resolutionPreview, true); assert.equal(first.unchanged, true); assert.equal(second.passed, true);
     assert.equal(JSON.stringify(first), JSON.stringify(second)); noLeak(first);
   });
   console.log(`PASS: ${passed} conflict-protection planning checks; no storage or network`);

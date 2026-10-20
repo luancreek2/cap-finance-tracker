@@ -336,6 +336,106 @@
     }
   }
 
+  /* Confirmed conflict resolution that keeps the cloud version. It is the
+     non-destructive direction: local note + one baseline acknowledgement only.
+     The conflicted local state is backed up before replacement. */
+  async function applyVerifiedNoteResolution(receipt, guard, verifyCloud) {
+    if (!api || typeof guard !== 'function' || typeof verifyCloud !== 'function') throw Error('Explicit resolution guards required');
+    const { userId, expectedLocalJson, expectedBaseline, expectedRecord, expectedLocalFingerprint, local, cloud, nextRecord, backupKey } = clone(receipt || {});
+    const validHash = value => /^[0-9a-f]{64}$/i.test(value || '');
+    const validNote = row => row && typeof row === 'object' && !Array.isArray(row) && row.user_id === userId &&
+      row.id === expectedRecord?.supabase_id && row.legacy_id === String(expectedRecord?.localId) &&
+      typeof row.title === 'string' && typeof row.body === 'string' && Object.prototype.hasOwnProperty.call(row, 'note_date') &&
+      (row.note_date === null || typeof row.note_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.note_date)) &&
+      Object.keys(row).every(k => ['id','user_id','legacy_id','title','body','note_date','created_at','updated_at'].includes(k));
+    if (!userId || typeof expectedLocalJson !== 'string' || !backupKey?.startsWith('manual-notes-pull-backup:') ||
+        expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId || !Array.isArray(expectedBaseline.records) ||
+        expectedRecord?.entity !== 'notes' || expectedRecord.user_id !== userId || !validHash(expectedRecord.contentFingerprint) ||
+        !validHash(expectedLocalFingerprint) || !validNote(local) || !validNote(cloud) ||
+        nextRecord?.entity !== 'notes' || nextRecord.user_id !== userId || nextRecord.supabase_id !== cloud.id ||
+        String(nextRecord.localId) !== cloud.legacy_id || !validHash(nextRecord.contentFingerprint) ||
+        typeof nextRecord.last_resolution_id !== 'string' || !nextRecord.last_resolution_id ||
+        nextRecord.cloud_updated_at !== (cloud.updated_at || null)) throw Error('Invalid note resolution scope');
+    const original = JSON.parse(expectedLocalJson), next = clone(original);
+    if (!Array.isArray(next.notes) || next.notes.some(n => !n || typeof n !== 'object' || n.id === undefined || n.id === null) ||
+        new Set(next.notes.map(n => String(n.id))).size !== next.notes.length || !Number.isFinite(Number(original._mt || 0))) throw Error('Invalid stable local note state');
+    const targets = next.notes.filter(n => String(n.id) === cloud.legacy_id);
+    const mapped = expectedBaseline.records.filter(r => r.entity === 'notes' && (r.supabase_id === cloud.id || String(r.localId) === cloud.legacy_id));
+    if (targets.length !== 1 || mapped.length !== 1 || !eq(mapped[0], expectedRecord)) throw Error('Ambiguous note resolution mapping');
+    const originalNote = targets[0];
+    if (await CapSync.contentFingerprint({ title: originalNote.t || '', body: originalNote.b || '', note_date: originalNote.d || null }) !== expectedLocalFingerprint ||
+        await CapSync.contentFingerprint(cloud) !== nextRecord.contentFingerprint ||
+        expectedLocalFingerprint === expectedRecord.contentFingerprint ||
+        nextRecord.contentFingerprint === expectedRecord.contentFingerprint ||
+        expectedLocalFingerprint === nextRecord.contentFingerprint) throw Error('Note resolution content not proven');
+    Object.assign(targets[0], { t: cloud.title, b: cloud.body, d: cloud.note_date });
+    next._mt = Math.max(now(), Number(original._mt) || 0) + 1;
+    const nextJson = J(next), nextBaseline = { ...expectedBaseline, records: expectedBaseline.records.map(r => eq(r, expectedRecord) ? clone(nextRecord) : r),
+      revision: (expectedBaseline.revision || 0) + 1, aggregateFingerprintStale: true, updated_at: new Date().toISOString() };
+    const checkpointKey = 'manual-notes-pull-v1';
+    const checkpoint = { kind: 'manual-note-resolution', mode: 'conflict-cloud', owner: userId, backupKey, phase: 'prepared', local, cloud,
+      expectedLocalFingerprint, expectedLocalJson, nextLocalJson: nextJson, expectedBaseline, nextBaseline };
+    const applied = { ...checkpoint, phase: 'applied' };
+    const localGuard = json => guard() === true && J(api.get()) === json && localStorage.getItem('pera') === json;
+    if (!localGuard(expectedLocalJson)) throw Error('Local state changed');
+    const d = await idb(); let backedUp = false, committed = false;
+    const transaction = (mode, work) => new Promise((resolve, reject) => {
+      const t = d.transaction(['kv', 'syncmeta', 'outbox'], mode), meta = t.objectStore('syncmeta');
+      const requests = [meta.get('baseline'), meta.get(checkpointKey), meta.get('controlled-notes-test-v1'), meta.get('demo-local-refresh-state-v1'),
+        t.objectStore('outbox').getAll(), t.objectStore('kv').get('state'), meta.get(backupKey)];
+      const values = []; let loaded = 0, failure;
+      requests.forEach((q, i) => { q.onsuccess = () => {
+        values[i] = q.result;
+        if (++loaded !== requests.length) return;
+        try { work(t, values); } catch (_) { failure = Error('Note resolution preconditions changed'); t.abort(); }
+      }; });
+      t.oncomplete = () => resolve(values); t.onabort = () => reject(failure || Error('Note resolution transaction aborted'));
+      t.onerror = () => { failure = Error('Note resolution transaction failed'); };
+    });
+    try {
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || active || testRecovery || demoRecovery || entries.length || backup ||
+            state?.json !== expectedLocalJson || !localGuard(expectedLocalJson)) throw Error('Backup blocked');
+        const meta = t.objectStore('syncmeta');
+        meta.add({ kind: 'manual-note-resolution-backup', owner: userId, localJson: expectedLocalJson, baseline: expectedBaseline, indexeddbState: state }, backupKey);
+        meta.add(checkpoint, checkpointKey);
+      });
+      backedUp = true;
+      const backupGuard = (backup) => backup?.owner === userId && backup.localJson === expectedLocalJson && eq(backup.baseline, expectedBaseline);
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Backup not verified');
+      });
+      if (await verifyCloud() !== true || !localGuard(expectedLocalJson)) throw Error('Cloud or local evidence changed');
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Apply blocked');
+        clearTimeout(pt);
+        t.objectStore('kv').put({ json: nextJson, mt: next._mt }, 'state');
+        t.objectStore('syncmeta').put(nextBaseline, 'baseline');
+        t.objectStore('syncmeta').put(applied, checkpointKey);
+      });
+      committed = true;
+      api.set(clone(next)); localStorage.setItem('pera', nextJson); lsBase = nextJson;
+      resetTracking(); next.notes.forEach(n => recMap.set('notes:' + n.id, J(n, strip)));
+      const verifyApplied = (baseline, active, testRecovery, demoRecovery, entries, state, backup) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== nextJson || !backupGuard(backup) || !localGuard(nextJson)) throw Error('Applied resolution not verified');
+      };
+      await transaction('readonly', (_, values) => verifyApplied(...values));
+      if (await verifyCloud() !== true || !localGuard(nextJson)) throw Error('Post-apply cloud verification failed');
+      await transaction('readwrite', (t, values) => { verifyApplied(...values); t.objectStore('syncmeta').delete(checkpointKey); });
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, nextBaseline) || active || testRecovery || demoRecovery || entries.length || state?.json !== nextJson ||
+            !backupGuard(backup) || !localGuard(nextJson)) throw Error('Cleanup read-back failed');
+      });
+      return { committed: true, verified: true, backupRetained: true };
+    } catch (_) {
+      const error = Error(committed ? 'LOCAL WRITE OCCURRED — RESOLUTION VERIFICATION FAILED' : backedUp ? 'STOPPED — RESOLUTION BACKUP RETAINED; LOCAL DATA NOT REPLACED' : 'BLOCKED — NOTE RESOLUTION NOT APPLIED');
+      error.committed = committed; error.backedUp = backedUp; throw error;
+    }
+  }
+
   /* Confirmed, local-only demo alignment. A verified backup commits BEFORE
      replacement. Local state and its newly verified baseline then commit in
      one IDB transaction. There is no cloud transport or automatic rollback. */
@@ -717,6 +817,7 @@
     discardVerifiedNotesRecoveryCheckpoint,
     stageVerifiedManualNote,
     applyVerifiedNotePull,
+    applyVerifiedNoteResolution,
     refreshVerifiedLocalDemo,
     status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,

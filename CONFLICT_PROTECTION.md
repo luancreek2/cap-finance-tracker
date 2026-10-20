@@ -1,9 +1,10 @@
 # Conflict protection
 
-Shell `cap-shell-v312`. This phase is **simulated only**. No live local or cloud
-edit was made, and Cloud Sync remains OFF. It verifies that Cap refuses to
-overwrite a note when both the browser and Supabase changed it after the same
-baseline.
+Shell `cap-shell-v312`, with keep-cloud resolution added in `cap-shell-v313`
+(see `CONFLICT_RESOLUTION.md`). The conflict-protection work described here is
+**simulated only**. No live local or cloud edit was made, and Cloud Sync remains
+OFF. It verifies that Cap refuses to overwrite a note when both the browser and
+Supabase changed it after the same baseline.
 
 ## What counts as a conflict
 
@@ -27,9 +28,11 @@ Use **Privacy & Sync → developer tools → Plan Outbox**:
   `CONFLICT — local and cloud changed; nothing overwritten`.
 - **Preview manual note sync (read-only)** reports the push-side equivalent:
   `CONFLICT — cloud note changed; no overwrite permitted`.
-- Only differing **field names** (`title`, `body`, `note_date`) are shown. Note
-  values, financial data, record IDs, user IDs, payloads, and raw errors are
-  never rendered.
+- The conflict preview itself shows only differing **field names** (`title`,
+  `body`, `note_date`). Note values, financial data, record IDs, user IDs,
+  payloads, and raw errors are never rendered there. A separate, explicit
+  resolution review can display both note versions on-device; see
+  `CONFLICT_RESOLUTION.md`.
 - A conflict preview offers **no action button**. It performs no local write,
   backup, checkpoint, outbox change, baseline change, or cloud mutation.
 - A retained backup from an earlier successful pull is left untouched.
@@ -40,15 +43,17 @@ reset, or cleanup.
 ## Synthetic self-check
 
 **Run conflict protection self-check (read-only)** runs fixed in-memory rows
-through the same planner three times:
+through the same planner four times:
 
 1. simultaneous different local/cloud edits → blocked as `CONFLICT`;
 2. the same pending edit against a changed cloud note → blocked as `CONFLICT`;
-3. a cloud-only change → still allowed as a pull preview.
+3. a cloud-only change → still allowed as a pull preview;
+4. the same divergent note → allowed only as a resolution preview with
+   keep-cloud available and keep-local unavailable.
 
 It confirms the inputs were unchanged after planning. It does not read real
 notes, localStorage, IndexedDB, or the network, and it makes no writes. Expected:
-all four `PASS` lines.
+all five `PASS` lines.
 
 ## Recovery behavior
 
@@ -67,25 +72,31 @@ first. Do not retry, reset, clear storage, or delete metadata.
 - `node tests/notes-conflict.cjs`: 13 pure conflict-planning checks, including
   single/multiple field conflicts, same-content convergence, local-only vs
   cloud-only changes, pending/recovery precedence, push-side conflicts, leakage,
-  and repeatable synthetic self-check.
+  and repeatable synthetic self-check. The self-check now also proves that a
+  divergent note can be previewed for keep-cloud resolution while keep-local is
+  unavailable.
 - `node tests/notes-pull-idb.cjs`: 50 UI/real-helper/atomic IndexedDB checks.
   Six new conflict cases cover UI field names, no offered action, no writes or
   backup/checkpoint, push-side blocking, retained-backup preservation, reload
   behavior, recovery precedence, and the self-check button.
+- Keep-cloud resolution adds `node tests/notes-resolution.cjs` (26 pure checks)
+  and `node tests/notes-resolution-idb.cjs` (22 UI/atomic IndexedDB checks).
+  Details and the disposable-origin result are in `CONFLICT_RESOLUTION.md`.
 - Native disposable-browser rehearsal (`127.0.0.1:8036`, 43-record fixture,
   mocked cloud) produced `CONFLICT` for both previews with only `body` named,
   no action button, zero cloud mutations/exact reads, no outbox/backup/checkpoint,
   and unchanged local edit, baseline, persistence, and financial collections.
   The self-check showed all four `PASS` lines. After reload, the local edit and
   baseline were unchanged and the conflict still blocked; shell cache was v312.
-- All 20 isolated `.cjs` suites and JavaScript/JSON syntax checks pass.
+- All 22 current isolated `.cjs` suites and JavaScript/JSON syntax checks pass.
 
 ## User profile verification (read-only)
 
 After reloading shell v312, the user ran the developer-tool checks on the real
 profile with no live conflict created:
 
-- conflict self-check: all four `PASS` lines;
+- conflict self-check: all four `PASS` lines at the time of this v312 check
+  (v313 adds a fifth keep-cloud resolution-preview line);
 - cloud pull preview: `NO CLOUD NOTE CHANGE TO PULL — local, baseline, and cloud agree`;
 - manual push preview: `NO NOTE EDIT TO QUEUE — local, baseline, and cloud agree`;
 - Cloud Sync remained OFF, with no changes made.
@@ -103,5 +114,7 @@ differences. Cloud Sync remained OFF. No cleanup or baseline action was taken.
 Not authorized or performed. A future live trial would need separate approval
 and would require making one local note edit and one cloud note edit against the
 same baseline. Until then, conflict behavior is proven only with synthetic and
-fake-IndexedDB data. This phase does not implement merge, automatic resolution,
-background sync, or any financial-record change.
+fake-IndexedDB data. The v313 keep-cloud resolution was also rehearsed only on a
+disposable origin with synthetic data; it did not create a live conflict, write
+Supabase, or touch the user profile. This phase does not implement merge,
+automatic resolution, background sync, or any financial-record change.

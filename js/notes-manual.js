@@ -17,8 +17,10 @@
   const key = r => r.entity + ':' + r.supabase_id;
   const blocked = status => ({ allowed: false, status });
 
-  // Pure decision layer. Only safe status/field names reach the UI. Full rows
-  // stay in private preview receipts and the existing on-device outbox.
+  // Pure decision layer. Blocked/conflict statuses carry only field names. The
+  // explicit resolution preview intentionally returns the on-device local and
+  // cloud note rows so the user can compare them; that private content is never
+  // copied into status, action, field-name, or diagnostic strings.
   async function plan(snapshot, direction = 'push') {
     const s = snapshot, b = s.baseline, v = s.validation;
     if (!s.owner || !s.syncOff || !s.persisted) return blocked('BLOCKED — authentication, local persistence, or Cloud Sync OFF not proven');
@@ -75,6 +77,34 @@
       } catch (_) { return blocked('BLOCKED — complete cloud note cannot be represented safely'); }
       return { allowed: true, mode: 'pull', status: 'CLOUD NOTE CHANGE — pull preview ready', action: 'PULL ONE EXISTING NOTE',
         fields: ['title', 'body', 'note_date'].filter(k => !eq(local[k], cloud[k])), local: copy(local), cloud: copy(cloud) };
+    }
+    if (direction === 'resolve') {
+      if (v.mismatchCount !== 0) return blocked('BLOCKED — validation mismatches require review before resolving');
+      if (s.entries.length) return blocked('BLOCKED — pending operations must be reviewed before resolving');
+      const localChanges = records.filter(r => r.contentFingerprint !== base.get(key(r)).contentFingerprint);
+      const remoteChanges = records.filter(r => r.cloudContentFingerprint !== base.get(key(r)).contentFingerprint);
+      if (!localChanges.length && !remoteChanges.length) return blocked('NO CONFLICT TO RESOLVE — local, baseline, and cloud agree');
+      if (!localChanges.length) return blocked('BLOCKED — cloud-only change; use the pull preview');
+      if (!remoteChanges.length) return blocked('BLOCKED — local-only change; use the manual sync preview');
+      if (localChanges.length !== 1 || remoteChanges.length !== 1 || key(localChanges[0]) !== key(remoteChanges[0]) || localChanges[0].entity !== 'notes')
+        return blocked('BLOCKED — exactly one existing note conflict is supported');
+      const target = localChanges[0], record = base.get(key(target));
+      if (records.some(r => key(r) !== key(target) && (r.contentFingerprint !== base.get(key(r)).contentFingerprint || r.cloudContentFingerprint !== base.get(key(r)).contentFingerprint)))
+        return blocked('BLOCKED — unrelated local/cloud changes require review');
+      if (target.contentFingerprint === target.cloudContentFingerprint) return blocked('BLOCKED — local and cloud already match; baseline review required');
+      const locals = (s.notes || []).filter(n => n.id === target.supabase_id && n.legacy_id === String(target.localId));
+      const clouds = (v.snapshot?.notes || []).filter(n => n.id === target.supabase_id && n.user_id === s.owner);
+      if (locals.length !== 1 || clouds.length !== 1) return blocked('BLOCKED — existing note mapping not proven');
+      const local = locals[0], cloud = clouds[0];
+      try {
+        content(local); content(cloud);
+        if (local.user_id !== s.owner || cloud.user_id !== s.owner || local.legacy_id !== cloud.legacy_id ||
+            await fingerprint(local) !== target.contentFingerprint || await fingerprint(cloud) !== target.cloudContentFingerprint ||
+            target.contentFingerprint === record.contentFingerprint || target.cloudContentFingerprint === record.contentFingerprint) throw Error('Invalid conflict');
+      } catch (_) { return blocked('BLOCKED — complete conflict content or ownership not proven'); }
+      return { allowed: true, mode: 'resolve', status: 'CONFLICT — resolution preview ready', action: 'REVIEW ONE NOTE CONFLICT',
+        fields: ['title', 'body', 'note_date'].filter(k => !eq(local[k], cloud[k])), local: copy(local), cloud: copy(cloud),
+        record: copy(record), canKeepCloud: true, canKeepLocal: false };
     }
     const pending = s.entries[0];
     if (pending && (pending.source !== SOURCE || pending.entity !== 'notes' || pending.operation !== 'upsert' ||
@@ -137,7 +167,7 @@
     const recovery = await CapOff.syncStore('syncmeta', 'get', 'controlled-notes-test-v1'), refresh = await CapOff.syncStore('syncmeta', 'get', 'demo-local-refresh-state-v1');
     const pullRecovery = await CapOff.syncStore('syncmeta', 'get', 'manual-notes-pull-v1');
     if (recovery || refresh || pullRecovery) return blocked('BLOCKED — unresolved recovery checkpoint; no action permitted');
-    if (direction === 'pull' && (await CapOff.syncStore('kv', 'get', 'state'))?.json !== state) return blocked('BLOCKED — IndexedDB and local state differ; reload and inspect before pulling');
+    if (['pull', 'resolve'].includes(direction) && (await CapOff.syncStore('kv', 'get', 'state'))?.json !== state) return blocked('BLOCKED — IndexedDB and local state differ; reload and inspect before pulling');
     const prep = migrationPrepare(); if (prep.blockingProblems.length) return blocked('BLOCKED — local data validation failed');
     const p = buildSupabaseMigrationPlan(prep);
     if (!u?.id || p.userId !== u.id) return blocked('BLOCKED — authentication or mapping not proven');
@@ -159,7 +189,7 @@
 
   let busy = false;
   async function run(mode, ticket, io) {
-    if (!['queue', 'push', 'pull'].includes(mode) || !ticket || !io || ['withLock', 'inspect', 'confirm', ...(mode === 'pull' ? ['pull'] : ['stage', 'push'])].some(k => typeof io[k] !== 'function')) return blocked('BLOCKED — explicit preview and action adapters required');
+    if (!['queue', 'push', 'pull', 'resolve'].includes(mode) || !ticket || !io || ['withLock', 'inspect', 'confirm', ...(mode === 'pull' ? ['pull'] : mode === 'resolve' ? ['resolve'] : ['stage', 'push'])].some(k => typeof io[k] !== 'function')) return blocked('BLOCKED — explicit preview and action adapters required');
     if (busy) return blocked('BLOCKED — manual notes action already running');
     busy = true;
     let started = false;
@@ -175,6 +205,10 @@
           const result = await io.pull(second);
           return result?.committed === true && result.verified === true ? { allowed: true, status: 'PULLED — VERIFIED AND FINALIZED; LOCAL BACKUP RETAINED' } : blocked('STOPPED — pull verification incomplete; inspect recovery before any retry');
         }
+        if (mode === 'resolve') {
+          const result = await io.resolve(second);
+          return result?.committed === true && result.verified === true ? { allowed: true, status: 'RESOLVED — CLOUD VERSION KEPT; LOCAL BACKUP RETAINED' } : blocked('STOPPED — resolution verification incomplete; inspect note-pull recovery before any retry');
+        }
         if (mode === 'queue') {
           const result = await io.stage(second);
           return result?.committed === true && result.verified === true ? { allowed: true, status: 'QUEUED LOCALLY — no cloud write; preview again before pushing' } : blocked('STOPPED — local queue verification failed; inspect before retrying');
@@ -185,17 +219,33 @@
     } catch (error) {
       if (mode === 'pull' && error?.committed === true) return blocked('LOCAL WRITE OCCURRED — PULL VERIFICATION FAILED; inspect note-pull recovery');
       if (mode === 'pull' && error?.backedUp === true) return blocked('STOPPED — PULL BACKUP/CHECKPOINT RETAINED; LOCAL DATA NOT REPLACED');
+      if (mode === 'resolve' && error?.committed === true) return blocked('LOCAL WRITE OCCURRED — RESOLUTION VERIFICATION FAILED; inspect note-pull recovery');
+      if (mode === 'resolve' && error?.backedUp === true) return blocked('STOPPED — RESOLUTION BACKUP/CHECKPOINT RETAINED; LOCAL DATA NOT REPLACED');
       return blocked(started ? 'STOPPED — action outcome requires inspection; do not clear or automatically retry' : 'BLOCKED — read or lock failed; no action started');
     }
     finally { busy = false; }
   }
-  function adapters(direction = 'push') {
+  function adapters(direction = 'push', choice = null) {
     return {
       withLock: run => {
         if (!navigator.locks?.request) throw Error('Cross-tab lock unavailable');
         return navigator.locks.request(LOCK, { mode: 'exclusive', ifAvailable: true }, lock => { if (!lock) throw Error('Another action is active'); return run(); });
       }, inspect: () => inspect(direction),
-      confirm: mode => window.confirm(mode === 'pull' ? 'Pull ONE existing cloud note into this browser?\n\nThe local note must still match its baseline. A local recovery backup is saved first. Only this note and its baseline acknowledgement will change; no financial or Supabase record is written and no outbox entry is removed. Cloud Sync stays OFF. Keep other tabs idle.' : mode === 'queue' ? 'Queue ONE existing note edit locally?\n\nNo cloud write occurs. The current note content is kept in the local outbox; no note or baseline is changed. Cloud Sync stays OFF.' : 'Push ONE queued note edit to Supabase?\n\nThis can make one real cloud note write. The queued content must still match the local note, and the cloud must match the verified baseline or already match the edit. After cloud verification, only this note baseline is acknowledged and its exact outbox entry removed. No financial record changes. Cloud Sync stays OFF. Keep other tabs idle.'),
+      confirm: mode => mode === 'resolve' ? window.confirm(choice === 'cloud' ? 'Keep the CLOUD version of this one conflicted note?\n\nThis browser’s local note will be replaced by the reviewed cloud version. A local backup of the conflicted state and baseline is saved first. No Supabase record is changed, no outbox entry is created, and financial data is untouched. Cloud Sync stays OFF. Keep other tabs idle.' : 'Keep the LOCAL version?\n\nThis destructive cloud overwrite is not available in this phase. Nothing will change.') : mode === 'pull' ? window.confirm('Pull ONE existing cloud note into this browser?\n\nThe local note must still match its baseline. A local recovery backup is saved first. Only this note and its baseline acknowledgement will change; no financial or Supabase record is written and no outbox entry is removed. Cloud Sync stays OFF. Keep other tabs idle.') : mode === 'queue' ? window.confirm('Queue ONE existing note edit locally?\n\nNo cloud write occurs. The current note content is kept in the local outbox; no note or baseline is changed. Cloud Sync stays OFF.') : window.confirm('Push ONE queued note edit to Supabase?\n\nThis can make one real cloud note write. The queued content must still match the local note, and the cloud must match the verified baseline or already match the edit. After cloud verification, only this note baseline is acknowledged and its exact outbox entry removed. No financial record changes. Cloud Sync stays OFF. Keep other tabs idle.'),
+      resolve: async r => {
+        if (choice !== 'cloud') throw Error('Keep-local resolution is not implemented');
+        const cloud = r.decision.cloud, local = r.decision.local, record = r.decision.record;
+        const nextRecord = { ...record, contentFingerprint: await fingerprint(cloud), cloud_updated_at: cloud.updated_at || null, last_resolution_id: crypto.randomUUID() };
+        return CapOff.applyVerifiedNoteResolution({ userId: r.owner, expectedLocalJson: r.state, expectedBaseline: r.baseline, expectedRecord: record,
+          expectedLocalFingerprint: await fingerprint(local), local, cloud, nextRecord, backupKey: 'manual-notes-pull-backup:' + crypto.randomUUID() },
+        () => typeof claude === 'undefined' && CapSupabase.status().userId === r.owner,
+        async () => {
+          const user = await CapSupabase.currentUser();
+          if (user?.id !== r.owner) return false;
+          const rows = await CapSupabase.syncRequest('/rest/v1/notes?select=*&user_id=eq.' + encodeURIComponent(r.owner) + '&id=eq.' + encodeURIComponent(cloud.id));
+          return Array.isArray(rows) && rows.length === 1 && rows[0].id === cloud.id && rows[0].user_id === r.owner && eq(content(rows[0]), content(cloud));
+        });
+      },
       pull: async r => {
         const cloud = r.decision.cloud, record = r.baseline.records.find(x => x.entity === 'notes' && x.supabase_id === cloud.id);
         const nextRecord = { ...record, contentFingerprint: await fingerprint(cloud), cloud_updated_at: cloud.updated_at || null, last_pull_id: crypto.randomUUID() };
@@ -276,6 +326,7 @@
     const checkpoint = await CapOff.syncStore('syncmeta', 'get', 'manual-notes-pull-v1');
     if (!checkpoint) return { status: 'NO NOTE-PULL RECOVERY CHECKPOINT', present: false };
     const report = { present: true, phase: ['prepared', 'applied'].includes(checkpoint.phase) ? checkpoint.phase : 'unknown',
+      kind: checkpoint.kind === 'manual-note-resolution' ? 'resolution' : 'pull',
       owned: false, backupVerified: false, outbox: -1, local: 'not compared', baseline: 'not compared', persisted: false,
       financialUnchanged: false, cloud: 'BLOCKED — CLOUD SNAPSHOT NOT PROVEN' };
     const baseline = await CapOff.syncStore('syncmeta', 'get', 'baseline'), entries = await CapOff.syncStore('outbox', 'all');
@@ -298,9 +349,9 @@
     report.baseline = eq(baseline, checkpoint.expectedBaseline) ? 'matches original' : eq(baseline, checkpoint.nextBaseline) ? 'matches pulled snapshot' : 'differs';
     report.persisted = localStorage.getItem('pera') === json && state?.json === json;
     try { const old = JSON.parse(checkpoint.expectedLocalJson); report.financialUnchanged = financial() === JSON.stringify(Object.fromEntries(['accts','tx','pend','xfer','bills','goals','debts','budgets'].map(k => [k, old[k]]))); } catch (_) {}
-    report.status = !report.owned || !report.backupVerified || report.outbox !== 0 || !report.persisted || !report.financialUnchanged || report.cloud !== 'matches pulled snapshot' ? 'BLOCKED — PULL RECOVERY REQUIRES REVIEW' :
-      report.local === 'matches original' && report.baseline === 'matches original' ? 'PULL NOT APPLIED — BACKUP RETAINED; REVIEW REQUIRED' :
-      report.local === 'matches pulled snapshot' && report.baseline === 'matches pulled snapshot' ? 'PULL DATA VERIFIED — CHECKPOINT RETAINED; REVIEW REQUIRED' : 'BLOCKED — PULL STATE DIFFERS; REVIEW REQUIRED';
+    report.status = !report.owned || !report.backupVerified || report.outbox !== 0 || !report.persisted || !report.financialUnchanged || report.cloud !== 'matches pulled snapshot' ? `BLOCKED — ${report.kind === 'resolution' ? 'RESOLUTION' : 'PULL'} RECOVERY REQUIRES REVIEW` :
+      report.local === 'matches original' && report.baseline === 'matches original' ? `${report.kind === 'resolution' ? 'RESOLUTION' : 'PULL'} NOT APPLIED — BACKUP RETAINED; REVIEW REQUIRED` :
+      report.local === 'matches pulled snapshot' && report.baseline === 'matches pulled snapshot' ? `${report.kind === 'resolution' ? 'RESOLUTION' : 'PULL'} DATA VERIFIED — CHECKPOINT RETAINED; REVIEW REQUIRED` : `BLOCKED — ${report.kind === 'resolution' ? 'RESOLUTION' : 'PULL'} STATE DIFFERS; REVIEW REQUIRED`;
     return report;
   }
   /* Pure in-memory proof that simultaneous edits are refused. It uses fixed
@@ -317,16 +368,51 @@
       validation: { missingCount: 0, unexpectedCount: 0, mismatchCount: 0, foreignKeyErrorCount: 0, snapshot: { notes: [cloud] } } };
     const pending = { id: 'conflict-self-check-op', source: SOURCE, entity: 'notes', operation: 'upsert', user_id: fixtureOwner,
       local_id: '1', supabase_id: base.id, payload: local, manual_original: base };
-    const pullSnapshot = { ...common, entries: [] }, pushSnapshot = { ...common, entries: [pending] };
-    const before = JSON.stringify([pullSnapshot, pushSnapshot]);
+    const pullSnapshot = { ...common, entries: [] }, pushSnapshot = { ...common, entries: [pending] }, resolveSnapshot = { ...common, entries: [] };
+    const before = JSON.stringify([pullSnapshot, pushSnapshot, resolveSnapshot]);
     const pullResult = await plan(pullSnapshot, 'pull'), pushResult = await plan(pushSnapshot, 'push');
+    const resolveResult = await plan(resolveSnapshot, 'resolve');
     const cloudOnlyResult = await plan({ ...common, entries: [], notes: [base], records: [{ ...record, cloudContentFingerprint: cloudHash }] }, 'pull');
     const pullBlocked = pullResult.allowed === false && pullResult.conflict === true && /^CONFLICT/.test(pullResult.status) &&
       eq(pullResult.fields, ['body']);
     const pushBlocked = pushResult.allowed === false && pushResult.conflict === true && /^CONFLICT/.test(pushResult.status) && eq(pushResult.fields, ['body']);
     const cloudOnly = cloudOnlyResult.allowed === true && cloudOnlyResult.mode === 'pull';
-    return { passed: pullBlocked && pushBlocked && cloudOnly && JSON.stringify([pullSnapshot, pushSnapshot]) === before,
-      pullBlocked, pushBlocked, cloudOnly, unchanged: JSON.stringify([pullSnapshot, pushSnapshot]) === before, fields: pullResult.fields };
+    const resolutionPreview = resolveResult.allowed === true && resolveResult.mode === 'resolve' &&
+      resolveResult.canKeepCloud === true && resolveResult.canKeepLocal === false;
+    const unchanged = JSON.stringify([pullSnapshot, pushSnapshot, resolveSnapshot]) === before;
+    return { passed: pullBlocked && pushBlocked && cloudOnly && resolutionPreview && unchanged,
+      pullBlocked, pushBlocked, cloudOnly, resolutionPreview, unchanged, fields: pullResult.fields };
+  }
+  function mountResolution(parent) {
+    const review = document.createElement('button'), out = document.createElement('div');
+    review.type = 'button'; review.className = 'btn s'; review.textContent = 'Review note conflict (read-only)';
+    out.className = 'st-note'; out.style.whiteSpace = 'pre-line'; out.setAttribute('role', 'status');
+    review.onclick = async () => {
+      review.disabled = true; out.textContent = 'Comparing this browser and cloud note versions…';
+      try {
+        const r = await inspect('resolve');
+        if (!r.allowed) { out.textContent = r.status + '\nNo changes made. Cloud Sync remains OFF.'; return; }
+        const d = r.decision, fmt = row => 'Title: ' + row.title + '\nDate: ' + (row.note_date === null ? '—' : row.note_date) + '\nBody:\n' + row.body;
+        out.textContent = d.status + '\nFields differing: ' + (d.fields.join(', ') || 'none') +
+          '\n\nTHIS BROWSER VERSION\n' + fmt(d.local) + '\n\nCLOUD VERSION\n' + fmt(d.cloud) +
+          '\n\nPrivate preview on this device only; content is not written to diagnostics.' +
+          '\nKeeping cloud replaces this browser’s note and updates only its baseline. No Supabase record is written; no financial data changes. Cloud Sync remains OFF.';
+        const cloudAction = document.createElement('button'); cloudAction.type = 'button'; cloudAction.className = 'btn s';
+        cloudAction.textContent = 'Keep cloud version (confirm)';
+        cloudAction.onclick = async () => {
+          cloudAction.disabled = true; review.disabled = true;
+          try {
+            const result = await run('resolve', r.ticket, adapters('resolve', 'cloud'));
+            out.textContent = result.status + '\nCloud Sync remains OFF. No automatic retry. If stopped, inspect note-pull recovery before any further action.';
+          } finally { review.disabled = false; }
+        };
+        const localAction = document.createElement('button'); localAction.type = 'button'; localAction.className = 'btn s';
+        localAction.textContent = 'Keep this browser’s version (not available yet)'; localAction.disabled = true;
+        out.appendChild(cloudAction); out.appendChild(localAction);
+      } catch (_) { out.textContent = 'BLOCKED — conflict review could not complete. Record absence not proven. No changes made.'; }
+      finally { review.disabled = false; }
+    };
+    parent.appendChild(review); parent.appendChild(out);
   }
   function mount(parent) {
     mountPreview(parent, 'push'); mountPreview(parent, 'pull');
@@ -337,7 +423,7 @@
       button.disabled = true;
       try {
         const r = await inspectPullRecovery();
-        out.textContent = 'READ-ONLY NOTE-PULL RECOVERY\n' + r.status + (r.present ? '\nCheckpoint: present · phase ' + r.phase + '\nOwnership: ' + (r.owned ? 'verified' : 'not proven') +
+        out.textContent = (r.kind === 'resolution' ? 'READ-ONLY NOTE-RESOLUTION RECOVERY\n' : 'READ-ONLY NOTE-PULL RECOVERY\n') + r.status + (r.present ? '\nCheckpoint: present · phase ' + r.phase + '\nOwnership: ' + (r.owned ? 'verified' : 'not proven') +
           '\nBackup: ' + (r.backupVerified ? 'verified' : 'not proven') + '\nOutbox: ' + (r.outbox < 0 ? 'not read' : r.outbox) + '\nLocal state: ' + r.local + '\nBaseline: ' + r.baseline +
           '\nPersistence: ' + (r.persisted ? 'current' : 'differs') + '\nFinancial state: ' + (r.financialUnchanged ? 'unchanged' : 'not proven') + '\nCloud: ' + r.cloud : '') +
           '\nNo changes made. Cloud Sync remains OFF. Do not reset, retry, or delete recovery metadata without review.';
@@ -353,13 +439,14 @@
       try {
         const r = await selfCheck();
         checkOut.textContent = 'READ-ONLY CONFLICT SELF-CHECK\n' + (r.passed ?
-          'PASS — simultaneous local/cloud note changes are blocked; nothing overwritten\nPASS — the same conflict blocks the push planner; no cloud write\nPASS — a cloud-only change still previews as a pull\nPASS — synthetic self-check made no storage or network changes' :
+          'PASS — simultaneous local/cloud note changes are blocked; nothing overwritten\nPASS — the same conflict blocks the push planner; no cloud write\nPASS — a cloud-only change still previews as a pull\nPASS — one conflicted note can be previewed; keep-cloud only, no overwrite\nPASS — synthetic self-check made no storage or network changes' :
           'FAIL — conflict protection did not pass; do not proceed') +
           '\nNo real note, financial, or cloud data was read or changed. Cloud Sync remains OFF.';
       } catch (_) { checkOut.textContent = 'BLOCKED — conflict self-check could not complete. No changes made.'; }
       finally { check.disabled = false; }
     };
     parent.appendChild(check); parent.appendChild(checkOut);
+    mountResolution(parent);
   }
   window.CapManualNotes = { plan, inspect, run, mount, inspectPullRecovery, selfCheck };
 })();
