@@ -88,6 +88,21 @@ import option is gone from the preview.
   forever.
 - No processing unless the user has enabled sync.
 
+**Planner (implemented, read-only).** `CapSync.planOutbox(entries, {userId,
+readCloud, baseline})` validates ownership and the entity allow-list, coalesces
+repeated operations per record (latest write wins, delete supersedes), orders
+by dependency, resolves Supabase identities from the baseline, and classifies
+each operation as INSERT / UPDATE / DELETE / NOOP / ALREADY_DELETED, or BLOCKED.
+A failed cloud read is BLOCKED and is never treated as absence.
+`CapSync.processOutbox({dryRun:true})` wraps it with the authenticated user,
+skips other users' entries and known test artifacts (both counted), and refuses
+any non-dry-run call.
+
+Verified 2026-10-20: coalescing (two writes → one INSERT), dependency ordering,
+baseline identity resolution, already-applied detection, ownership rejection,
+malformed entries, and a thrown reader (blocked). Wrapper test on a disposable
+origin: nothing applied, nothing removed, exactly one cloud read.
+
 ## 3. Conflict handling
 
 - Three-way compare against the baseline (already implemented).
