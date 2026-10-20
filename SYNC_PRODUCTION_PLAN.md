@@ -103,6 +103,21 @@ baseline identity resolution, already-applied detection, ownership rejection,
 malformed entries, and a thrown reader (blocked). Wrapper test on a disposable
 origin: nothing applied, nothing removed, exactly one cloud read.
 
+**Single-operation execution (implemented, rehearsal only).**
+`CapSync.executeOutboxOperation(id, …)` re-plans exactly one entry, refuses
+blocked operations, payload-id mismatches, and ownership mismatches, applies it,
+reads it back, and removes the outbox entry only after verification. Failure
+markers: `CLOUD WRITE OCCURRED — VERIFICATION FAILED`, `WRITE FAILED — NOTHING
+VERIFIED`, `DATA CONVERGED — OUTBOX CLEANUP FAILED`. An unreadable result is
+never treated as success, and a failed or unverified write leaves the entry
+(retry count and last error recorded locally). The baseline is deliberately not
+touched in this phase, so a verified push reads as CONVERGED until reconciled.
+
+Verified 2026-10-20 against an in-memory cloud: insert, update, delete,
+already-applied, verification mismatch, write failure, planning read failure,
+verification read failure, ownership mismatch, payload-id mismatch, and
+concurrent double execution. No real cloud request was made.
+
 ## 3. Conflict handling
 
 - Three-way compare against the baseline (already implemented).

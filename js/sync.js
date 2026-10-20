@@ -75,6 +75,16 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     if(op.operation==='upsert'&&(!op.payload||typeof op.payload!=='object'))e.push('missing payload');
     return e;
   }
+  function cloudReader(userId){
+    return (entity,{id,localId})=>{
+      const filter=id?'id=eq.'+encodeURIComponent(id):'legacy_id=eq.'+encodeURIComponent(localId);
+      return CapSupabase.syncRequest('/rest/v1/'+entity+'?select=*&user_id=eq.'+encodeURIComponent(userId)+'&'+filter).then(rows=>rows?.[0]||null);
+    };
+  }
+  function payloadMatches(payload,cloud){
+    const norm=v=>v&&typeof v==='object'?JSON.stringify(v):String(v??'');
+    return Object.keys(payload||{}).filter(k=>!['updated_at','created_at'].includes(k)).every(k=>norm(payload[k])===norm(cloud?.[k]));
+  }
   async function planOutbox(entries,{userId,readCloud,baseline}={}){
     if(!userId)throw Error('An authenticated user is required to plan the outbox');
     if(typeof readCloud!=='function')throw Error('A cloud reader is required to plan the outbox');
@@ -88,7 +98,6 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     for(const op of sorted)latest.set(outboxKey(op),op);
     const coalesced=valid.length-latest.size;
     const ordered=[...latest.values()].sort((a,b)=>(orderIndex(a.entity)-orderIndex(b.entity))||String(a.queued_at||'').localeCompare(String(b.queued_at||''))||String(a.id).localeCompare(String(b.id)));
-    const norm=v=>v&&typeof v==='object'?JSON.stringify(v):String(v??'');
     const plan=[];
     for(const op of ordered){
       const key=outboxKey(op);
@@ -98,11 +107,9 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       let cloud;
       try{cloud=await readCloud(op.entity,{id:supabaseId,localId:op.local_id})}
       catch(e){plan.push({key,entity:op.entity,localId:op.local_id,operation:op.operation,action:'BLOCKED',reason:'cloud read failed: '+(e?.message||'unknown')});continue}
-      if(op.operation==='delete'){plan.push({key,entity:op.entity,localId:op.local_id,operation:'delete',action:cloud?'DELETE':'ALREADY_DELETED'});continue}
-      if(!cloud){plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',action:'INSERT'});continue}
-      const p=op.payload||{};
-      const match=Object.keys(p).filter(k=>!['updated_at','created_at'].includes(k)).every(k=>norm(p[k])===norm(cloud[k]));
-      plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',action:match?'NOOP':'UPDATE'});
+      if(op.operation==='delete'){plan.push({key,entity:op.entity,localId:op.local_id,operation:'delete',supabaseId,action:cloud?'DELETE':'ALREADY_DELETED'});continue}
+      if(!cloud){plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',supabaseId,action:'INSERT'});continue}
+      plan.push({key,entity:op.entity,localId:op.local_id,operation:'upsert',supabaseId,action:payloadMatches(op.payload,cloud)?'NOOP':'UPDATE'});
     }
     const count=a=>plan.filter(x=>x.action===a).length;
     const summary={insert:count('INSERT'),update:count('UPDATE'),delete:count('DELETE'),noop:count('NOOP')+count('ALREADY_DELETED'),blocked:count('BLOCKED')+blocked.length};
@@ -114,15 +121,51 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     const baseline=await CapOff.syncStore('syncmeta','get','baseline').catch(()=>null);
     const all=await CapOff.syncStore('outbox','all').catch(e=>{throw Error('Outbox read failed: '+e.message)});
     const mine=all.filter(x=>x.user_id===u.id),others=all.length-mine.length,test=mine.filter(x=>(x.payload?.legacy_id||'').startsWith('phase6-test-')),entries=mine.filter(x=>!test.includes(x));
-    const readCloud=(entity,{id,localId})=>{
-      const filter=id?'id=eq.'+encodeURIComponent(id):'legacy_id=eq.'+encodeURIComponent(localId);
-      return CapSupabase.syncRequest('/rest/v1/'+entity+'?select=*&user_id=eq.'+encodeURIComponent(u.id)+'&'+filter).then(rows=>rows?.[0]||null);
-    };
+    const readCloud=cloudReader(u.id);
     const result=await planOutbox(entries,{userId:u.id,readCloud,baseline});
     return {...result,ignoredTestArtifacts:test.length,ignoredOtherUsers:others,dryRun:true,applied:0,removed:0};
   }
+  async function markOutboxFailure(entry,reason){
+    try{await CapOff.syncStore('outbox','put',{...entry,retry_count:(entry.retry_count||0)+1,last_error:String(reason).slice(0,500)})}catch(_){}
+  }
+  const executingOutbox=new Set();
+  async function executeOutboxOperation(operationId,{readCloud,write,userId}={}){
+    if(!operationId)throw Error('An outbox operation id is required');
+    if(executingOutbox.has(operationId))throw Error('That outbox operation is already executing');
+    executingOutbox.add(operationId);
+    try{
+      const u=userId?{id:userId}:await CapSupabase.currentUser();
+      if(!u?.id)throw Error('Authenticate before executing the outbox');
+      const baseline=await CapOff.syncStore('syncmeta','get','baseline').catch(()=>null);
+      const all=await CapOff.syncStore('outbox','all').catch(e=>{throw Error('Outbox read failed: '+e.message)});
+      const entry=all.find(x=>x.id===operationId);
+      if(!entry)throw Error('Outbox entry not found');
+      const reader=readCloud||cloudReader(u.id),writer=write||(op=>applyOperation(op));
+      const planned=await planOutbox([entry],{userId:u.id,readCloud:reader,baseline});
+      const item=planned.plan[0];
+      if(!item||item.action==='BLOCKED')return{status:'REFUSED — NOTHING WRITTEN',reason:planned.blocked[0]?.reason||item?.reason||'blocked',wrote:false,removed:false};
+      const supabaseId=item.supabaseId;
+      if(entry.operation==='upsert'&&!entry.payload?.id)return{status:'REFUSED — NOTHING WRITTEN',reason:'payload has no id',wrote:false,removed:false};
+      if(entry.operation==='upsert'&&String(entry.payload.id)!==String(supabaseId))return{status:'REFUSED — NOTHING WRITTEN',reason:'payload id does not match the resolved Supabase id',wrote:false,removed:false};
+      if(entry.payload?.user_id&&entry.payload.user_id!==u.id)return{status:'REFUSED — NOTHING WRITTEN',reason:'payload ownership does not match the authenticated user',wrote:false,removed:false};
+      if(item.action==='NOOP'||item.action==='ALREADY_DELETED'){
+        try{await CapOff.syncStore('outbox','delete',entry.id);return{status:'ALREADY_APPLIED — VERIFIED',wrote:false,removed:true}}
+        catch(e){return{status:'DATA CONVERGED — OUTBOX CLEANUP FAILED',wrote:false,removed:false,error:e?.message}}
+      }
+      const op={entity:entry.entity,local_id:entry.local_id,supabase_id:supabaseId,operation:entry.operation,payload:entry.payload,user_id:u.id};
+      try{await writer(op)}
+      catch(e){await markOutboxFailure(entry,'write failed: '+(e?.message||'unknown'));return{status:'WRITE FAILED — NOTHING VERIFIED',wrote:false,removed:false,error:e?.message}}
+      let cloud;
+      try{cloud=await reader(entry.entity,{id:supabaseId,localId:entry.local_id})}
+      catch(e){await markOutboxFailure(entry,'verification read failed: '+(e?.message||'unknown'));return{status:'CLOUD WRITE OCCURRED — VERIFICATION FAILED',wrote:true,removed:false,error:e?.message}}
+      const ok=entry.operation==='delete'?!cloud:payloadMatches(entry.payload,cloud);
+      if(!ok){await markOutboxFailure(entry,'verification mismatch');return{status:'CLOUD WRITE OCCURRED — VERIFICATION FAILED',wrote:true,removed:false}}
+      try{await CapOff.syncStore('outbox','delete',entry.id);return{status:'APPLIED — VERIFIED',wrote:true,removed:true}}
+      catch(e){return{status:'DATA CONVERGED — OUTBOX CLEANUP FAILED',wrote:true,removed:false,error:e?.message}}
+    }finally{executingOutbox.delete(operationId)}
+  }
   function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="testCapSyncEngine()">Test Sync Engine</button><small id="sync-engine-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
-  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,ORDER};
+  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,ORDER};
   /* Read-only balance consistency report. Shows balances and drift on this
      device only; never writes. Gated behind ?dev=1 in the settings panel. */
   window.checkBalanceConsistency=()=>{
