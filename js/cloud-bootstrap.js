@@ -260,7 +260,14 @@
   }
   const api={ENTITIES,validateSnapshot,signature,assertFresh,hydrate,assertIdle,createController,verifyCandidate,availability,
     settingsHtml:()=>'<div class="st-box st-col"><button type="button" class="btn s" id="cloud-bootstrap-button" disabled onclick="CapCloudBootstrap.run()">Set Up This Device From Cloud</button><small class="st-note" id="cloud-bootstrap-result">Available only on an empty, signed-in device with Cloud Sync OFF and no baseline or pending work.</small></div>',
-    refresh:async()=>{const b=document.getElementById('cloud-bootstrap-button');if(b)b.disabled=!await availability();},
+    refresh:async()=>{
+      const b=document.getElementById('cloud-bootstrap-button');
+      if(b){
+        b.disabled=!await availability();
+      }else{
+        setTimeout(()=>CapCloudBootstrap.refresh(),100);
+      }
+    },
     run:async()=>{
       const b=document.getElementById('cloud-bootstrap-button'),out=document.getElementById('cloud-bootstrap-result');
       if(b)b.disabled=true;
