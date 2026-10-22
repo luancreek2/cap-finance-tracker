@@ -3,6 +3,12 @@
 (function(){
   const cfg=window.CAP_SUPABASE_CONFIG||{},KEY='cap_supabase_session';let session=null,rpcReadyState=false;
   let verifiedUser=null,localAccess=false,verification='signed-out',sessionRevision=0,bootPromise=null;
+  // The complete production RPC surface of the shipped client. Nothing else
+  // may reach Supabase: no table endpoint, no legacy write, no test RPC.
+  const PRODUCTION_RPC_PATHS=['/rest/v1/rpc/cap_verify_production_sync_v1',
+    '/rest/v1/rpc/cap_sync_snapshot_v1','/rest/v1/rpc/cap_sync_transaction_create',
+    '/rest/v1/rpc/cap_notes_change','/rest/v1/rpc/cap_notes_read',
+    '/rest/v1/rpc/cap_verify_notes_lifecycle'];
   const clean=v=>String(v||'').replace(/\/$/,'');
   const configured=()=>!!(cfg.url&&cfg.publishableKey);
   function readSession(){try{return JSON.parse(localStorage.getItem(KEY)||'null')}catch(_){return null}}
@@ -19,9 +25,12 @@
     if(old)return;
     document.body.insertAdjacentHTML('beforeend','<div id="cap-local-auth-notice" class="cap-local-auth-notice" role="status">Local access only · Cloud authentication is not verified. Cloud Sync stays OFF. Reconnect and reload to verify your session.</div>');
   }
-  function writeSession(v){try{if(v)localStorage.setItem(KEY,JSON.stringify(v));else localStorage.removeItem(KEY)}catch(_){}session=v||null;++sessionRevision;localAccess=cachedLocal(session);invalidate(v?'unverified':'signed-out');if(!v)notice()}
+  function writeSession(v){try{if(v)localStorage.setItem(KEY,JSON.stringify(v));else localStorage.removeItem(KEY)}catch(_){}session=v||null;++sessionRevision;localAccess=cachedLocal(session);invalidate(v?'unverified':'signed-out');if(!v)notice();window.CapProductionSync?.authChanged()}
   async function request(path,options={}){
     const auth=path.startsWith('/auth/v1/');
+    // The shipped client is RPC-only. Direct table endpoints and every
+    // legacy/test endpoint are refused here, before any request is made.
+    if(!auth&&!PRODUCTION_RPC_PATHS.includes(path))throw Error('DIRECT_TABLE_ACCESS_DISABLED');
     if(offline()){invalidate('offline');notice();throw Error('Offline — cloud authentication is not verified');}
     if(!auth&&!verifiedUser)throw Error('Cloud access blocked — online authentication required');
     const revision=sessionRevision,h={'apikey':cfg.publishableKey,'Content-Type':'application/json',...(options.headers||{})};
@@ -41,7 +50,7 @@
     // Only a successful, fresh server response establishes cloud identity.
     // Cached session.user is exclusively evidence for local offline access.
     if(!session.user?.id)writeSession({...session,user:u});
-    verifiedUser=u;localAccess=true;verification='verified';notice();return u;
+    const newlyVerified=!verifiedUser;verifiedUser=u;localAccess=true;verification='verified';notice();if(newlyVerified)window.CapProductionSync?.request('authenticated');return u;
   }
   const accessRejected=e=>e?.status===401||e?.status===403;
   const refreshRejected=e=>accessRejected(e)||e?.status===400&&['refresh_token_not_found','refresh_token_already_used','session_not_found','user_not_found','user_banned','invalid_credentials','invalid_grant'].includes(e.code);
@@ -76,73 +85,45 @@
     if(!configured())throw Error('Supabase URL and Publishable key are not configured');
     const u=await user();
     if(!u?.id)throw Error('No authenticated Supabase user');
-    let own=await request('/rest/v1/profiles?select=id&id=eq.'+encodeURIComponent(u.id)+'&limit=1');
-    if(!Array.isArray(own)||!own.length){
-      try{await request('/rest/v1/profiles',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({id:u.id,display_name:u.email||''})})}catch(e){
-        // A concurrent first-time test may have created the row already; verify below.
-        if(!String(e.message||'').toLowerCase().includes('duplicate'))throw Error('Your profile could not be created through RLS: '+e.message);
-      }
-      own=await request('/rest/v1/profiles?select=id&id=eq.'+encodeURIComponent(u.id)+'&limit=1');
-    }
-    if(!Array.isArray(own)||own.length!==1||own[0].id!==u.id)throw Error('Authenticated, but your profiles row is unavailable through RLS');
-    const random=crypto.randomUUID();
-    const other=await request('/rest/v1/profiles?select=id&id=eq.'+random+'&limit=1');
-    if(!Array.isArray(other)||other.length!==0)throw Error('RLS check failed: a random profile was visible');
-    return{userId:u.id,email:u.email,ownProfile:true,otherRows:0};
+    // Read-only: the production snapshot is the only cloud read path. There is
+    // no production RPC that creates a profile row, so bootstrap is reported
+    // as unsupported instead of writing to a table.
+    const {rows}=await window.CapProductionRpc.snapshotRows(u.id);
+    const own=rows.profiles||[];
+    if(!Array.isArray(own)||own.length>1)throw Error('Authenticated, but your profile row is unavailable through the production snapshot');
+    return{userId:u.id,email:u.email,ownProfile:own.length===1,otherRows:0,
+      profileBootstrap:own.length===1?'PRESENT':'UNSUPPORTED_NO_PRODUCTION_RPC'};
   }
   async function testCloudDatabase(){
-    const stages=[];let id=null,uid=null,deleted=false;
+    const stages=[];
     const pass=(name,detail)=>stages.push({name,ok:true,detail:detail||''});
     const fail=(name,error)=>stages.push({name,ok:false,error:String(error?.message||error)});
     try{
       if(!configured())throw Error('Supabase URL and Publishable key are not configured');
-      const u=await user();uid=u?.id;if(!uid)throw Error('No authenticated Supabase user');pass('Authenticated',uid);
-      id=crypto.randomUUID();
-      const created=await request('/rest/v1/accounts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({id,user_id:uid,legacy_id:'cap-phase3-test-'+id,account_type:'cash',name:'CAP SUPABASE TEST',balance:0,status:'Active'})});
-      if(!Array.isArray(created)||created.length!==1||created[0].id!==id||created[0].user_id!==uid||created[0].name!=='CAP SUPABASE TEST')throw Error('Inserted account did not match the expected test fields');pass('Create');
-      const read=await request('/rest/v1/accounts?select=id,user_id,name,account_type,balance,status&id=eq.'+id+'&user_id=eq.'+uid+'&limit=1');
-      if(!Array.isArray(read)||read.length!==1||read[0].id!==id||read[0].user_id!==uid||read[0].account_type!=='cash'||Number(read[0].balance)!==0)throw Error('Created account could not be read back with the expected fields');pass('Read');
-      const updated=await request('/rest/v1/accounts?id=eq.'+id+'&user_id=eq.'+uid,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({nickname:'Phase 3 disposable test'})});
-      if(!Array.isArray(updated)||updated.length!==1||updated[0].nickname!=='Phase 3 disposable test')throw Error('Harmless account update was not verified');pass('Update');
-      await request('/rest/v1/accounts?id=eq.'+id+'&user_id=eq.'+uid,{method:'DELETE',headers:{Prefer:'return=minimal'}});deleted=true;pass('Delete');
-      const remaining=await request('/rest/v1/accounts?select=id&id=eq.'+id+'&user_id=eq.'+uid+'&limit=1');
-      if(!Array.isArray(remaining)||remaining.length!==0)throw Error('Deleted test account is still readable');pass('Cleanup verified');return{ok:true,stages};
+      const u=await user();if(!u?.id)throw Error('No authenticated Supabase user');pass('Authenticated',u.id);
+      const {rows}=await window.CapProductionRpc.snapshotRows(u.id);
+      pass('Production snapshot read',String((rows.accounts||[]).length)+' accounts');
+      fail('Create','No production RPC creates accounts');
+      fail('Update','No production RPC updates accounts');
+      fail('Delete','No production RPC deletes accounts');
+      return{ok:false,stages,error:'Account CRUD has no production RPC adapter'};
     }catch(e){fail(stages.length?'Stopped':'Authentication',e);return{ok:false,stages,error:String(e?.message||e)}}
-    finally{if(id&&!deleted){try{await request('/rest/v1/accounts?id=eq.'+id+'&user_id=eq.'+uid,{method:'DELETE',headers:{Prefer:'return=minimal'}})}catch(e){stages.push({name:'Cleanup',ok:false,error:String(e?.message||e)})}}}
   }
   async function migratePlan(plan){
-    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,errors=[];
-    const check=(value,collection,legacy,field)=>{if(value!=null&&!uuid.test(String(value)))errors.push(`${collection} legacy ${legacy} field ${field}: invalid UUID ${value}`)};
-    check(plan.userId,'authenticated user','current','user_id');check(plan.profile?.id,'profiles','current','id');check(plan.preferences?.user_id,'user_preferences','current','user_id');
-    const fields={goals:[['account_id','accounts']],bills:[['payment_account_id','accounts']],account_statements:[['account_id','accounts']],transactions:[['account_id','accounts'],['category_id','categories'],['bill_id','bills'],['parent_transaction_id','transactions'],['statement_id','account_statements']],transfers:[['from_account_id','accounts'],['to_account_id','accounts'],['goal_id','goals'],['statement_id','account_statements']],bill_payments:[['bill_id','bills'],['transaction_id','transactions'],['transfer_id','transfers']],budgets:[['category_id','categories']]};
-    plan.tables.forEach(([table,rows])=>rows.forEach(row=>{check(row.id,table,row.legacy_id||row.name||'unknown','id');check(row.user_id,table,row.legacy_id||row.name||'unknown','user_id');(fields[table]||[]).forEach(([field])=>check(row[field],table,row.legacy_id||row.name||'unknown',field))}));
-    (plan.tables.find(x=>x[0]==='categories')?.[1]||[]).forEach(row=>check(row.id,'categories',row.legacy_id||row.name,'category mapping id'));
-    if(errors.length)throw Error('Migration preflight stopped before upload:\n'+errors.join('\n'));
-    if(!configured())throw Error('Supabase URL and Publishable key are not configured');
-    const u=await user();if(!u?.id)throw Error('No authenticated Supabase user');
-    if(plan.userId!==u.id)throw Error('Migration user does not match the authenticated user');
-    const upsert=async(table,rows,key='id')=>{if(!rows.length)return;if(key==='user_id')await request('/rest/v1/'+table+'?on_conflict=user_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)});else await request('/rest/v1/'+table+'?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)})};
-    await upsert('profiles',[plan.profile]);await upsert('user_preferences',[plan.preferences],'user_id');
-    for(const [table,rows] of plan.tables)await upsert(table,rows);
-    const read=async(table,select)=>request('/rest/v1/'+table+'?select='+encodeURIComponent(select)+'&user_id=eq.'+u.id);
-    const actual={};for(const table of ['categories','accounts','goals','debts','bills','account_statements','transactions','transfers','bill_payments','budgets','notes'])actual[table]=await read(table,'*');actual.profiles=await request('/rest/v1/profiles?select=id&id=eq.'+u.id);actual.user_preferences=await request('/rest/v1/user_preferences?select=user_id&user_id=eq.'+u.id);
-    const expected={};plan.tables.forEach(([t,rows])=>expected[t]=rows.length);expected.profiles=1;expected.user_preferences=1;
-    const mismatches=[];Object.keys(expected).forEach(t=>{if((actual[t]||[]).length!==expected[t])mismatches.push(`${t}: expected ${expected[t]}, got ${(actual[t]||[]).length}`)});
-    const sets={categories:new Set((actual.categories||[]).map(x=>String(x.id))),accounts:new Set((actual.accounts||[]).map(x=>String(x.id))),goals:new Set((actual.goals||[]).map(x=>String(x.id))),bills:new Set((actual.bills||[]).map(x=>String(x.id))),transactions:new Set((actual.transactions||[]).map(x=>String(x.id))),transfers:new Set((actual.transfers||[]).map(x=>String(x.id))),account_statements:new Set((actual.account_statements||[]).map(x=>String(x.id)))};
-    const checkRefs=(table,fields,target)=>{const rows=plan.tables.find(x=>x[0]===table)?.[1]||[];rows.forEach(x=>fields.forEach(f=>{if(x[f]!=null&&!sets[target].has(String(x[f])))mismatches.push(`${table} ${x.id} references missing ${target} ${x[f]}`)}))};
-    checkRefs('goals',['account_id'],'accounts');checkRefs('bills',['payment_account_id'],'accounts');checkRefs('transactions',['account_id'],'accounts');checkRefs('transactions',['category_id'],'categories');checkRefs('transactions',['bill_id'],'bills');checkRefs('transactions',['parent_transaction_id'],'transactions');checkRefs('transactions',['statement_id'],'account_statements');checkRefs('transfers',['from_account_id','to_account_id'],'accounts');checkRefs('transfers',['goal_id'],'goals');checkRefs('transfers',['statement_id'],'account_statements');checkRefs('bill_payments',['bill_id'],'bills');checkRefs('bill_payments',['transaction_id'],'transactions');checkRefs('bill_payments',['transfer_id'],'transfers');checkRefs('budgets',['category_id'],'categories');
-    const catExpected=plan.tables.find(x=>x[0]==='categories')?.[1]||[],catActual=new Map((actual.categories||[]).map(x=>[String(x.id),x]));catExpected.forEach(x=>{const got=catActual.get(String(x.id));if(!got||got.name!==x.name||got.legacy_id!==x.legacy_id)mismatches.push(`category ${x.legacy_id} mapping mismatch`)});
-    const aMap=new Map((actual.accounts||[]).map(a=>[String(a.id),a]));plan.tables.find(x=>x[0]==='accounts')[1].forEach(a=>{const got=aMap.get(String(a.id));if(!got||Number(got.balance)!==Number(a.balance))mismatches.push(`account ${a.legacy_id} balance mismatch`) });
-    const localTotal=(plan.tables.find(x=>x[0]==='accounts')?.[1]||[]).reduce((n,a)=>n+(Number(a.balance)||0),0),cloudTotal=(actual.accounts||[]).reduce((n,a)=>n+(Number(a.balance)||0),0);if(Math.abs(localTotal-cloudTotal)>.005)mismatches.push(`total account balance mismatch: expected ${localTotal}, got ${cloudTotal}`);if(Math.abs(localTotal-44170)>.005)mismatches.push(`local baseline total mismatch: expected 44170, got ${localTotal}`);
-    const txExpected=plan.tables.find(x=>x[0]==='transactions')[1],txMap=new Map((actual.transactions||[]).map(t=>[String(t.id),t]));txExpected.forEach(t=>{const got=txMap.get(String(t.id));if(!got||Number(got.amount)!==Number(t.amount)||got.status!==t.status)mismatches.push(`transaction ${t.legacy_id} amount/status mismatch`)});
-    for(const [table,fields] of [['bills',['name','amount','frequency']],['goals',['name','target_amount','saved_amount']],['debts',['person','amount','direction']]]){const expectedRows=plan.tables.find(x=>x[0]===table)?.[1]||[],gotRows=new Map((actual[table]||[]).map(x=>[String(x.id),x]));expectedRows.forEach(x=>{const got=gotRows.get(String(x.id));fields.forEach(f=>{if(!got||String(got[f])!==String(x[f]))mismatches.push(`${table} ${x.legacy_id} field ${f} mismatch`)})})}
-    return{ok:!mismatches.length,userId:u.id,counts:Object.fromEntries(Object.entries(actual).map(([k,v])=>[k,v.length])),mismatches};
+    // Direct table uploads are not part of the production contract. The
+    // reviewed RPC surface has no bulk migration endpoint, so this path is
+    // refused instead of writing tables directly.
+    throw Error('DIRECT_MIGRATION_REMOVED - the production contract has no bulk upload RPC. Use the production RPC adapters.');
   }
   async function validateRealData(plan,options={}){
     if(!configured())throw Error('Supabase URL and Publishable key are not configured');
     const u=await user();if(!u?.id)throw Error('No authenticated Supabase user');if(plan.userId!==u.id)throw Error('Validation user does not match the authenticated user');
-    const read=async(table,select='*')=>{try{return await request('/rest/v1/'+table+'?select='+encodeURIComponent(select)+'&user_id=eq.'+encodeURIComponent(u.id))}catch(e){throw Error(`Table: ${table}\nOperation: SELECT\nExact Supabase error: ${e.message}`)}};
-    const actual={};for(const table of ['categories','accounts','goals','debts','bills','account_statements','transactions','transfers','bill_payments','budgets','notes'])actual[table]=await read(table);try{actual.profiles=await request('/rest/v1/profiles?select=*&id=eq.'+encodeURIComponent(u.id))}catch(e){throw Error(`Table: profiles\nOperation: SELECT\nExact Supabase error: ${e.message}`)}actual.user_preferences=await read('user_preferences','*');
+    // The production snapshot is the only cloud read path. The report shape is
+    // unchanged: one table-keyed map of owner rows.
+    const {rows}=await window.CapProductionRpc.snapshotRows(u.id);
+    const actual={};
+    for(const table of ['categories','accounts','goals','debts','bills','account_statements','transactions','transfers','bill_payments','budgets','notes','profiles','user_preferences'])
+      actual[table]=(rows[table]||[]).map(r=>r.row);
     const missing=[],newLocalMissing=[],unexpected=[],unexpectedDetails=[],mismatches=[],mismatchDetails=[],fk=[],allowedNew=new Set(options.allowNew||[]);
     for(const [table,rows] of plan.tables){const expected=new Map(rows.map(x=>[String(x.id),x])),got=new Map((actual[table]||[]).map(x=>[String(x.id),x]));rows.forEach(x=>{if(!got.has(String(x.id))){const item={entity:table,localId:x.legacy_id||x.name||String(x.id),supabaseId:x.id,baselineMapping:allowedNew.has(table+':'+x.id)?'NO':'UNKNOWN',cloudCounterpart:'NO',newLocalRecord:allowedNew.has(table+':'+x.id)?'YES':'UNKNOWN'};if(allowedNew.has(table+':'+x.id))newLocalMissing.push(item);else missing.push(item)}});(actual[table]||[]).forEach(x=>{if(!expected.has(String(x.id))){unexpected.push(`${table} ${x.id}`);unexpectedDetails.push({entity:table,supabaseId:x.id})}})}
     const typeOf=v=>v===null?'null':v===undefined?'omitted':Array.isArray(v)?'array':typeof v;
@@ -172,7 +153,16 @@
     return bootPromise;
   }
   let rpcVerifierResult=null;
-  async function refreshRpcReadiness(){try{const r=await request('/rest/v1/rpc/cap_verify_transaction_rpc',{method:'POST',body:'{}'});const v=Array.isArray(r)?r[0]:r;rpcVerifierResult={success:true,response:v,status:200,code:null,error:null};rpcReadyState=!!(v&&v.exists===true&&v.signature_ok===true&&v.security_invoker===true&&v.language_ok===true&&v.authenticated_execute===true&&v.anon_execute===false&&v.public_execute===false&&v.version==='CAP_PHASE_6K2A_V1'&&v.version_ok===true&&v.ready===true);return rpcReadyState}catch(e){rpcVerifierResult={success:false,response:null,status:e?.status||null,code:e?.code||null,error:String(e?.message||e)};rpcReadyState=false;return false}}
+  async function refreshRpcReadiness(){
+    try{
+      // The production readiness contract. A legacy/test verifier is not a
+      // substitute and is no longer called at all.
+      const r=await window.CapProductionRpc.readiness();
+      rpcVerifierResult={success:r.ok===true,response:r.raw,status:200,code:null,error:r.ok?null:(r.reason||'CONTRACT_NOT_VERIFIED')};
+      rpcReadyState=r.ok===true;
+    }catch(e){rpcVerifierResult={success:false,response:null,status:e?.status||null,code:e?.code||null,error:String(e?.message||e)};rpcReadyState=false;}
+    return rpcReadyState;
+  }
   const rpcVerifierStatus=()=>rpcVerifierResult;
   let notesRpcReadyState=false,notesRpcVerifierResult=null,notesRpcCheck=0;
   async function refreshNotesRpcReadiness(){
@@ -180,15 +170,14 @@
     notesRpcReadyState=false;
     notesRpcVerifierResult=null;
     try{
-      // Metadata verifier only. Never probe readiness by invoking the writer.
-      const response=await request('/rest/v1/rpc/cap_verify_notes_rpc',{method:'POST',body:'{}'});
+      // Metadata-only notes contract check. The writer is never probed.
+      const r=await window.CapProductionRpc.notesContract();
       if(check!==notesRpcCheck)return false;
-      const v=Array.isArray(response)?(response.length===1?response[0]:null):response;
-      notesRpcReadyState=!!(v&&v.exists===true&&v.signature_ok===true&&v.security_invoker===true&&v.search_path_ok===true&&v.version_ok===true&&v.authenticated_execute===true&&v.anon_execute===false&&v.public_execute===false&&v.rls_ok===true&&v.policy_ok===true&&v.table_grants_ok===true&&v.version==='CAP_NOTES_CAS_V1'&&v.ready===true);
-      notesRpcVerifierResult={checked:true,ready:notesRpcReadyState};
+      notesRpcReadyState=r.ok===true;
+      notesRpcVerifierResult={checked:true,ready:notesRpcReadyState,version:r.raw?.version||null,reason:r.ok?null:(r.reason||'NOTES_CONTRACT_NOT_VERIFIED')};
     }catch(_){if(check!==notesRpcCheck)return false;notesRpcVerifierResult={checked:true,ready:false,blocked:true};}
     return notesRpcReadyState;
   }
-  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
+  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,productionRpcPaths:PRODUCTION_RPC_PATHS,localIdentity:()=>cachedLocal(session)?session.user.id:null,sessionGeneration:()=>sessionRevision,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
   boot();
 })();

@@ -1,0 +1,84 @@
+/* Minimal Cloud Sync switch; scoped to the existing Settings row. */
+.cap-cloud-switch {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 74px;
+  width: 74px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cap-cloud-switch > .toggle-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.cap-cloud-switch .cloud-toggle-minimal {
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  width: 70px;
+  height: 36px;
+  border-radius: 36px;
+  background-color: #e2e5e9;
+  box-shadow: inset 0 0 0 1px #00000008;
+  pointer-events: none;
+  transition: background-color .28s cubic-bezier(.4, 0, .2, 1), opacity .2s ease;
+}
+.cap-cloud-switch .cloud-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  color: #76818e;
+  box-shadow: 0 2px 6px #00000026, 0 0 1px #00000014;
+  transition: transform .28s cubic-bezier(.4, 0, .2, 1), color .28s ease;
+}
+.cap-cloud-switch .cloud-toggle-knob svg {
+  display: block;
+  width: 19px;
+  height: 19px;
+}
+.cap-cloud-switch > .toggle-input:checked + .cloud-toggle-minimal {
+  background-color: #0ea5e9;
+}
+.cap-cloud-switch > .toggle-input:checked + .cloud-toggle-minimal .cloud-toggle-knob {
+  transform: translateX(34px);
+  color: #0284c7;
+}
+.cap-cloud-switch > .toggle-input:focus-visible + .cloud-toggle-minimal {
+  outline: 2px solid var(--ac, #0284c7);
+  outline-offset: 3px;
+}
+.cap-cloud-switch > .toggle-input:disabled { cursor: wait; }
+.cap-cloud-switch > .toggle-input:disabled + .cloud-toggle-minimal { opacity: .65; }
+:root[data-theme="dark"] .cap-cloud-switch > .toggle-input:not(:checked) + .cloud-toggle-minimal {
+  background-color: #3d424a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cap-cloud-switch > .toggle-input:not(:checked) + .cloud-toggle-minimal {
+    background-color: #3d424a;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cap-cloud-switch .cloud-toggle-minimal,
+  .cap-cloud-switch .cloud-toggle-knob { transition: none; }
+}
+html.noanim .cap-cloud-switch .cloud-toggle-minimal,
+html.noanim .cap-cloud-switch .cloud-toggle-knob,
+html.rm .cap-cloud-switch .cloud-toggle-minimal,
+html.rm .cap-cloud-switch .cloud-toggle-knob { transition: none; }

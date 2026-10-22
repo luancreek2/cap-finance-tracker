@@ -26,7 +26,61 @@
   }
   const idbGet = (k) => idb().then((d) => new Promise((res, rej) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
   const idbPut = (k, v) => idb().then((d) => new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
-  const syncStore = (store,op,value,key) => idb().then((d)=>new Promise((res,rej)=>{const t=d.transaction(store,'readwrite'),s=t.objectStore(store);let result,q=op==='get'?s.get(value):op==='all'?s.getAll():op==='delete'?s.delete(value):op==='clear'?s.clear():s.put(value,key);q.onsuccess=()=>{result=q.result};q.onerror=()=>rej(q.error);t.oncomplete=()=>res(result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)}));
+  const syncStore = (store,op,value,key) => {
+    if (window.CapProductionSync?.status().enabled && ['put','delete','clear'].includes(op) &&
+        ['outbox','syncmeta','syncconflicts'].includes(store)) return Promise.reject(Error('Production sync owns sync metadata while ON'));
+    return idb().then((d)=>new Promise((res,rej)=>{const t=d.transaction(store,'readwrite'),s=t.objectStore(store);let result,q=op==='get'?s.get(value):op==='all'?s.getAll():op==='delete'?s.delete(value):op==='clear'?s.clear():s.put(value,key);q.onsuccess=()=>{result=q.result};q.onerror=()=>rej(q.error);t.oncomplete=()=>res(result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)}));
+  };
+
+  // Phase 6L: compare-and-commit local sync metadata in one IDB transaction.
+  // No network work is permitted inside this transaction. Missing metadata is
+  // read as null, never initialized/reset as a side effect of opening the app.
+  const productionMeta = ['production-sync-v1', 'baseline', 'production-sync-journal-v1',
+    'controlled-notes-test-v1', 'demo-local-refresh-state-v1', 'manual-notes-pull-v1'];
+  function productionSyncTransaction(expected, patch, guard) {
+    return idb().then(d => new Promise((resolve, reject) => {
+      const writing = expected !== undefined;
+      const t = d.transaction(['kv', 'syncmeta', 'outbox', 'syncconflicts'], writing ? 'readwrite' : 'readonly');
+      const meta = t.objectStore('syncmeta'), values = {}, requests = [];
+      let failure, remaining = productionMeta.length + 3;
+      const abort = () => { failure = Error('Production sync local state changed'); t.abort(); };
+      const ready = () => {
+        if (--remaining) return;
+        const snapshot = { settings: values[productionMeta[0]], baseline: values.baseline,
+          journal: values[productionMeta[2]], recovery: productionMeta.slice(3).map(k => values[k]),
+          state: values.state, outbox: values.outbox, conflicts: values.conflicts };
+        values.snapshot = snapshot;
+        if (!writing) return;
+        try {
+          if (!eq(snapshot, expected) || typeof guard !== 'function' || guard() !== true) return abort();
+          if (Object.hasOwn(patch, 'settings')) meta.put(patch.settings, productionMeta[0]);
+          if (Object.hasOwn(patch, 'baseline')) meta.put(patch.baseline, 'baseline');
+          if (Object.hasOwn(patch, 'journal')) {
+            if (patch.journal === null) meta.delete(productionMeta[2]);
+            else meta.put(patch.journal, productionMeta[2]);
+          }
+          if (patch.receipt) meta.add(patch.receipt, 'production-sync-receipt:' + patch.receipt.id);
+          if (patch.state) t.objectStore('kv').put(patch.state, 'state');
+          // Only exact deletions/replacements, never clear an object store.
+          for (const entry of patch.putEntries || []) t.objectStore('outbox').put(entry);
+          for (const entryId of patch.removeEntries || []) t.objectStore('outbox').delete(entryId);
+          for (const conflict of patch.putConflicts || []) t.objectStore('syncconflicts').put(conflict);
+        } catch (error) { failure = error; t.abort(); }
+      };
+      const read = (store, key, name, all = false) => {
+        const q = all ? store.getAll() : store.get(key);
+        requests.push(q);
+        q.onsuccess = () => { values[name] = q.result ?? null; ready(); };
+      };
+      productionMeta.forEach(k => read(meta, k, k));
+      read(t.objectStore('kv'), 'state', 'state');
+      read(t.objectStore('outbox'), null, 'outbox', true);
+      read(t.objectStore('syncconflicts'), null, 'conflicts', true);
+      t.oncomplete = () => resolve(values.snapshot);
+      t.onabort = () => reject(failure || Error('Production sync local transaction aborted'));
+      t.onerror = () => { failure = failure || Error('Production sync storage failure'); };
+    }));
+  }
 
   /* Dormant notes-only acknowledgement. Called only after verified cloud
      convergence. Baseline replacement and exact outbox removal commit together.
@@ -436,6 +490,171 @@
     }
   }
 
+  /* Confirmed conflict resolution that keeps the local version by overwriting
+     the exact reviewed cloud note. A verified local backup/checkpoint commits
+     before the cloud CAS; the baseline acknowledgement commits only after the
+     cloud row is verified. No financial records are touched. */
+  async function applyVerifiedNoteLocalOverwrite(receipt, guard, readCloud, writeCloud) {
+    if (!api || typeof guard !== 'function' || typeof readCloud !== 'function' || typeof writeCloud !== 'function') throw Error('Explicit local-overwrite guards required');
+    const { userId, expectedLocalJson, expectedBaseline, expectedRecord, expectedLocalFingerprint, local, cloud, nextRecord, backupKey } = clone(receipt || {});
+    const validHash = value => /^[0-9a-f]{64}$/i.test(value || '');
+    const noteKeys = ['id','user_id','legacy_id','title','body','note_date','created_at','updated_at'];
+    const validNote = row => row && typeof row === 'object' && !Array.isArray(row) && row.user_id === userId &&
+      row.id === expectedRecord?.supabase_id && row.legacy_id === String(expectedRecord?.localId) &&
+      typeof row.title === 'string' && typeof row.body === 'string' && Object.prototype.hasOwnProperty.call(row, 'note_date') &&
+      (row.note_date === null || typeof row.note_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.note_date)) &&
+      Object.keys(row).every(k => noteKeys.includes(k));
+    if (!userId || typeof expectedLocalJson !== 'string' || !backupKey?.startsWith('manual-notes-pull-backup:') ||
+        expectedBaseline?.version !== 2 || expectedBaseline.user_id !== userId || !Array.isArray(expectedBaseline.records) ||
+        expectedRecord?.entity !== 'notes' || expectedRecord.user_id !== userId || !validHash(expectedRecord.contentFingerprint) ||
+        !validHash(expectedLocalFingerprint) || !validNote(local) || !validNote(cloud) ||
+        nextRecord?.entity !== 'notes' || nextRecord.user_id !== userId || nextRecord.supabase_id !== cloud.id ||
+        String(nextRecord.localId) !== cloud.legacy_id || !validHash(nextRecord.contentFingerprint) ||
+        typeof nextRecord.last_resolution_id !== 'string' || !nextRecord.last_resolution_id) throw Error('Invalid local-overwrite scope');
+    const original = JSON.parse(expectedLocalJson), next = clone(original);
+    if (!Array.isArray(next.notes) || next.notes.some(n => !n || typeof n !== 'object' || n.id === undefined || n.id === null) ||
+        new Set(next.notes.map(n => String(n.id))).size !== next.notes.length || !Number.isFinite(Number(original._mt || 0))) throw Error('Invalid stable local note state');
+    const targets = next.notes.filter(n => String(n.id) === cloud.legacy_id);
+    const mapped = expectedBaseline.records.filter(r => r.entity === 'notes' && (r.supabase_id === cloud.id || String(r.localId) === cloud.legacy_id));
+    if (targets.length !== 1 || mapped.length !== 1 || !eq(mapped[0], expectedRecord)) throw Error('Ambiguous local-overwrite mapping');
+    const localFingerprint = await CapSync.contentFingerprint({ title: targets[0].t || '', body: targets[0].b || '', note_date: targets[0].d || null });
+    const cloudFingerprint = await CapSync.contentFingerprint(cloud);
+    if (localFingerprint !== expectedLocalFingerprint || await CapSync.contentFingerprint(local) !== expectedLocalFingerprint ||
+        nextRecord.contentFingerprint !== localFingerprint ||
+        cloudFingerprint === expectedRecord.contentFingerprint || localFingerprint === expectedRecord.contentFingerprint ||
+        localFingerprint === cloudFingerprint) throw Error('Note local-overwrite content not proven');
+    const nextJson = expectedLocalJson;
+    const checkpointKey = 'manual-notes-pull-v1';
+    const checkpoint = { kind: 'manual-note-resolution', mode: 'conflict-local', owner: userId, backupKey, phase: 'prepared',
+      local, cloud: local, expectedCloud: cloud, expectedLocalFingerprint, expectedLocalJson, nextLocalJson: nextJson, expectedBaseline };
+    const localGuard = json => guard() === true && J(api.get()) === json && localStorage.getItem('pera') === json;
+    const noteContent = row => ({ legacy_id: row.legacy_id, title: row.title, body: row.body, note_date: row.note_date });
+    const sameNote = (row, expected) => !!row && row.id === cloud.id && row.user_id === userId &&
+      row.legacy_id === expected.legacy_id && row.title === expected.title && row.body === expected.body && row.note_date === expected.note_date;
+    if (!localGuard(expectedLocalJson)) throw Error('Local state changed');
+    const readExact = async () => {
+      const row = await readCloud();
+      if (!validNote(row) || !sameNote(row, cloud)) throw Error('Cloud note changed');
+      return row;
+    };
+    await readExact();
+    const d = await idb(); let backedUp = false, cloudWritten = false, cloudConverged = false, cloudUnknown = false, committed = false;
+    const transaction = (mode, work) => new Promise((resolve, reject) => {
+      const t = d.transaction(['kv', 'syncmeta', 'outbox'], mode), meta = t.objectStore('syncmeta');
+      const requests = [meta.get('baseline'), meta.get(checkpointKey), meta.get('controlled-notes-test-v1'), meta.get('demo-local-refresh-state-v1'),
+        t.objectStore('outbox').getAll(), t.objectStore('kv').get('state'), meta.get(backupKey)];
+      const values = []; let loaded = 0, failure;
+      requests.forEach((q, i) => { q.onsuccess = () => {
+        values[i] = q.result;
+        if (++loaded !== requests.length) return;
+        try { work(t, values); } catch (_) { failure = Error('Note local-overwrite preconditions changed'); t.abort(); }
+      }; });
+      t.oncomplete = () => resolve(values); t.onabort = () => reject(failure || Error('Note local-overwrite transaction aborted'));
+      t.onerror = () => { failure = Error('Note local-overwrite transaction failed'); };
+    });
+    try {
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || active || testRecovery || demoRecovery || entries.length || backup ||
+            state?.json !== expectedLocalJson || !localGuard(expectedLocalJson)) throw Error('Backup blocked');
+        const meta = t.objectStore('syncmeta');
+        meta.add({ kind: 'manual-note-resolution-backup', mode: 'conflict-local', owner: userId, localJson: expectedLocalJson,
+          baseline: expectedBaseline, indexeddbState: state, expectedCloud: cloud }, backupKey);
+        meta.add(checkpoint, checkpointKey);
+      });
+      backedUp = true;
+      const backupGuard = backup => backup?.owner === userId && backup.mode === 'conflict-local' &&
+        backup.localJson === expectedLocalJson && eq(backup.baseline, expectedBaseline) && eq(backup.expectedCloud, cloud);
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Backup not verified');
+      });
+      if (!localGuard(expectedLocalJson)) throw Error('Local state changed');
+      await readExact();
+      let response, writeError = null;
+      try { response = await writeCloud({ p_id: cloud.id, p_expected: noteContent(cloud), p_desired: noteContent(local) }); }
+      catch (error) { writeError = error; }
+      const result = Array.isArray(response) ? (response.length === 1 ? response[0] : null) : response;
+      let observed = null;
+      if (writeError || !['APPLIED','ALREADY_APPLIED','CONFLICT'].includes(result?.status)) {
+        try { observed = await readCloud(); } catch (_) {}
+        if (observed && sameNote(observed, local)) cloudConverged = true;
+        else if (observed && sameNote(observed, cloud)) {
+          const e = Error('Cloud write not applied');
+          e.status = 'STOPPED — RESOLUTION BACKUP/CHECKPOINT RETAINED; CLOUD NOT OVERWRITTEN';
+          throw e;
+        } else {
+          cloudUnknown = true;
+          const e = Error('Cloud write outcome unknown');
+          e.status = 'CLOUD WRITE OUTCOME UNKNOWN — INSPECT NOTE-PULL RECOVERY BEFORE ANY RETRY';
+          throw e;
+        }
+      } else if (result.status === 'CONFLICT') {
+        try { observed = await readCloud(); } catch (_) {}
+        if (observed && sameNote(observed, local)) cloudConverged = true;
+        else {
+          const e = Error('Cloud conflict');
+          e.status = 'STOPPED — RESOLUTION BACKUP/CHECKPOINT RETAINED; CLOUD NOT OVERWRITTEN';
+          throw e;
+        }
+      } else {
+        cloudWritten = result.status === 'APPLIED';
+        cloudConverged = true;
+      }
+      if (!observed || !sameNote(observed, local)) {
+        try { observed = await readCloud(); } catch (_) { observed = null; }
+      }
+      if (!observed || !sameNote(observed, local)) {
+        cloudUnknown = !cloudConverged;
+        const e = Error('Cloud verification failed');
+        e.status = cloudWritten ? 'CLOUD WRITE OCCURRED — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY' :
+          cloudConverged ? 'CLOUD VERSION PRESENT — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY' :
+          'CLOUD WRITE OUTCOME UNKNOWN — INSPECT NOTE-PULL RECOVERY BEFORE ANY RETRY';
+        throw e;
+      }
+      cloudConverged = true;
+      const finalRecord = { ...nextRecord, cloud_updated_at: observed.updated_at || null };
+      const nextBaseline = { ...expectedBaseline, records: expectedBaseline.records.map(r => eq(r, expectedRecord) ? clone(finalRecord) : r),
+        revision: (expectedBaseline.revision || 0) + 1, aggregateFingerprintStale: true, updated_at: new Date().toISOString() };
+      const cloudCheckpoint = { ...checkpoint, phase: 'cloud-written', cloudWritten, cloudConverged: true, nextBaseline, verifiedCloud: observed };
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, checkpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Cloud checkpoint blocked');
+        t.objectStore('syncmeta').put(cloudCheckpoint, checkpointKey);
+      });
+      const applied = { ...cloudCheckpoint, phase: 'applied' };
+      await transaction('readwrite', (t, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, expectedBaseline) || !eq(active, cloudCheckpoint) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Apply blocked');
+        t.objectStore('syncmeta').put(nextBaseline, 'baseline');
+        t.objectStore('syncmeta').put(applied, checkpointKey);
+      });
+      committed = true;
+      const verifyApplied = (baseline, active, testRecovery, demoRecovery, entries, state, backup) => {
+        if (!eq(baseline, nextBaseline) || !eq(active, applied) || testRecovery || demoRecovery || entries.length ||
+            state?.json !== expectedLocalJson || !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Applied local-overwrite not verified');
+      };
+      await transaction('readonly', (_, values) => verifyApplied(...values));
+      let postCloud = null;
+      try { postCloud = await readCloud(); } catch (_) {}
+      if (!postCloud || !sameNote(postCloud, local) || !localGuard(expectedLocalJson)) throw Error('Post-apply cloud verification failed');
+      await transaction('readwrite', (t, values) => { verifyApplied(...values); t.objectStore('syncmeta').delete(checkpointKey); });
+      await transaction('readonly', (_, [baseline, active, testRecovery, demoRecovery, entries, state, backup]) => {
+        if (!eq(baseline, nextBaseline) || active || testRecovery || demoRecovery || entries.length || state?.json !== expectedLocalJson ||
+            !backupGuard(backup) || !localGuard(expectedLocalJson)) throw Error('Cleanup read-back failed');
+      });
+      return { committed: true, verified: true, backupRetained: true, status: 'RESOLVED — LOCAL VERSION KEPT; CLOUD OVERWRITTEN; LOCAL BACKUP RETAINED' };
+    } catch (error) {
+      const e = Error(error?.status || (committed ? (cloudWritten ? 'CLOUD AND LOCAL WRITES OCCURRED — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY' : 'LOCAL WRITE OCCURRED — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY') :
+        cloudWritten ? 'CLOUD WRITE OCCURRED — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY' :
+        cloudConverged ? 'CLOUD VERSION PRESENT — BASELINE UPDATE FAILED; INSPECT NOTE-PULL RECOVERY' :
+        cloudUnknown ? 'CLOUD WRITE OUTCOME UNKNOWN — INSPECT NOTE-PULL RECOVERY BEFORE ANY RETRY' :
+        backedUp ? 'STOPPED — RESOLUTION BACKUP/CHECKPOINT RETAINED; CLOUD NOT OVERWRITTEN' : 'BLOCKED — NOTE LOCAL OVERWRITE NOT APPLIED'));
+      e.committed = committed; e.backedUp = backedUp && !cloudConverged && !committed;
+      e.cloudWritten = cloudWritten && !committed; e.status = e.message;
+      throw e;
+    }
+  }
+
   /* Confirmed, local-only demo alignment. A verified backup commits BEFORE
      replacement. Local state and its newly verified baseline then commit in
      one IDB transaction. There is no cloud transport or automatic rollback. */
@@ -739,6 +958,8 @@
     if (rerender && typeof render === "function") { try { render(); } catch (e) {} }
   }
   async function sync() {
+    // Never run two independent cloud backends against the same local state.
+    if (window.CapProductionSync) { CapProductionSync.request('legacy-wakeup'); return; }
     if (!api) return;
     if (syncing) { again = true; return; }
     if (!navigator.onLine) { refreshStatus(); return; }
@@ -812,14 +1033,18 @@
       return {pera:(()=>{try{return localStorage.getItem('pera')}catch(_){return null}})(),indexeddb:{state:await read('state'),base:await read('base'),backup:await read('backup')},auxiliary:aux,excludedLocalKeys:['cap_lock','cap_bio','cap_supabase_session']};
     },
     syncStore,
+    productionSyncSnapshot: () => productionSyncTransaction(),
+    productionSyncCommit: productionSyncTransaction,
+    resetProductionTracking: resetTracking,
     finalizeVerifiedNotePush,
     discardVerifiedTestOutbox,
     discardVerifiedNotesRecoveryCheckpoint,
     stageVerifiedManualNote,
     applyVerifiedNotePull,
     applyVerifiedNoteResolution,
+    applyVerifiedNoteLocalOverwrite,
     refreshVerifiedLocalDemo,
-    status() { return { status, cloud, pending: pendingCount(), online: navigator.onLine }; },
+    status() { return { status, cloud: window.CapProductionSync?.status().enabled || cloud, pending: pendingCount(), online: navigator.onLine }; },
     mergeDoc,
     settingsHtml,
     async boot() {
@@ -859,6 +1084,10 @@
   // another tab/window changed the data: fold its changes into this one (3-way, so neither side loses edits)
   addEventListener("storage", (e) => {
     if (e.key !== "pera" || !e.newValue || !api) return;
+    if (window.CapProductionSync?.status().enabled) {
+      CapProductionSync.pause('OTHER_TAB_CHANGED');
+      return; // Do not silently merge over an active production sync snapshot.
+    }
     try {
       const other = normalize(JSON.parse(e.newValue)), mine = api.get();
       if (eq(other, mine)) return;
@@ -1023,6 +1252,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         { id: 3, who: "Mom", note: "Borrowed", amt: 7500, dir: "out", due: "" },
       ];
       const save = () => {
+        if (window.CAP_PRODUCTION_RENDER_ONLY) return;
         try{const _db=localStorage.getItem('cap_derived_balance');if(_db!=='0'&&typeof refreshBalances==='function')refreshBalances()}catch(e){}
         if(!window.CAP_INTERNAL_SYNC_APPLY){window.CAP_LAST_DRY_RUN=null;window.CAP_LAST_CONFLICT=null}
         try {
@@ -1034,6 +1264,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         try {
           if (window.CapOff) CapOff.persist();
         } catch (e) {}
+        if (!window.CAP_INTERNAL_SYNC_APPLY && window.CapProductionSync) CapProductionSync.request('local-change');
         clearTimeout(window._dt);
         window._dt = setTimeout(() => {
           if (typeof dbPush == "function") dbPush();
@@ -3462,8 +3693,8 @@ function migrationPrepare(){
   const balances=(S.accts||[]).map(a=>({legacy_id:a.id,name:a.name,type:a.type,balance:+a.bal||0}));
   return{counts,balances,total_balance:balances.reduce((n,a)=>n+a.balance,0),blockingProblems,warnings,conversions,problems:blockingProblems,maps,generated_at:new Date().toISOString()};
 }
-function buildSupabaseMigrationPlan(report){
-  const userId=CapSupabase.status().userId;if(!userId)throw Error('No authenticated Supabase user');
+function buildSupabaseMigrationPlan(report, syncOwner){
+  const userId=syncOwner||CapSupabase.status().userId;if(!userId)throw Error('No authenticated Supabase user');
   const find=(k,id)=>report.maps[k].find(x=>String(x.legacy_id)===String(id))?.supabase_id;
   const cat=(name)=>report.maps.categories.find(x=>x.name===String(name))?.supabase_id;
   const accountRows=(S.accts||[]).map(a=>({id:find('accounts',a.id),user_id:userId,legacy_id:String(a.id),account_type:a.type,name:a.name,bank:a.bank||null,nickname:a.nickname||null,network:a.net||null,last_four:a.l4||null,balance:+a.bal||0,credit_limit:a.lim==null?null:+a.lim,status:a.cardStatus||'Active',card_art:a.img||null,photo_url:a.photo||null,statement_day:a.stmt||null,due_day:a.due||null,due_days:a.dueN||null,minimum_payment:a.minimumPayment||{},interest_settings:{interestEnabled:a.interestEnabled,interestRate:a.interestRate,interestCalc:a.interestCalc,interestCreditFreq:a.interestCreditFreq,interestOtherDays:a.interestOtherDays,interestSimulation:a.interestSimulation,goalInterestMode:a.goalInterestMode,interestGoalId:a.interestGoalId},fee_settings:a.fees||a.debitFees||{},statement_settings:{statementHistory:a.statementHistory||[]}}));
@@ -3483,7 +3714,9 @@ function buildSupabaseMigrationPlan(report){
 async function migrateCapData(){
   const report=migrationPrepare();CAP_MIGRATION_PREVIEW=report;const out=$('#migration-result');if(report.blockingProblems.length)return toast('Prepare Cloud Migration must pass first');
   let plan,repeat;try{plan=buildSupabaseMigrationPlan(report);repeat=buildSupabaseMigrationPlan(report);const stable=[];plan.tables.forEach(([table,rows])=>{const other=repeat.tables.find(x=>x[0]===table)?.[1]||[];rows.forEach((row,i)=>{if(row.id!==other[i]?.id)stable.push(`${table} legacy ${row.legacy_id||row.name||i}`)})});if(stable.length)throw Error('Stable UUID mapping failed for '+stable.join(', '))}catch(e){if(out)out.textContent='Migration preflight failed: '+e.message;return toast('Migration preflight failed')}
-  if(!confirm('Upload your existing Cap financial data to your private Supabase account? Local data will be preserved and automatic sync will remain OFF.'))return;
+  if(out)out.textContent='Blocked: the production contract has no bulk upload RPC.\nNo cloud request was made and no local data changed.';
+  if(!confirm('The production contract has no bulk upload RPC, so this migration cannot run.\n\nYour local data is preserved and automatic sync remains OFF.\n\nClose this dialog?'))return;
+  return;
   if(out)out.textContent='Migrating…';try{const result=await CapSupabase.migratePlan(plan);if(!result.ok)throw Error(result.mismatches.join(' · ')||'Cloud verification failed');if(out)out.innerHTML='Migration complete ✓<br>Cloud verification passed ✓<br>Local data preserved ✓<br>Automatic sync remains OFF<br>All generated UUIDs valid ✓<br>All UUID foreign keys valid ✓<br>Stable UUID mappings verified ✓<br>Partial previous migration safely handled ✓';toast('Migration complete',true)}catch(e){if(out)out.textContent='Migration failed: '+e.message;toast('Migration failed')}}
 async function prepareCloudMigration(){
   const report=migrationPrepare(),snap=window.CapOff?await CapOff.localSnapshot():{pera:null,indexeddb:{},auxiliary:{}};
@@ -3539,7 +3772,7 @@ async function diagnoseCapBaselineUpgrade(){const out=$('#sync-baseline-diagnost
 async function testSupabaseConnection(){const out=$('#sb-test-result');if(out)out.textContent='Testing…';try{const r=await CapSupabase.testCurrent();if(out)out.textContent='Supabase Connected ✓ · Authenticated · RLS Protected · Cloud database ready ('+r.userId+')';toast('Supabase connection verified',true)}catch(e){if(out)out.textContent='Connection test failed: '+e.message;toast('Supabase test failed')}}
 async function diagnoseFailedSinglePull(){const out=$('#failed-pull-result');if(out)out.textContent='Running read-only failed-pull diagnosis�';try{const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),current=await CapSync.recordFingerprints(plan,validation),base=new Map((baseline?.records||[]).map(r=>[r.entity+':'+r.supabase_id,r]));let candidate=null,source='recovered by three-way comparison';if(window.CAP_LAST_FAILED_PULL){const id=window.CAP_LAST_FAILED_PULL,found=current.find(r=>r.entity===id.entity&&String(r.supabase_id)===String(id.supabaseId));if(found)candidate=found,source='preserved failed-pull identity'}if(!candidate){const candidates=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return r.entity==='transactions'&&b&&(r.contentFingerprint!==b.contentFingerprint||r.cloudContentFingerprint!==b.contentFingerprint||r.contentFingerprint!==r.cloudContentFingerprint)});if(candidates.length!==1)throw Error('Recovery found '+candidates.length+' possible transaction identities: '+candidates.map(r=>r.entity+':'+r.localId+':'+r.supabase_id).join(', '));candidate=candidates[0]}const b=base.get(candidate.entity+':'+candidate.supabase_id),pending=await CapOff.syncStore('outbox','all').catch(()=>[]),pendingCount=pending.filter(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')).length;if(!b)throw Error('Baseline record was not found for '+candidate.entity+':'+candidate.localId);if(out)out.innerHTML='Entity: '+candidate.entity+'<br>Local ID: '+candidate.localId+'<br>Supabase UUID: '+candidate.supabase_id+'<br>Source: '+source+'<br>Baseline fingerprint prefix: '+b.contentFingerprint.slice(0,12)+'<br>Current local fingerprint prefix: '+candidate.contentFingerprint.slice(0,12)+'<br>Current cloud fingerprint prefix: '+candidate.cloudContentFingerprint.slice(0,12)+'<br>B = L: '+(b.contentFingerprint===candidate.contentFingerprint?'yes':'no')+'<br>B = C: '+(b.contentFingerprint===candidate.cloudContentFingerprint?'yes':'no')+'<br>L = C: '+(candidate.contentFingerprint===candidate.cloudContentFingerprint?'yes':'no')+'<br>Differing canonical fields:<br>'+(candidate.canonicalDiffs||[]).map(d=>esc(d.field+' � '+d.localType+' vs '+d.cloudType+' � '+d.normalization)).join('<br>')+'<br>Pending real-data outbox: '+pendingCount+'<br>Baseline unchanged after failed pull: '+(b.contentFingerprint===baseline.records.find(r=>r.entity===candidate.entity&&String(r.supabase_id)===String(candidate.supabase_id))?.contentFingerprint?'YES':'NO')+'<br>Read-only diagnosis complete; no repair performed.';toast('Failed pull diagnosis complete',true)}catch(e){if(out)out.textContent='Failed pull diagnosis: '+e.message;toast('Failed pull diagnosis failed')}}
 async function resolveSingleConflict(winner){const out=$('#conflict-resolution-result');let cloudWrite=false,localWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};const fresh=async()=>{const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan),rows=await CapSync.recordFingerprints(plan,validation),base=new Map((baseline?.records||[]).map(r=>[r.entity+':'+r.supabase_id,r])),conf=rows.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint!==b.contentFingerprint&&r.cloudContentFingerprint!==b.contentFingerprint&&r.contentFingerprint!==r.cloudContentFingerprint});return{baseline,u,plan,validation,rows,base,conf}};try{if(winner!=='local'&&winner!=='cloud')throw Error('Unknown conflict winner');stage('Fresh conflict validation');const first=await fresh();if(first.conf.length!==1)throw Error('Conflict state changed; run dry run again');const c=first.conf[0],b=first.base.get(c.entity+':'+c.supabase_id),cloud=first.validation.snapshot.transactions.find(x=>String(x.id)===String(c.supabase_id)),local=first.plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(c.supabase_id));if(!b||!cloud||!local||cloud.user_id!==first.u.id||local.user_id!==first.u.id)throw Error('Conflict mapping or ownership verification failed');const pre={b:b.contentFingerprint,l:c.contentFingerprint,c:c.cloudContentFingerprint};let proposed,stored,payload;if(winner==='local'){proposed={...local};if(await CapSync.contentFingerprint(proposed)!==pre.l)throw Error('KEEP LOCAL MAPPING VERIFICATION FAILED � NO CLOUD WRITE');payload={};['account_id','category_id','bill_id','parent_transaction_id','statement_id','amount','transaction_date','posting_date','status','title','description','metadata'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(local,k))payload[k]=local[k]})}else{proposed={...local,account_id:cloud.account_id||null,category_id:cloud.category_id||null,bill_id:cloud.bill_id||null,parent_transaction_id:cloud.parent_transaction_id||null,statement_id:cloud.statement_id||null,amount:cloud.amount,transaction_date:cloud.transaction_date,posting_date:cloud.posting_date||null,status:cloud.status,title:cloud.title||null,description:cloud.description||null,metadata:cloud.metadata||{}};if(await CapSync.contentFingerprint(proposed)!==pre.c)throw Error('KEEP CLOUD MAPPING VERIFICATION FAILED � NO LOCAL WRITE');stored=(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(c.localId));if(!stored)throw Error('Local transaction not found for conflict')}
-stage('Awaiting confirmation');if(!confirm(winner==='local'?'Keep the Cap version?\n\nThis will replace the conflicting cloud version of this transaction.':'Keep the cloud version?\n\nThis will replace the conflicting local version of this transaction.'))return;const second=await fresh(),sc=second.conf[0];if(!sc||sc.supabase_id!==c.supabase_id||sc.contentFingerprint!==pre.l||sc.cloudContentFingerprint!==pre.c)throw Error('CONFLICT CHANGED DURING CONFIRMATION � ABORTED');if(winner==='local'){stage('Supabase UPDATE');await CapSupabase.syncRequest('/rest/v1/transactions?id=eq.'+encodeURIComponent(c.supabase_id)+'&user_id=eq.'+encodeURIComponent(first.u.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});cloudWrite=true}else{stage('Local write');window.CAP_INTERNAL_SYNC_APPLY=true;try{const mapAccount=first.plan.tables.find(x=>x[0]==='accounts')[1].find(x=>String(x.id)===String(cloud.account_id)),mapCategory=first.plan.tables.find(x=>x[0]==='categories')[1].find(x=>String(x.id)===String(cloud.category_id));if(cloud.account_id&&!mapAccount||cloud.category_id&&!mapCategory)throw Error('KEEP CLOUD relationship mapping failed');Object.assign(stored,{acct:mapAccount?.legacy_id??stored.acct,cat:mapCategory?.name??stored.cat,d:cloud.transaction_date,pd:cloud.posting_date||'',note:cloud.title||'',desc:cloud.description||''});save()}finally{window.CAP_INTERNAL_SYNC_APPLY=false}localWrite=true}const verified=await fresh(),vr=verified.rows.find(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id);if(!vr||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error(winner==='local'?'KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED':'KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED');const latest=await CapOff.syncStore('syncmeta','get','baseline'),next=(latest.records||[]).map(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id?{...r,user_id:first.u.id,contentFingerprint:vr.contentFingerprint,cloud_updated_at:vr.cloud_updated_at,local_updated_at:vr.local_updated_at}:r);await CapOff.syncStore('syncmeta','put',{...latest,records:next,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Winner verified � single baseline record updated');await runCapSyncDryRun();toast('Conflict resolved',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if(localWrite&&!baselineUpdated)stage('KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if((cloudWrite||localWrite)&&baselineUpdated)stage('DATA CONVERGED � BASELINE UPDATE FAILED: '+e.message);else stage('Conflict resolution failed: '+e.message);toast('Conflict resolution failed')}}
+stage('Awaiting confirmation');if(!confirm(winner==='local'?'Keep the Cap version?\n\nThe production contract has no transaction update RPC, so the cloud copy of this transaction cannot be changed. Nothing will be written to the cloud.':'Keep the cloud version?\n\nThis will replace the conflicting local version of this transaction.'))return;const second=await fresh(),sc=second.conf[0];if(!sc||sc.supabase_id!==c.supabase_id||sc.contentFingerprint!==pre.l||sc.cloudContentFingerprint!==pre.c)throw Error('CONFLICT CHANGED DURING CONFIRMATION � ABORTED');if(winner==='local'){stage('Blocked: no production RPC updates an existing transaction');throw Error('UNSUPPORTED_OPERATION:transaction-update - the production contract only creates one new posted transaction. No cloud write was attempted.')}else{stage('Local write');window.CAP_INTERNAL_SYNC_APPLY=true;try{const mapAccount=first.plan.tables.find(x=>x[0]==='accounts')[1].find(x=>String(x.id)===String(cloud.account_id)),mapCategory=first.plan.tables.find(x=>x[0]==='categories')[1].find(x=>String(x.id)===String(cloud.category_id));if(cloud.account_id&&!mapAccount||cloud.category_id&&!mapCategory)throw Error('KEEP CLOUD relationship mapping failed');Object.assign(stored,{acct:mapAccount?.legacy_id??stored.acct,cat:mapCategory?.name??stored.cat,d:cloud.transaction_date,pd:cloud.posting_date||'',note:cloud.title||'',desc:cloud.description||''});save()}finally{window.CAP_INTERNAL_SYNC_APPLY=false}localWrite=true}const verified=await fresh(),vr=verified.rows.find(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id);if(!vr||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error(winner==='local'?'KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED':'KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED');const latest=await CapOff.syncStore('syncmeta','get','baseline'),next=(latest.records||[]).map(r=>r.entity==='transactions'&&r.supabase_id===c.supabase_id?{...r,user_id:first.u.id,contentFingerprint:vr.contentFingerprint,cloud_updated_at:vr.cloud_updated_at,local_updated_at:vr.local_updated_at}:r);await CapOff.syncStore('syncmeta','put',{...latest,records:next,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Winner verified � single baseline record updated');await runCapSyncDryRun();toast('Conflict resolved',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('KEEP LOCAL CLOUD WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if(localWrite&&!baselineUpdated)stage('KEEP CLOUD LOCAL WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if((cloudWrite||localWrite)&&baselineUpdated)stage('DATA CONVERGED � BASELINE UPDATE FAILED: '+e.message);else stage('Conflict resolution failed: '+e.message);toast('Conflict resolution failed')}}
 async function inspectSingleConflict(){const out=$('#single-conflict-result');try{const c=window.CAP_LAST_CONFLICT;if(!c)throw Error('No single conflict candidate is available; run a fresh dry run');if(c.entity!=='transactions')throw Error('Conflict candidate is not a transaction');if(out)out.innerHTML='Entity: '+c.entity+'<br>Local ID: '+c.localId+'<br>Supabase UUID: '+c.supabase_id+'<br>Baseline fingerprint prefix: '+c.baseline.contentFingerprint.slice(0,12)+'<br>Local fingerprint prefix: '+c.contentFingerprint.slice(0,12)+'<br>Cloud fingerprint prefix: '+c.cloudContentFingerprint.slice(0,12)+'<br>B = L: no<br>B = C: no<br>L = C: no<br>Differing canonical fields:<br>'+(c.canonicalDiffs||[]).map(d=>esc(d.field+' � '+d.localType+' vs '+d.cloudType+' � '+d.normalization)).join('<br>')+'<br>No conflict resolution performed; no data changed.';toast('Conflict inspected read-only',true)}catch(e){if(out)out.textContent='Conflict inspection failed: '+e.message;toast('Conflict inspection failed')}}
 async function testSingleTransactionPull(){const out=$('#single-pull-result');let localWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};try{stage('Fresh validation: checking pull candidate�');const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser(),prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);if(!baseline||!validation.dataOk)throw Error('Fresh validation failed');const current=await CapSync.recordFingerprints(plan,validation),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r])),pull=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint===b.contentFingerprint&&r.cloudContentFingerprint!==b.contentFingerprint});if(pull.length!==1)throw Error('Fresh dry run did not produce exactly one safe transaction PULL candidate');const candidate=pull[0],local=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(candidate.supabase_id)),cloud=validation.snapshot.transactions.find(x=>String(x.id)===String(candidate.supabase_id));if(!local||!cloud||local.user_id!==u.id||cloud.user_id!==u.id)throw Error('Single transaction ownership or mapping verification failed');stage('Single transaction identified � Local unchanged � Cloud changed � Ownership verified');if(!confirm('Test Single Record Pull\n\nOne existing local transaction will be updated using its verified Supabase version.\nNo other records will be changed.\nAutomatic Cloud Sync will remain OFF.'))return;const account=plan.tables.find(x=>x[0]==='accounts')[1].find(x=>String(x.id)===String(cloud.account_id)),category=plan.tables.find(x=>x[0]==='categories')[1].find(x=>String(x.id)===String(cloud.category_id));if(cloud.account_id&&!account)throw Error('Cloud account relationship cannot be mapped locally');if(cloud.category_id&&!category)throw Error('Cloud category relationship cannot be mapped locally');const proposed={...local,account_id:cloud.account_id||null,category_id:cloud.category_id||null,bill_id:cloud.bill_id||null,parent_transaction_id:cloud.parent_transaction_id||null,statement_id:cloud.statement_id||null,amount:cloud.amount,transaction_date:cloud.transaction_date,posting_date:cloud.posting_date||null,status:cloud.status,title:cloud.title||null,description:cloud.description||null,metadata:cloud.metadata||{}};const proposedFingerprint=await CapSync.contentFingerprint(proposed);if(proposedFingerprint!==candidate.cloudContentFingerprint)throw Error('PULL MAPPING VERIFICATION FAILED � NO LOCAL WRITE PERFORMED: '+(candidate.canonicalDiffs||[]).map(d=>d.field).join(', '));const stored=(S.tx||[]).concat(S.pend||[]).find(t=>String(t.id)===String(candidate.localId));if(!stored)throw Error('Local transaction could not be found for the verified pull candidate');window.CAP_INTERNAL_SYNC_APPLY=true;try{Object.assign(stored,{acct:account?.legacy_id??stored.acct,cat:category?.name??stored.cat,d:cloud.transaction_date,pd:cloud.posting_date||'',note:cloud.title||'',desc:cloud.description||''});save()}finally{window.CAP_INTERNAL_SYNC_APPLY=false}localWrite=true;stage('Local transaction updated � verifying fingerprint');const afterPlan=buildSupabaseMigrationPlan(migrationPrepare()),after=await CapSupabase.validateRealData(afterPlan),afterRows=await CapSync.recordFingerprints(afterPlan,after),vr=afterRows.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id));if(!vr||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error('Local fingerprint does not match verified cloud fingerprint');const latest=await CapOff.syncStore('syncmeta','get','baseline'),next=(latest.records||[]).map(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id)?{...r,localId:candidate.localId,user_id:u.id,local_updated_at:vr.local_updated_at,cloud_updated_at:vr.cloud_updated_at,contentFingerprint:vr.contentFingerprint}:r);await CapOff.syncStore('syncmeta','put',{...latest,records:next,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Local fingerprint verified � single baseline record updated');toast('Single record pull test passed',true)}catch(e){if(localWrite&&!baselineUpdated)stage('LOCAL WRITE OCCURRED � VERIFICATION FAILED: '+e.message);else if(localWrite&&baselineUpdated)stage('LOCAL WRITE VERIFIED � BASELINE UPDATE FAILED: '+e.message);else stage('Single pull test failed: '+e.message);toast('Single record pull test failed')}}
 function phase6ControlledCandidates(baseline,plan,validation,rows,u){
@@ -3623,7 +3856,7 @@ async function auditControlledWrite(){
       canonicalNotes:c.notes.length===1,
       canonicalTransaction:!!(c.txGuard&&c.txGuard.safe),
       canonicalAccount:!!(c.dependency&&c.dependency.safe),
-      partialFailureHandling:!!support&&support.retrySafe===true&&support.atomicGroup==='cap_test_transaction_create'&&support.partialStateTracking===true&&Array.isArray(support.states)&&support.states.length>=5,
+      partialFailureHandling:!!support&&support.retrySafe===true&&support.atomicGroup==='cap_sync_transaction_create'&&support.partialStateTracking===true&&Array.isArray(support.states)&&support.states.length>=5,
       atomicTransactionGroupAvailable:rpcAvailable,
       atomicRollbackGuaranteed:rpcAvailable,
       idempotentRetryProtection:rpcAvailable,
@@ -3746,7 +3979,7 @@ async function diagnosePhase6K4A(){
 }
 const CAP_CONTROLLED_WRITE_STATES=['NOTHING_APPLIED','NOTES_ONLY_APPLIED','TRANSACTION_GROUP_ONLY_APPLIED','NOTES_APPLIED_GROUP_UNKNOWN','ALL_APPLIED','VERIFICATION_FAILED'];
 window.CAP_CONTROLLED_WRITE_STATE={version:'phase6k5a-v1',state:'NOTHING_APPLIED',notes:'not_attempted',group:'not_attempted',verified:false,candidate:null,updated_at:null};
-function controlledWriteSupport(){return{version:'phase6k5a-v1',states:CAP_CONTROLLED_WRITE_STATES.slice(),atomicGroup:'cap_test_transaction_create',retrySafe:true,notesIdempotent:true,partialStateTracking:true}}
+function controlledWriteSupport(){return{version:'phase6k5a-v1',states:CAP_CONTROLLED_WRITE_STATES.slice(),atomicGroup:'cap_sync_transaction_create',retrySafe:true,notesIdempotent:true,partialStateTracking:true}}
 function controlledWriteStatus(){return window.CAP_CONTROLLED_WRITE_STATE}
 function setControlledState(patch){window.CAP_CONTROLLED_WRITE_STATE={...window.CAP_CONTROLLED_WRITE_STATE,...patch,updated_at:new Date().toISOString()};return window.CAP_CONTROLLED_WRITE_STATE}
 function cloudWriteDiff(before,after,allowed){
@@ -3765,8 +3998,8 @@ async function cleanupPhase6TestArtifact(){
   try{
     stage('Reading cloud test artifacts…');
     const u=await CapSupabase.currentUser();if(!u||!u.id)throw Error('No authenticated Supabase user');
-    const accounts=await CapSupabase.syncRequest('/rest/v1/accounts?select=*&legacy_id=like.phase6-test-*');
-    const list=Array.isArray(accounts)?accounts:[];
+    const snapshot=await window.CapProductionRpc.snapshotRows(u.id);
+    const list=(snapshot.rows.accounts||[]).map(r=>r.row).filter(a=>String(a.legacy_id||'').startsWith('phase6-test-'));
     if(!list.length){if(out)out.textContent='No phase6-test-* cloud accounts found; nothing to delete.';return}
     if(list.length!==1)throw Error('Expected exactly one test account; found '+list.length+' — no deletion performed');
     const a=list[0];
@@ -3774,14 +4007,14 @@ async function cleanupPhase6TestArtifact(){
     if(String(a.user_id)!==String(u.id))throw Error('Test account ownership mismatch; no deletion performed');
     if(Number(a.balance)!==0)throw Error('Test account balance is not zero; no deletion performed');
     const enc=encodeURIComponent(a.id);
-    const count=async path=>{const r=await CapSupabase.syncRequest(path);if(!Array.isArray(r))throw Error('Reference check failed: '+path);return r.length};
+    const count=(entity,field,value)=>(snapshot.rows[entity]||[]).filter(r=>String(r.row?.[field]??'')===String(value)).length;
     const refs={
-      transactions:await count('/rest/v1/transactions?select=id&account_id=eq.'+enc),
-      transfersFrom:await count('/rest/v1/transfers?select=id&from_account_id=eq.'+enc),
-      transfersTo:await count('/rest/v1/transfers?select=id&to_account_id=eq.'+enc),
-      goals:await count('/rest/v1/goals?select=id&account_id=eq.'+enc),
-      bills:await count('/rest/v1/bills?select=id&payment_account_id=eq.'+enc),
-      statements:await count('/rest/v1/account_statements?select=id&account_id=eq.'+enc)
+      transactions:count('transactions','account_id',a.id),
+      transfersFrom:count('transfers','from_account_id',a.id),
+      transfersTo:count('transfers','to_account_id',a.id),
+      goals:count('goals','account_id',a.id),
+      bills:count('bills','payment_account_id',a.id),
+      statements:count('account_statements','account_id',a.id)
     };
     if(Object.values(refs).reduce((n,x)=>n+x,0))throw Error('Test account is referenced ('+JSON.stringify(refs)+'); no deletion performed');
     const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep);
@@ -3790,16 +4023,32 @@ async function cleanupPhase6TestArtifact(){
     if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing; refusing cleanup');
     if(baseline.records.some(r=>r.entity==='accounts'&&String(r.supabase_id)===String(a.id)))throw Error('Test account is tracked in the baseline; no deletion performed');
     if(!confirm('Delete this verified test artifact?\n\nUUID: '+a.id+'\nlegacy_id: '+a.legacy_id+'\nBalance: zero\nReferences: 0\nNot in local plan. Not in baseline.\n\nThis is a permanent Supabase DELETE. No other records will be touched.'))return;
-    stage('Deleting verified test artifact…');
-    const deleted=await CapSupabase.syncRequest('/rest/v1/accounts?id=eq.'+enc+'&user_id=eq.'+encodeURIComponent(u.id),{method:'DELETE',headers:{Prefer:'return=representation'}});
-    if(!Array.isArray(deleted)||deleted.length!==1||String(deleted[0].id)!==String(a.id))throw Error('DELETE VERIFICATION FAILED — TEST ARTIFACT MAY STILL EXIST');
-    const remaining=await CapSupabase.syncRequest('/rest/v1/accounts?select=id&id=eq.'+enc);
-    if(!Array.isArray(remaining)||remaining.length!==0)throw Error('DELETE VERIFICATION FAILED — RECORD STILL PRESENT');
-    if(out)out.textContent='Test artifact deleted ✓\nUUID: '+a.id+'\nPost-delete verification: PASS\nNo other records modified.';
-    toast('Test artifact deleted',true);
+    stage('Refusing destructive cleanup…');
+    // The production contract has no account delete RPC. A direct table
+    // delete is not an accepted path, so the artifact is left untouched.
+    if(out)out.textContent='Test artifact found but NOT deleted ✓\nUUID: '+a.id+'\nThe production contract has no account delete RPC, so no destructive request was made.\nNo other records modified.';
+    toast('No account delete RPC — nothing deleted',true);
   }catch(e){if(out)out.textContent='Cleanup failed: '+e.message;toast('Test artifact cleanup failed')}
 }
-const PHASE6K6_TARGETS=[['notes','66fb12b5-e10f-583e-9b23-7dc7d537b350'],['transactions','37e534ed-b1f9-5a76-ac0d-9fffa621d588'],['accounts','3375b984-b961-53fb-bf4d-4e72c53918e9']];
+function phase6k6Targets(){
+  const s=window.CAP_CONTROLLED_WRITE_STATE;
+  if(!s||s.state!=='ALL_APPLIED'||s.verified!==true){
+    throw Error('No verified successful controlled write is available for reconciliation');
+  }
+
+  const ids=String(s.candidate||'').split('|');
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if(ids.length!==3||!ids.every(id=>uuid.test(id))){
+    throw Error('Verified controlled-write candidate identities are invalid');
+  }
+
+  return [
+    ['notes',ids[0]],
+    ['transactions',ids[1]],
+    ['accounts',ids[2]]
+  ];
+}
 async function phase6k6Preflight(){
   const baseline=await CapOff.syncStore('syncmeta','get','baseline');
   if(!baseline||baseline.version!==2||!Array.isArray(baseline.records))throw Error('Baseline is missing, not version 2, or corrupt');
@@ -3814,7 +4063,7 @@ async function phase6k6Preflight(){
   if(!validation.dataOk)throw Error('Validation is not clean: missing '+validation.missingCount+', unexpected '+validation.unexpectedCount+', mismatches '+validation.mismatchCount+', foreign keys '+validation.foreignKeyErrorCount);
   const rows=await CapSync.recordFingerprints(plan,validation),key=r=>r.entity+':'+String(r.supabase_id);
   const base=new Map(baseline.records.map(r=>[key(r),r])),current=new Map(rows.map(r=>[key(r),r]));
-  const targets=PHASE6K6_TARGETS.map(([entity,id])=>{
+  const targets=phase6k6Targets().map(([entity,id])=>{
     const k=entity+':'+id,r=current.get(k),b=base.get(k);
     if(!r)throw Error('Controlled target missing from current plan: '+k);
     if(String(r.user_id)!==String(u.id))throw Error('Controlled target ownership mismatch: '+k);
@@ -3822,7 +4071,7 @@ async function phase6k6Preflight(){
     if(b&&b.contentFingerprint===r.contentFingerprint)throw Error('Controlled target already matches baseline: '+k);
     return{entity,supabase_id:id,localId:r.localId,row:r,existing:!!b}
   });
-  const targetKeys=new Set(PHASE6K6_TARGETS.map(([e,id])=>e+':'+id));
+  const targetKeys=new Set(phase6k6Targets().map(([e,id])=>e+':'+id));
   for(const [k,r] of current){
     if(targetKeys.has(k))continue;
     const b=base.get(k);
@@ -3906,37 +4155,46 @@ async function testControlledRetry(){
     const u=await CapSupabase.currentUser();if(!u||!u.id)throw Error('No authenticated Supabase user');
     const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep);
     const noteRow=plan.tables.find(x=>x[0]==='notes')[1].find(r=>String(r.id)==='66fb12b5-e10f-583e-9b23-7dc7d537b350');
-    const txPlan=plan.tables.find(x=>x[0]==='transactions')[1].find(r=>String(r.id)==='37e534ed-b1f9-5a76-ac0d-9fffa621d588');
+    const targets=phase6k6Targets();
+const ids=Object.fromEntries(targets);
+const txPlan=plan.tables.find(x=>x[0]==='transactions')[1].find(r=>String(r.id)===String(ids.transactions));
     if(!noteRow||!txPlan)throw Error('Controlled retry payload unavailable');
-    const noteId='66fb12b5-e10f-583e-9b23-7dc7d537b350',txId='37e534ed-b1f9-5a76-ac0d-9fffa621d588',acctId='3375b984-b961-53fb-bf4d-4e72c53918e9';
+    const noteId=ids.notes,txId=ids.transactions,acctId=ids.accounts;
     const noteBody={title:noteRow.title,body:noteRow.body,note_date:noteRow.note_date};
     const rpcBody={p_transaction_id:txPlan.id,p_legacy_id:String(txPlan.legacy_id),p_account_id:txPlan.account_id,p_category_id:txPlan.category_id??null,p_bill_id:txPlan.bill_id??null,p_amount:Number(txPlan.amount),p_transaction_date:txPlan.transaction_date,p_posting_date:txPlan.posting_date??null,p_status:txPlan.status,p_title:txPlan.title??null,p_description:txPlan.description??null,p_metadata:txPlan.metadata??{}};
-    const enc=encodeURIComponent,read=async(path)=>{const r=await CapSupabase.syncRequest(path);if(!Array.isArray(r)||r.length!==1)throw Error('Cloud row unavailable: '+path);return r[0]};
-    const beforeNote=await read('/rest/v1/notes?select=id,updated_at,title,body,note_date&id=eq.'+enc(noteId));
-    const beforeTx=await read('/rest/v1/transactions?select=id,updated_at&id=eq.'+enc(txId));
-    const beforeAcct=await read('/rest/v1/accounts?select=id,updated_at&id=eq.'+enc(acctId));
+    const cloud=await window.CapProductionRpc.snapshotRows(u.id);
+    const one=(entity,id)=>{const rows=(cloud.rows[entity]||[]).map(r=>r.row).filter(r=>String(r.id)===String(id));if(rows.length!==1)throw Error('Cloud row unavailable: '+entity);return rows[0]};
+    const beforeNote=one('notes',noteId);
+    const beforeTx=one('transactions',txId);
+    const beforeAcct=one('accounts',acctId);
     const same=(a,b)=>String(a??'')===String(b??'');
     if(!same(beforeNote.title,noteBody.title)||!same(beforeNote.body,noteBody.body)||!same(beforeNote.note_date,noteBody.note_date))throw Error('Notes cloud content differs from the intended payload; retry aborted');
     if(!confirm('Run controlled retry test?\n\n1. notes PATCH with identical values (idempotent)\n2. transaction RPC with identical payload (must return ALREADY_APPLIED)\n\nNo content changes are expected.\nCloud Sync remains OFF. The baseline is not updated.')){stage('Controlled retry cancelled. No requests were sent.');return}
     const second=await phase6k6Verify();
     if(!second.ok)throw Error('State changed during confirmation; retry aborted: '+second.reason);
-    stage('Retry 1/2: re-sending identical notes PATCH…');
-    let noteRows;
-    try{noteRows=await CapSupabase.syncRequest('/rest/v1/notes?id=eq.'+enc(noteId)+'&user_id=eq.'+enc(u.id),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(noteBody)})}
+    stage('Retry 1/2: replaying the identical production notes operation…');
+    const recorded=window.CAP_CONTROLLED_WRITE_STATE||{};
+    if(!recorded.noteOperation||!recorded.txOperation)throw Error('No recorded production operation to replay');
+    let noteResult;
+    try{noteResult=await window.CapProductionRpc.changeNote({id:String(recorded.noteOperation.noteId),action:'edit',
+      expected:recorded.noteOperation.expected,desired:recorded.noteOperation.desired,operationId:String(recorded.noteOperation.operationId)})}
     catch(e){throw Error('NOTES RETRY REQUEST FAILED: '+(e.message||e))}
-    const noteOk=Array.isArray(noteRows)&&noteRows.length===1&&String(noteRows[0].id)===noteId&&same(noteRows[0].title,noteBody.title)&&same(noteRows[0].body,noteBody.body)&&same(noteRows[0].note_date,noteBody.note_date);
+    const noteOk=!!noteResult&&noteResult.status==='ALREADY_APPLIED';
     if(!noteOk)throw Error('NOTES RETRY CONTENT VERIFICATION FAILED');
-    stage('Retry 2/2: re-sending identical transaction RPC payload…');
+    stage('Retry 2/2: replaying the identical production transaction operation…');
     let rpc;
-    try{rpc=await CapSupabase.syncRequest('/rest/v1/rpc/cap_test_transaction_create',{method:'POST',body:JSON.stringify(rpcBody)})}
+    try{rpc=await window.CapProductionRpc.createTransaction({operationId:String(recorded.txOperation.operationId),
+      transaction:recorded.txOperation.payload,expectedAccount:recorded.txOperation.expectedAccount})}
     catch(e){throw Error('RPC RETRY REQUEST FAILED: '+(e.message||e))}
     const status=rpc&&rpc.status;
     if(status!=='ALREADY_APPLIED')throw Error('RETRY CAUSED A WRITE OR RETURNED AN UNEXPECTED RESULT: '+String(status||'unknown'));
     if(rpc.transaction_id&&String(rpc.transaction_id)!==txId)throw Error('RETRY RETURNED A DIFFERENT TRANSACTION ID');
     stage('Verifying no unintended row changes…');
-    const afterNote=await read('/rest/v1/notes?select=id,updated_at,title,body,note_date&id=eq.'+enc(noteId));
-    const afterTx=await read('/rest/v1/transactions?select=id,updated_at&id=eq.'+enc(txId));
-    const afterAcct=await read('/rest/v1/accounts?select=id,updated_at&id=eq.'+enc(acctId));
+    const cloudAfter=await window.CapProductionRpc.snapshotRows(u.id);
+    const oneAfter=(entity,id)=>{const rows=(cloudAfter.rows[entity]||[]).map(r=>r.row).filter(r=>String(r.id)===String(id));if(rows.length!==1)throw Error('Cloud row unavailable: '+entity);return rows[0]};
+    const afterNote=oneAfter('notes',noteId);
+    const afterTx=oneAfter('transactions',txId);
+    const afterAcct=oneAfter('accounts',acctId);
     const final=await phase6k6Verify();
     if(!final.ok)throw Error('RETRY VERIFICATION FAILED: '+final.reason+(final.bad&&final.bad.length?' ('+final.bad.join(', ')+')':''));
     if(String(afterTx.updated_at)!==String(beforeTx.updated_at))throw Error('RETRY MODIFIED THE TRANSACTION ROW');
@@ -3971,7 +4229,6 @@ async function testControlledWrite(){
     const note=c.notes[0],tx=c.tx,txPlan=tx.planTx,accountPlan=c.dependency.accountPlan;
     const notePlan=plan.tables.find(x=>x[0]==='notes')[1].find(r=>String(r.id)===String(note.supabase_id));
     if(!notePlan||!txPlan||!accountPlan)throw Error('Verified candidate payload unavailable');
-    const notePath='/rest/v1/notes?id=eq.'+encodeURIComponent(note.supabase_id)+'&user_id=eq.'+encodeURIComponent(u.id);
     const noteBody={title:notePlan.title,body:notePlan.body,note_date:notePlan.note_date};
     const rpcBody={p_transaction_id:txPlan.id,p_legacy_id:String(txPlan.legacy_id),p_account_id:txPlan.account_id,p_category_id:txPlan.category_id??null,p_bill_id:txPlan.bill_id??null,p_amount:Number(txPlan.amount),p_transaction_date:txPlan.transaction_date,p_posting_date:txPlan.posting_date??null,p_status:txPlan.status,p_title:txPlan.title??null,p_description:txPlan.description??null,p_metadata:txPlan.metadata??{}};
     const expectedBalance=Number(accountPlan.balance);
@@ -3984,28 +4241,44 @@ async function testControlledWrite(){
     const identity2=[c2.notes[0]&&c2.notes[0].supabase_id,c2.tx&&c2.tx.id,c2.dependency&&c2.dependency.accountPlan&&c2.dependency.accountPlan.id].join('|');
     if(identity!==identity2||c2.notes.length!==1||c2.txCandidates.length!==1||!(c2.txGuard&&c2.txGuard.safe)||!(c2.dependency&&c2.dependency.safe))throw Error('CANDIDATES CHANGED DURING CONFIRMATION — ABORTED');
     stage('Notes UPDATE pending');
-    let noteRows;
+    const noteEnvelope=await window.CapProductionRpc.readNoteRecord(u.id,{id:String(note.supabase_id)});
+    if(!noteEnvelope)throw Error('Cloud note unavailable');
+    const noteOperation={operationId:crypto.randomUUID(),noteId:String(note.supabase_id),
+      expected:{content:{legacy_id:String(noteEnvelope.row.legacy_id),title:String(noteEnvelope.row.title),body:String(noteEnvelope.row.body),note_date:noteEnvelope.row.note_date??null},lifecycle:noteEnvelope.lifecycle},
+      desired:{legacy_id:String(noteEnvelope.row.legacy_id),title:String(noteBody.title??''),body:String(noteBody.body??''),note_date:noteBody.note_date??null}};
+    let noteResult;
     try{
-      noteRows=await CapSupabase.syncRequest(notePath,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(noteBody)});
+      noteResult=await window.CapProductionRpc.changeNote({id:noteOperation.noteId,action:'edit',expected:noteOperation.expected,desired:noteOperation.desired,operationId:noteOperation.operationId});
     }catch(e){
       setControlledState({state:'NOTHING_APPLIED',notes:'unknown',group:'not_attempted'});
       throw Error('NOTES WRITE OUTCOME UNKNOWN — RETRY IS SAFE (idempotent): '+(e.message||e));
     }
-    const noteWritten=Array.isArray(noteRows)&&noteRows.length===1&&String(noteRows[0].id)===String(note.supabase_id);
-    const notePayloadOk=noteWritten&&String(noteRows[0].title??'')===String(noteBody.title??'')&&String(noteRows[0].body??'')===String(noteBody.body??'')&&String(noteRows[0].note_date??'')===String(noteBody.note_date??'');
+    setControlledState({noteOperation});
+    const noteWritten=!!noteResult&&['APPLIED','ALREADY_APPLIED'].includes(noteResult.status);
+    const noteAfter=await window.CapProductionRpc.readNoteRecord(u.id,{id:noteOperation.noteId});
+    const notePayloadOk=noteWritten&&!!noteAfter&&String(noteAfter.row.title??'')===String(noteBody.title??'')&&String(noteAfter.row.body??'')===String(noteBody.body??'')&&String(noteAfter.row.note_date??'')===String(noteBody.note_date??'');
     if(!noteWritten){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied_unverified'});throw Error('NOTES WRITE OCCURRED — VERIFICATION FAILED')}
     if(!notePayloadOk){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied_unverified'});throw Error('NOTES WRITE OCCURRED — PAYLOAD VERIFICATION FAILED')}
     setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied'});
     stage('Atomic transaction group pending');
+    const cloudAccount=(validation2.snapshot.accounts||[]).find(a=>String(a.id)===String(accountPlan.id));
+    if(!cloudAccount)throw Error('Expected cloud account unavailable');
+    const txPayload={id:String(txPlan.id),user_id:String(txPlan.user_id),account_id:txPlan.account_id??null,
+      category_id:txPlan.category_id??null,bill_id:txPlan.bill_id??null,parent_transaction_id:txPlan.parent_transaction_id??null,
+      statement_id:txPlan.statement_id??null,legacy_id:String(txPlan.legacy_id),amount:Number(txPlan.amount),
+      transaction_date:txPlan.transaction_date,posting_date:txPlan.posting_date??null,status:txPlan.status,
+      title:txPlan.title??null,description:txPlan.description??null,metadata:txPlan.metadata??{}};
+    const txOperation={operationId:crypto.randomUUID(),payload:txPayload,expectedAccount:cloudAccount};
     let rpcResult;
     try{
-      rpcResult=await CapSupabase.syncRequest('/rest/v1/rpc/cap_test_transaction_create',{method:'POST',body:JSON.stringify(rpcBody)});
+      rpcResult=await window.CapProductionRpc.createTransaction({operationId:txOperation.operationId,transaction:txOperation.payload,expectedAccount:txOperation.expectedAccount});
     }catch(e){
       setControlledState({state:'NOTES_APPLIED_GROUP_UNKNOWN',notes:'applied',group:'unknown'});
       throw Error('ATOMIC GROUP OUTCOME UNKNOWN — RETRY IS SAFE (notes applied; RPC returns ALREADY_APPLIED if it committed): '+(e.message||e));
     }
     const rpcStatus=rpcResult&&rpcResult.status;
     if(rpcStatus!=='APPLIED'&&rpcStatus!=='ALREADY_APPLIED'){setControlledState({state:'NOTES_ONLY_APPLIED',notes:'applied',group:'rejected'});throw Error('ATOMIC GROUP REJECTED: '+String(rpcStatus||'unknown'))}
+    setControlledState({txOperation});
     setControlledState({state:'ALL_APPLIED',notes:'applied',group:rpcStatus==='ALREADY_APPLIED'?'already_applied':'applied'});
     stage('Canonical post-write verification…');
     const verification=await CapSupabase.validateRealData(plan),verifiedRows=await CapSync.recordFingerprints(plan,verification);
@@ -4029,7 +4302,7 @@ async function testControlledWrite(){
     toast('Controlled write failed');
   }
 }
-async function testSingleTransactionPush(){const out=$('#single-push-result');let cloudWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};try{stage('Fresh dry run: validating…');const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing or corrupt');const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);if(!validation.dataOk)throw Error('Fresh validation failed');const pending=await CapOff.syncStore('outbox','all').catch(()=>[]);if(pending.some(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');const current=await CapSync.recordFingerprints(plan,validation),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r])),push=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint!==b.contentFingerprint&&r.cloudContentFingerprint===b.contentFingerprint});if(push.length!==1)throw Error('Fresh dry run did not produce exactly one safe transaction PUSH candidate');const candidate=push[0],local=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(candidate.supabase_id)),cloud=validation.snapshot.transactions.find(x=>String(x.id)===String(candidate.supabase_id)),b=base.get(candidate.entity+':'+candidate.supabase_id);if(!local||!cloud||!b||local.user_id!==u.id||cloud.user_id!==u.id)throw Error('Single transaction ownership or mapping verification failed');stage('Single transaction identified · Baseline verified · Local changed · Cloud unchanged · Ownership verified');if(!confirm('Test Single Record Push\n\nOne existing transaction will be updated in Supabase.\nNo other records will be changed.\nAutomatic Cloud Sync will remain OFF.'))return;const fields=['account_id','category_id','bill_id','parent_transaction_id','statement_id','amount','transaction_date','posting_date','status','title','description','metadata'],payload={};fields.forEach(k=>{if(Object.prototype.hasOwnProperty.call(local,k))payload[k]=local[k]});stage('User confirmed · Supabase UPDATE pending');await CapSupabase.syncRequest('/rest/v1/transactions?id=eq.'+encodeURIComponent(candidate.supabase_id)+'&user_id=eq.'+encodeURIComponent(u.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});cloudWrite=true;stage('Supabase UPDATE completed');const verify=await CapSupabase.validateRealData(plan),verified=await CapSync.recordFingerprints(plan,verify),vr=verified.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id));if(!vr||vr.user_id!==u.id||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error('Cloud/local fingerprint verification failed');stage('Cloud/local fingerprint verified');const latest=await CapOff.syncStore('syncmeta','get','baseline'),nextRecords=(latest.records||[]).map(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id)?{...r,localId:candidate.localId,user_id:u.id,local_updated_at:vr.local_updated_at,cloud_updated_at:vr.cloud_updated_at,contentFingerprint:vr.contentFingerprint}:r);if(nextRecords.length!==baseline.records.length)throw Error('Baseline record count changed');await CapOff.syncStore('syncmeta','put',{...latest,records:nextRecords,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Single baseline record updated');const finalPlan=buildSupabaseMigrationPlan(migrationPrepare()),final=await CapSupabase.validateRealData(finalPlan),finalRows=await CapSync.recordFingerprints(finalPlan,final),finalBase=new Map(nextRecords.map(r=>[r.entity+':'+r.supabase_id,r]));const remaining=finalRows.filter(r=>{const x=finalBase.get(r.entity+':'+r.supabase_id);return !x||r.contentFingerprint!==x.contentFingerprint||r.cloudContentFingerprint!==x.contentFingerprint});if(remaining.length)throw Error('Final dry run did not reach zero changes');stage('Final dry run passed · Unchanged: 43 · Would push: 0 · Conflicts: 0 · Automatic Cloud Sync OFF');toast('Single record push test passed',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('CLOUD WRITE OCCURRED — VERIFICATION FAILED: '+e.message);else if(cloudWrite&&baselineUpdated)stage('CLOUD WRITE VERIFIED — BASELINE UPDATE FAILED: '+e.message);else stage('Single push test failed: '+e.message);toast('Single record push test failed')}}
+async function testSingleTransactionPush(){const out=$('#single-push-result');let cloudWrite=false,baselineUpdated=false;const stage=s=>{if(out)out.textContent=s};try{stage('Fresh dry run: validating…');const baseline=await CapOff.syncStore('syncmeta','get','baseline'),u=await CapSupabase.currentUser();if(!baseline||!Array.isArray(baseline.records))throw Error('Baseline missing or corrupt');const prep=migrationPrepare(),plan=buildSupabaseMigrationPlan(prep),validation=await CapSupabase.validateRealData(plan);if(!validation.dataOk)throw Error('Fresh validation failed');const pending=await CapOff.syncStore('outbox','all').catch(()=>[]);if(pending.some(x=>x.user_id===u.id&&!String(x.payload?.legacy_id||'').startsWith('phase6-test-')))throw Error('Pending real-data outbox operations exist');const current=await CapSync.recordFingerprints(plan,validation),base=new Map(baseline.records.map(r=>[r.entity+':'+r.supabase_id,r])),push=current.filter(r=>{const b=base.get(r.entity+':'+r.supabase_id);return b&&r.entity==='transactions'&&r.contentFingerprint!==b.contentFingerprint&&r.cloudContentFingerprint===b.contentFingerprint});if(push.length!==1)throw Error('Fresh dry run did not produce exactly one safe transaction PUSH candidate');const candidate=push[0],local=plan.tables.find(x=>x[0]==='transactions')[1].find(x=>String(x.id)===String(candidate.supabase_id)),cloud=validation.snapshot.transactions.find(x=>String(x.id)===String(candidate.supabase_id)),b=base.get(candidate.entity+':'+candidate.supabase_id);if(!local||!cloud||!b||local.user_id!==u.id||cloud.user_id!==u.id)throw Error('Single transaction ownership or mapping verification failed');stage('Single transaction identified · Baseline verified · Local changed · Cloud unchanged · Ownership verified');if(!confirm('Test Single Record Push\n\nThe production contract has no transaction update RPC, so this test cannot write. It stops before any cloud request.\nNo other records will be changed.\nAutomatic Cloud Sync will remain OFF.'))return;stage('Blocked: no production RPC updates an existing transaction');throw Error('UNSUPPORTED_OPERATION:transaction-update - the production contract only creates one new posted transaction. No cloud write was attempted.');const fields=['account_id','category_id','bill_id','parent_transaction_id','statement_id','amount','transaction_date','posting_date','status','title','description','metadata'],payload={};fields.forEach(k=>{if(Object.prototype.hasOwnProperty.call(local,k))payload[k]=local[k]});stage('Blocked: no production RPC updates an existing transaction');throw Error('UNSUPPORTED_OPERATION:transaction-update - the production contract only creates one new posted transaction. No cloud write was attempted.');const verify=await CapSupabase.validateRealData(plan),verified=await CapSync.recordFingerprints(plan,verify),vr=verified.find(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id));if(!vr||vr.user_id!==u.id||vr.contentFingerprint!==vr.cloudContentFingerprint)throw Error('Cloud/local fingerprint verification failed');stage('Cloud/local fingerprint verified');const latest=await CapOff.syncStore('syncmeta','get','baseline'),nextRecords=(latest.records||[]).map(r=>r.entity==='transactions'&&String(r.supabase_id)===String(candidate.supabase_id)?{...r,localId:candidate.localId,user_id:u.id,local_updated_at:vr.local_updated_at,cloud_updated_at:vr.cloud_updated_at,contentFingerprint:vr.contentFingerprint}:r);if(nextRecords.length!==baseline.records.length)throw Error('Baseline record count changed');await CapOff.syncStore('syncmeta','put',{...latest,records:nextRecords,upgraded_at:new Date().toISOString()},'baseline');baselineUpdated=true;stage('Single baseline record updated');const finalPlan=buildSupabaseMigrationPlan(migrationPrepare()),final=await CapSupabase.validateRealData(finalPlan),finalRows=await CapSync.recordFingerprints(finalPlan,final),finalBase=new Map(nextRecords.map(r=>[r.entity+':'+r.supabase_id,r]));const remaining=finalRows.filter(r=>{const x=finalBase.get(r.entity+':'+r.supabase_id);return !x||r.contentFingerprint!==x.contentFingerprint||r.cloudContentFingerprint!==x.contentFingerprint});if(remaining.length)throw Error('Final dry run did not reach zero changes');stage('Final dry run passed · Unchanged: 43 · Would push: 0 · Conflicts: 0 · Automatic Cloud Sync OFF');toast('Single record push test passed',true)}catch(e){if(cloudWrite&&!baselineUpdated)stage('CLOUD WRITE OCCURRED — VERIFICATION FAILED: '+e.message);else if(cloudWrite&&baselineUpdated)stage('CLOUD WRITE VERIFIED — BASELINE UPDATE FAILED: '+e.message);else stage('Single push test failed: '+e.message);toast('Single record push test failed')}}
 async function testSupabaseCloudDatabase(){const out=$('#sb-crud-result');if(out)out.textContent='Testing disposable account CRUD…';try{const r=await CapSupabase.testCloudDatabase();if(out)out.textContent=r.stages.map(s=>s.name+' '+(s.ok?'✓':'✕'+(s.error?' '+s.error:''))).join(' · ');toast(r.ok?'Cloud database test passed':'Cloud database test failed',r.ok)}catch(e){if(out)out.textContent='Test failed: '+e.message;toast('Cloud database test failed')}}
 /* ---- About ---- */
 function stAbout(){ stStart();

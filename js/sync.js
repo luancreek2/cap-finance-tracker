@@ -19,42 +19,38 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
   function meta(){return CapOff.syncStore('syncmeta','get','status').catch(()=>null)}
   async function putMeta(v){return CapOff.syncStore('syncmeta','put',{...(await meta()||{}),...v},'status')}
   async function queue(op){const authenticatedUser=await CapSupabase.currentUser();if(!authenticatedUser?.id)throw Error('No authenticated user');const u=authenticatedUser.id;if(op.user_id!==u)throw Error(`Queue user does not match authenticated user: operation=${op.user_id}, authenticated=${u}`);const record={id:id(),user_id:u,entity:op.entity,local_id:String(op.local_id),supabase_id:op.supabase_id||null,operation:op.operation,payload:op.payload||null,local_updated_at:op.local_updated_at||now(),queued_at:now(),retry_count:0,last_error:null};if(record.user_id!==authenticatedUser.id)throw Error(`Queue ownership assertion failed: operation=${record.user_id}, authenticated=${authenticatedUser.id}`);await CapOff.syncStore('outbox','put',record);return record}
-  async function request(path,options){return CapSupabase.syncRequest(path,options)}
-  async function applyOperation(op){const filter='id=eq.'+encodeURIComponent(op.supabase_id)+'&user_id=eq.'+encodeURIComponent(op.user_id);if(op.operation==='delete')return request('/rest/v1/'+op.entity+'?'+filter,{method:'DELETE',headers:{Prefer:'return=minimal'}});return request('/rest/v1/'+op.entity+'?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([op.payload])})}
-  async function cleanupTestArtifacts(userId){
-    const queued=await CapOff.syncStore('outbox','all').catch(()=>[]);for(const q of queued){const p=q.payload||{};if(q.user_id===userId&&q.entity==='accounts'&&(String(q.local_id).startsWith('phase6-test-')||p.legacy_id?.startsWith('phase6-test-')||p.name==='CAP SYNC ENGINE TEST'))await CapOff.syncStore('outbox','delete',q.id).catch(()=>{})}
-    const conflicts=await CapOff.syncStore('syncconflicts','all').catch(()=>[]);for(const c of conflicts){const p=c.payload||{};if(c.user_id===userId&&(c.entity==='accounts'||p.legacy_id?.startsWith('phase6-test-')||p.name==='CAP SYNC ENGINE TEST'))await CapOff.syncStore('syncconflicts','delete',c.id).catch(()=>{})}
-    const rows=await request('/rest/v1/accounts?select=id,legacy_id,name&user_id=eq.'+encodeURIComponent(userId)+'&legacy_id=like.'+encodeURIComponent('phase6-test-*'));for(const row of rows||[]){if(row.name==='CAP SYNC ENGINE TEST'||String(row.legacy_id||'').startsWith('phase6-test-'))await request('/rest/v1/accounts?id=eq.'+encodeURIComponent(row.id)+'&user_id=eq.'+encodeURIComponent(userId),{method:'DELETE',headers:{Prefer:'return=minimal'}})}
-    await putMeta({last_test_at:null});
-  }
-  async function test(){
-    const report=[],authenticatedUser=await CapSupabase.currentUser();if(!authenticatedUser?.id)throw Error('Authenticate before testing the sync engine');await cleanupTestArtifacts(authenticatedUser.id);report.push(['Failed test artifacts cleaned',true]);report.push(['Authenticated user resolved',true]);const u={userId:authenticatedUser.id};
-    const aid=id(),base={id:aid,user_id:authenticatedUser.id,legacy_id:'phase6-test-'+aid,account_type:'cash',name:'CAP SYNC ENGINE TEST',balance:0,status:'Active'},updated={...base,nickname:'updated test'};let q1,q2,qOffline,deleted=false;
-    try{
-      report.push(['local test record creation',true]);if(base.user_id!==authenticatedUser.id)throw Error(`Queue user mismatch: operation=${base.user_id}, authenticated=${authenticatedUser.id}`);q1=await queue({entity:'accounts',local_id:aid,supabase_id:aid,operation:'upsert',payload:base,user_id:authenticatedUser.id});report.push(['Queue ownership matched',true]);report.push(['outbox creation',true]);
-      await applyOperation(q1);report.push(['cloud upsert',true]);
-      const first=await request('/rest/v1/accounts?select=id,name&id=eq.'+aid+'&user_id=eq.'+u.userId);if(first.length!==1||first[0].name!==base.name)throw Error('Cloud read-back mismatch');report.push(['cloud read-back',true]);
-       q2=await queue({entity:'accounts',local_id:aid,supabase_id:aid,operation:'upsert',payload:updated,user_id:authenticatedUser.id});await applyOperation(q2);report.push(['local update → cloud update',true]);
-       const offlinePayload={...updated,nickname:'offline retry'};qOffline=await queue({entity:'accounts',local_id:aid,supabase_id:aid,operation:'upsert',payload:offlinePayload,user_id:authenticatedUser.id});report.push(['simulated queued/offline change',true]);await applyOperation(qOffline);const retry=await request('/rest/v1/accounts?select=nickname&id=eq.'+aid+'&user_id=eq.'+u.userId);if(retry.length!==1||retry[0].nickname!==offlinePayload.nickname)throw Error('Queued retry read-back mismatch');report.push(['queued retry',true]);
-      const localConflict={updated_at:'2026-01-02T00:00:00Z'},cloudConflict={updated_at:'2026-01-03T00:00:00Z'};if(!detectConflict(localConflict,cloudConflict,'2026-01-01T00:00:00Z'))throw Error('Conflict fixture was not detected');report.push(['conflict detection',true]);
-       const tomb=await queue({entity:'accounts',local_id:aid,supabase_id:aid,operation:'delete',payload:null,user_id:authenticatedUser.id});if(!tomb||tomb.operation!=='delete')throw Error('Tombstone was not queued');await applyOperation(tomb);report.push(['deletion/tombstone propagation',true]);deleted=true;const gone=await request('/rest/v1/accounts?select=id&id=eq.'+aid+'&user_id=eq.'+u.userId);if(gone.length!==0)throw Error('Cloud deletion verification failed');report.push(['cloud deletion verification',true]);
-      return{ok:true,report};
-    }finally{
-      if(!deleted){try{await request('/rest/v1/accounts?id=eq.'+aid+'&user_id=eq.'+u.userId,{method:'DELETE',headers:{Prefer:'return=minimal'}})}catch(_){} }
-      for(const q of [q1,q2,qOffline])if(q)try{await CapOff.syncStore('outbox','delete',q.id)}catch(_){}
-      try{await putMeta({last_test_at:now(),pending:0,conflicts:0})}catch(_){}
-    }
-  }
+  /* The legacy direct-table executor (generic row upsert/delete, test
+     artifact cleanup and a disposable cloud account round trip) is removed.
+     The production contract has no generic row write: only
+     cap_sync_transaction_create, cap_notes_change, cap_sync_snapshot_v1 and
+     the reviewed verifiers exist. Every cloud read below uses the production
+     snapshot. */
   function detectConflict(local,cloud,last){return local?.updated_at>last&&cloud?.updated_at>last&&local?.updated_at!==cloud?.updated_at}
-  async function status(){const all=await CapOff.syncStore('outbox','all').catch(()=>[]),conf=await CapOff.syncStore('syncconflicts','all').catch(()=>[]),m=await meta();return{mode:'off',pending:all.length,conflicts:conf.length,lastSynced:m?.last_synced||null}}
+  async function status(){const all=await CapOff.syncStore('outbox','all').catch(()=>[]),conf=await CapOff.syncStore('syncconflicts','all').catch(()=>[]),m=await meta();return{mode:window.CapProductionSync?.status().enabled?'on':'off',pending:all.length,conflicts:conf.length,lastSynced:m?.last_synced||null}}
   function localRecord(op){const id=String(op.local_id),s=typeof S==='undefined'?null:S;const lists={categories:s?.cats||[],accounts:s?.accts||[],transactions:[...(s?.tx||[]),...(s?.pend||[])],transfers:s?.xfer||[],bills:s?.bills||[],goals:s?.goals||[],debts:s?.debts||[],notes:Array.isArray(s?.notes)?s.notes:[]};if(op.entity==='budgets')return s?.budgets&&Object.prototype.hasOwnProperty.call(s.budgets,id)?{name:id,amount:s.budgets[id]}:null;if(op.entity==='user_preferences')return s||null;if(op.entity==='account_statements'){for(const a of lists.accounts)for(const x of a.statementHistory||[])if(String(x.statementId||`${a.id}:${x.st||x.en||''}`)===id)return x;return null}return(lists[op.entity]||[]).find(x=>String(x.id)===id)||null}
-  async function inspectPendingOutbox(){const all=await CapOff.syncStore('outbox','all').catch(()=>[]),uid=CapSupabase.status().userId;if(!uid)throw Error('No authenticated user');const pending=all.filter(x=>x.user_id===uid&&!((x.payload?.legacy_id||'').startsWith('phase6-test-')));const results=[];for(const op of pending){const local=localRecord(op),table=op.entity,filter=op.supabase_id?'id=eq.'+encodeURIComponent(op.supabase_id):'legacy_id=eq.'+encodeURIComponent(op.local_id),rows=await CapSupabase.syncRequest('/rest/v1/'+table+'?select=*&user_id=eq.'+encodeURIComponent(uid)+'&'+filter).catch(e=>{throw Error(`Table: ${table}\nOperation: SELECT\nExact Supabase error: ${e.message}`)}),cloud=rows[0]||null,payload=op.payload||null,match=!!local&&!!cloud&&payload?Object.keys(payload).filter(k=>!['updated_at','created_at'].includes(k)).every(k=>String(payload[k]??'')===String(cloud[k]??'')):false,kind=op.operation==='delete'?'delete':cloud?'update':'insert';let recommendation=match?'SAFE TO DISCARD STALE OUTBOX ENTRY':local||cloud?'MUST PRESERVE AND SYNC LATER':'REQUIRES FURTHER INVESTIGATION';if(op.operation==='delete'&&!cloud)recommendation='SAFE TO DISCARD STALE OUTBOX ENTRY';results.push({operationId:op.id,userId:op.user_id,entity:table,operation:kind,rawOperation:op.operation,localId:op.local_id,supabaseId:op.supabase_id||null,queuedAt:op.queued_at,localExists:!!local,cloudExists:!!cloud,match,recommendation})}return{count:results.length,results}}
+  async function inspectPendingOutbox(){
+    const all=await CapOff.syncStore('outbox','all').catch(()=>[]),uid=CapSupabase.status().userId;
+    if(!uid)throw Error('No authenticated user');
+    const pending=all.filter(x=>x.user_id===uid&&!((x.payload?.legacy_id||'').startsWith('phase6-test-')));
+    const cloud=await window.CapProductionRpc.snapshotRows(uid);
+    const results=[];
+    for(const op of pending){
+      const local=localRecord(op),table=op.entity,records=cloud.rows[table]||[];
+      const rows=records.map(r=>r.row).filter(r=>op.supabase_id?String(r.id)===String(op.supabase_id):String(r.legacy_id)===String(op.local_id));
+      const found=rows[0]||null,payload=op.payload||null;
+      const match=!!local&&!!found&&payload?Object.keys(payload).filter(k=>!['updated_at','created_at'].includes(k)).every(k=>String(payload[k]??'')===String(found[k]??'')):false;
+      const kind=op.operation==='delete'?'delete':found?'update':'insert';
+      let recommendation=match?'SAFE TO DISCARD STALE OUTBOX ENTRY':local||found?'MUST PRESERVE AND SYNC LATER':'REQUIRES FURTHER INVESTIGATION';
+      if(op.operation==='delete'&&!found)recommendation='SAFE TO DISCARD STALE OUTBOX ENTRY';
+      results.push({operationId:op.id,userId:op.user_id,entity:table,operation:kind,rawOperation:op.operation,localId:op.local_id,supabaseId:op.supabase_id||null,queuedAt:op.queued_at,localExists:!!local,cloudExists:!!found,match,recommendation});
+    }
+    return{count:results.length,results};
+  }
   async function discardPendingOutbox(operationId){
     let stage='starting';const log=s=>{stage=s;console.info('[Cap sync outbox discard]',s,operationId)};
     log('fetch exact outbox entry');const entry=await CapOff.syncStore('outbox','get',operationId),u=await CapSupabase.currentUser();
     if(!entry||!u?.id)throw Error('The inspected outbox entry or authenticated user is no longer available');
-    const verify=async()=>{log('re-fetch and verify');const current=await CapOff.syncStore('outbox','get',operationId),local=current&&localRecord(current),filter=current?.supabase_id?'id=eq.'+encodeURIComponent(current.supabase_id):'legacy_id=eq.'+encodeURIComponent(current?.local_id||''),cloud=current?await CapSupabase.syncRequest('/rest/v1/accounts?select=id&user_id=eq.'+encodeURIComponent(u.id)+'&'+filter):[];return{current,local,cloud}};
-    let v=await verify();if(!v.current||v.current.id!==operationId||v.current.user_id!==u.id||v.current.entity!=='accounts'||v.current.operation!=='delete'||v.local||v.cloud.length)throw Error('Verification changed; the outbox entry was not removed');
+    const verify=async()=>{log('re-fetch and verify');const current=await CapOff.syncStore('outbox','get',operationId),local=current&&localRecord(current);let cloud=[];if(current){const snapshot=await window.CapProductionRpc.snapshotRows(u.id);const rows=(snapshot.rows.accounts||[]).map(r=>r.row).filter(r=>current.supabase_id?String(r.id)===String(current.supabase_id):String(r.legacy_id)===String(current.local_id||''));cloud=rows.map(r=>({id:r.id}));}return{current,local,cloud}};    let v=await verify();if(!v.current||v.current.id!==operationId||v.current.user_id!==u.id||v.current.entity!=='accounts'||v.current.operation!=='delete'||v.local||v.cloud.length)throw Error('Verification changed; the outbox entry was not removed');
     log('await confirmation');if(!confirm('Discard this confirmed stale accounts/delete outbox operation? No financial or cloud record will be changed.'))return;
     v=await verify();if(!v.current||v.current.id!==operationId||v.current.user_id!==u.id||v.current.entity!=='accounts'||v.current.operation!=='delete'||v.local||v.cloud.length)throw Error('Verification changed after confirmation; the outbox entry was not removed');
     log('delete exact IndexedDB outbox entry');await CapOff.syncStore('outbox','delete',operationId);log('re-inspect outbox');const after=await inspectPendingOutbox(),out=document.getElementById('outbox-inspect-result');if(out)out.textContent=after.count?'Pending real-data outbox operations: '+after.count:'Pending real-data outbox operations: 0';
@@ -76,13 +72,17 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     return e;
   }
   function cloudReader(userId){
-    return (entity,{id,localId})=>{
-      const filter=id?'id=eq.'+encodeURIComponent(id):'legacy_id=eq.'+encodeURIComponent(localId);
-      return CapSupabase.syncRequest('/rest/v1/'+entity+'?select=*&user_id=eq.'+encodeURIComponent(userId)+'&'+filter).then(rows=>{
-        if(!Array.isArray(rows)||rows.length>1)throw Error('Cloud response is not an exact record result');
-        if(rows.length&&(rows[0].user_id!==userId||(id&&String(rows[0].id)!==String(id))))throw Error('Cloud response identity mismatch');
-        return rows[0]||null;
-      });
+    // One owner-scoped production snapshot per plan. No table endpoint is
+    // read, and every row is owner-scoped by the server.
+    let cache=null;
+    return async(entity,{id,localId})=>{
+      if(!cache)cache=await window.CapProductionRpc.snapshotRows(userId);
+      const records=cache.rows[entity]||[];
+      const rows=records.map(r=>r.row);
+      const found=id?rows.filter(r=>String(r.id)===String(id)):(localId!==undefined&&localId!==null?rows.filter(r=>String(r.legacy_id)===String(localId)):rows);
+      if(!Array.isArray(found)||found.length>1)throw Error('Cloud response is not an exact record result');
+      if(found.length&&(found[0].user_id!==userId||(id&&String(found[0].id)!==String(id))))throw Error('Cloud response identity mismatch');
+      return found[0]||null;
     };
   }
   function payloadMatches(payload,cloud){
@@ -237,11 +237,16 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       if(bases.length>1)return refused('Ambiguous note baseline');
       base=bases[0]?JSON.parse(JSON.stringify(bases[0])):null;
       let observed;
-      const plan=await planOutbox([entry],{userId:owner,baseline:state.baseline,readCloud:async()=>{observed=await io.readCloud(entry);return observed;}});
+      const plan=await planOutbox([entry],{userId:owner,baseline:state.baseline,readCloud:async()=>{observed=await io.readCloud(entry);return observed?observed.row:null;}});
       const item=plan.plan[0];
       if(!plan.safe||!item||!['INSERT','UPDATE','NOOP'].includes(item.action))return refused('Three-way comparison requires review');
-      if(observed!==null&&observed.legacy_id!==entry.payload.legacy_id)return refused('Cloud note mapping changed');
-      const expected=observed===null?null:noteContent(observed);
+      if(observed!==null&&observed.row.legacy_id!==entry.payload.legacy_id)return refused('Cloud note mapping changed');
+      // The production contract compares the full content AND lifecycle
+      // envelope, not content alone.
+      // A proven absent note is a create; an existing note is a lifecycle
+      // compare-and-swap against its content AND revision envelope.
+      const action=observed===null?'create':'edit';
+      const expected=observed===null?null:{content:noteContent(observed.row),lifecycle:observed.lifecycle};
       if(await io.ready()!==true)return refused('Notes RPC readiness not verified');
       // Recheck mutable local/auth/queue state after asynchronous preflight.
       const unchanged=async()=>{
@@ -256,7 +261,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       if(item.action!=='NOOP'){
         rpcCalled=true;
         let response;
-        try{response=await io.cas({p_id:entry.supabase_id,p_expected:expected,p_desired:desired});}
+        try{response=await io.cas({p_id:entry.supabase_id,p_action:action,p_expected:expected,p_desired:desired,p_operation_id:entry.id});}
         catch(_){return {status:'WRITE OUTCOME UNKNOWN — NOTHING FINALIZED',wrote:null,finalized:false};}
         const result=Array.isArray(response)?(response.length===1?response[0]:null):response;
         if(result?.status==='CONFLICT')return {status:'CONFLICT — NOTHING FINALIZED',wrote:false,finalized:false};
@@ -266,12 +271,12 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       let verified;
       try{
         verified=await io.readCloud(entry);
-        if(verified?.id!==entry.supabase_id||verified.user_id!==owner||JSON.stringify(noteContent(verified))!==JSON.stringify(desired)||await contentFingerprint(canonical(verified,'','notes'))!==localFingerprint)throw Error('Cloud verification mismatch');
+        if(verified?.row?.id!==entry.supabase_id||verified.row.user_id!==owner||JSON.stringify(noteContent(verified.row))!==JSON.stringify(desired)||await contentFingerprint(canonical(verified.row,'','notes'))!==localFingerprint)throw Error('Cloud verification mismatch');
       }catch(_){return {status:wrote?'CLOUD WRITE OCCURRED — VERIFICATION FAILED':'DATA CONVERGENCE NOT VERIFIED',wrote,finalized:false};}
       try{
         if(!await unchanged())throw Error('Local state changed before acknowledgement');
         const nextRecord={...(base||{}),entity:'notes',localId:String(entry.local_id),supabase_id:entry.supabase_id,user_id:owner,
-          contentFingerprint:localFingerprint,cloud_updated_at:verified.updated_at||null,last_operation_id:entry.id};
+          contentFingerprint:localFingerprint,cloud_updated_at:verified.row.updated_at||null,last_operation_id:entry.id};
         const receipt={userId:owner,entry,expectedRecord:base,nextRecord};
         const acknowledgement=await io.finalize(receipt);
         if(acknowledgement?.committed!==true||acknowledgement.verified!==true){const error=Error('Acknowledgement not verified');error.committed=acknowledgement?.committed===true;throw error;}
@@ -358,21 +363,12 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     return candidate;
   }
   async function readOwnedDemoSnapshot(owner){
+    // The production snapshot returns every synchronized entity for the owner
+    // in one response, so no table pagination is needed.
+    const {rows}=await window.CapProductionRpc.snapshotRows(owner);
     const snapshot={};
-    for(const table of [...ORDER.filter(t=>t!=='user_preferences'),'user_preferences','profiles']){
-      const singleton=table==='user_preferences'||table==='profiles',filter=table==='profiles'?'id':'user_id';
-      const rows=[],seen=new Set();
-      for(;;){
-        const page=await CapSupabase.syncRequest('/rest/v1/'+table+'?select=*&'+filter+'=eq.'+encodeURIComponent(owner)+(singleton?'&limit=2':'&order=id.asc&limit=201&offset='+rows.length));
-        if(!Array.isArray(page)||page.some(r=>!r||(table==='profiles'?r.id:r.user_id)!==owner))throw Error('Snapshot read incomplete');
-        for(const row of page){const key=String(table==='profiles'?row.id:(row.id??row.user_id));if(seen.has(key))throw Error('Snapshot pagination repeated a record');seen.add(key)}
-        rows.push(...page);if(rows.length>200)throw Error('Demo snapshot exceeds supported scope');
-        // Continue to an explicit empty page: a server-side row cap may be
-        // lower than the requested limit. A short page is not proof of EOF.
-        if(singleton||page.length===0)break;
-      }
-      snapshot[table]=rows;
-    }
+    for(const table of [...ORDER.filter(t=>t!=='user_preferences'),'user_preferences','profiles'])
+      snapshot[table]=(rows[table]||[]).map(r=>r.row);
     return snapshot;
   }
   function previewDemoCandidate(candidate){
@@ -610,18 +606,18 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         currentUser:()=>CapSupabase.currentUser(),
         readState:async()=>({baseline:await CapOff.syncStore('syncmeta','get','baseline'),entries:await CapOff.syncStore('outbox','all')}),
         readLocal:entry=>noteFromPlan(entry.local_id),
-        readCloud:entry=>cloudReader(entry.user_id)('notes',{id:entry.supabase_id,localId:entry.local_id}),
+        readCloud:entry=>window.CapProductionRpc.readNoteRecord(entry.user_id,{id:entry.supabase_id,localId:entry.local_id}),
         ready:()=>CapSupabase.refreshNotesRpcReadiness(),
         cas:async args=>{
           const u=await CapSupabase.currentUser(),checkpoint=await CapOff.syncStore('syncmeta','get',NOTES_TEST_KEY);
-          if(!active||!localStateIsCurrent()||u?.id!==active.owner||checkpoint?.id!==active.id||checkpoint.operationId!==active.operationId||args.p_id!==active.original.id||args.p_expected===null||!CapSupabase.notesRpcReady())throw Error('Controlled write authorization changed');
-          return CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_note_put',{method:'POST',body:JSON.stringify(args)});
+          if(!active||!localStateIsCurrent()||u?.id!==active.owner||checkpoint?.id!==active.id||checkpoint.operationId!==active.operationId||args.p_id!==active.original.id||args.p_expected===null||args.p_action!=='edit'||!CapSupabase.notesRpcReady())throw Error('Controlled write authorization changed');
+          return window.CapProductionRpc.changeNote({id:args.p_id,action:args.p_action,expected:args.p_expected,desired:args.p_desired,operationId:args.p_operation_id});
         },
         finalize:receipt=>CapOff.finalizeVerifiedNotePush(receipt,()=>localGuard(receipt.entry)&&notesFinancialSnapshot()===active?.financial),
       }),
       verify:async context=>{
         const u=await CapSupabase.currentUser(),baseline=await CapOff.syncStore('syncmeta','get','baseline'),entries=await CapOff.syncStore('outbox','all');
-        const local=noteFromPlan(context.original.legacy_id),remote=await cloudReader(context.owner)('notes',{id:context.original.id});
+        const local=noteFromPlan(context.original.legacy_id),remote=await window.CapProductionRpc.readNoteRecord(context.owner,{id:context.original.id});
         const records=baseline?.records||[],target=records.filter(r=>r.entity==='notes'&&r.supabase_id===context.original.id);
         const originalFingerprint=await contentFingerprint(canonical(context.original,'','notes'));
         const unchanged=JSON.stringify(records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)))===JSON.stringify(context.baseline.records.filter(r=>!(r.entity==='notes'&&r.supabase_id===context.original.id)));
@@ -629,7 +625,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
         // note content and must not make a verified restoration look failed.
         let notesRestored=false;try{notesRestored=notesSnapshotDiff(JSON.parse(context.originalLocal),S.notes).contentMatches;}catch(_){}
         return localStateIsCurrent()&&u?.id===context.owner&&baseline?.user_id===context.owner&&entries.length===0&&target.length===1&&target[0].contentFingerprint===originalFingerprint&&
-          JSON.stringify(noteContent(local))===JSON.stringify(noteContent(context.original))&&JSON.stringify(noteContent(remote))===JSON.stringify(noteContent(context.original))&&
+          JSON.stringify(noteContent(local))===JSON.stringify(noteContent(context.original))&&!!remote&&JSON.stringify(noteContent(remote.row))===JSON.stringify(noteContent(context.original))&&
           notesRestored&&notesFinancialSnapshot()===context.financial&&unchanged&&(await status()).mode==='off';
       },
       finish:async()=>{
@@ -975,14 +971,16 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       const all=await CapOff.syncStore('outbox','all').catch(e=>{throw Error('Outbox read failed: '+e.message)});
       const entry=all.find(x=>x.id===operationId);
       if(!entry)throw Error('Outbox entry not found');
-      const reader=readCloud||cloudReader(u.id),writer=write||(op=>applyOperation(op));
+      // The production contract has no generic row write. Without an explicit
+      // adapter the outbox can only be inspected, never applied.
+      const reader=readCloud||cloudReader(u.id),writer=write||(op=>{throw Error('UNSUPPORTED_OPERATION:outbox-write - the production contract has no generic row write')});
       const planned=await planOutbox([entry],{userId:u.id,readCloud:reader,baseline});
       const item=planned.plan[0];
       if(!item||item.action==='BLOCKED')return{status:'REFUSED — NOTHING WRITTEN',reason:planned.blocked[0]?.reason||item?.reason||'blocked',wrote:false,removed:false};
       // Client reads cannot prevent an edit racing with a subsequent write.
       // Keep the real transport restricted to disposable test operations until
       // server-side compare-and-write and baseline reconciliation are ready.
-      if(!write&&!String(entry.local_id||'').startsWith('phase6-test-'))return{status:'REFUSED — NOTHING WRITTEN',reason:'Production execution is disabled pending atomic conflict checks and baseline reconciliation',wrote:false,removed:false};
+      if(!write)return{status:'REFUSED — NOTHING WRITTEN',reason:'Production execution is disabled pending atomic conflict checks and baseline reconciliation',wrote:false,removed:false};
       const supabaseId=item.supabaseId;
       if(entry.operation==='upsert'&&!entry.payload?.id)return{status:'REFUSED — NOTHING WRITTEN',reason:'payload has no id',wrote:false,removed:false};
       if(entry.operation==='upsert'&&String(entry.payload.id)!==String(supabaseId))return{status:'REFUSED — NOTHING WRITTEN',reason:'payload id does not match the resolved Supabase id',wrote:false,removed:false};
@@ -1003,8 +1001,12 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
       catch(e){return{status:'DATA CONVERGED — OUTBOX CLEANUP FAILED',wrote:true,removed:false,error:e?.message}}
     }finally{executingOutbox.delete(operationId)}
   }
-  function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="testCapSyncEngine()">Test Sync Engine</button><small id="sync-engine-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
-  window.CapSync={queue,status,settingsHtml,test,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,controlledNoteRoundTrip,inspectNotesTestBlocker,cleanupStaleTestOutbox,buildDemoRefreshCandidate,refreshLocalDemo,notesRecoveryReport,notesSnapshotDiff,inspectNotesTestRecovery,notesTestFinalizeReceipt,finalizeNotesTestRecovery,ORDER};
+  function settingsHtml(){return `<div class="st-box st-col"><div class="st-r"><span class="f"><b>Cloud Sync: OFF</b><small>Local-first foundation is installed; automatic sync is disabled.</small></span><span class="st-pill" data-s="off"><i></i>Off</span></div><div class="st-note" id="sync-engine-status">Last synced: — · Pending changes: 0 · Conflicts: 0</div><button type="button" class="btn s" style="margin:0" onclick="validateCapRealData()">Validate Real Data Sync</button><small id="real-sync-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapSyncDryRunButton()">Run Sync Dry Run</button><small id="sync-dry-run-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCurrentSyncBaseline()">Inspect Current Baseline</button><small id="sync-baseline-inspect-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="initializeCapSyncBaseline()">Initialize Sync Baseline</button><small id="sync-baseline-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseCapBaselineUpgrade()">Diagnose Baseline Upgrade</button><small id="sync-baseline-diagnostic-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="upgradeCapSyncBaseline()">Upgrade Sync Baseline</button><small id="sync-baseline-upgrade-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="inspectCapPendingOutbox()">Inspect Pending Outbox</button><small id="outbox-inspect-result" class="st-note"></small>${window.CAP_DEV_TOOLS?`<div class="st-grp eyebrow">Developer test tools</div><button type="button" class="btn s" style="margin:0" onclick="checkBalanceConsistency()">Check Balance Consistency</button><button type="button" class="btn s" style="margin:0" onclick="capCaptureAnchors()">Capture Balance Anchors</button><button type="button" class="btn s" style="margin:0" onclick="capCreateOpeningBalances()">Create Opening Balances</button><button type="button" class="btn s" style="margin:0" onclick="capToggleDerivedBalances()">Toggle Derived Balances</button><small id="balance-check-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="runCapOutboxPlanButton()">Plan Outbox (read-only)</button><small id="outbox-plan-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="tracePhase6JIdentifiers()">Trace Phase 6J Identifiers</button><small id="phase6j-trace-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="auditControlledWrite()">Audit Controlled Write</button><small id="controlled-write-audit-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnosePhase6K4A()">Diagnose Phase 6K.4A</button><small id="phase6k4a-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="cleanupPhase6TestArtifact()">Clean Up Phase 6 Test Artifact</button><small id="phase6-test-cleanup-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="reconcileControlledBaseline()">Reconcile Controlled Baseline</button><small id="controlled-baseline-result" class="st-note"></small><button type="button" id="controlled-retry-test" class="btn s" style="margin:0" onclick="testControlledRetry()">Test Controlled Retry</button><small id="controlled-retry-result" class="st-note"></small><button type="button" id="controlled-write-test" class="btn s" style="margin:0" disabled onclick="testControlledWrite()">Test Controlled Write</button><small id="controlled-write-result" class="st-note"></small><button type="button" id="single-push-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPush()">Test Single Record Push</button><small id="single-push-result" class="st-note"></small><button type="button" id="single-pull-test" class="btn s" style="margin:0" disabled onclick="testSingleTransactionPull()">Test Single Record Pull</button><small id="single-pull-result" class="st-note"></small><button type="button" id="single-local-delete-test" class="btn s" style="margin:0" disabled>Test Single Local Delete</button><button type="button" id="single-cloud-delete-test" class="btn s" style="margin:0" disabled>Test Single Cloud Delete</button><small id="delete-sync-result" class="st-note"></small><button type="button" id="single-conflict-inspect" class="btn s" style="margin:0" disabled onclick="inspectSingleConflict()">Inspect Single Conflict</button><small id="single-conflict-result" class="st-note"></small><button type="button" id="keep-local-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('local')">Keep Local</button><button type="button" id="keep-cloud-conflict" class="btn s" style="margin:0" disabled onclick="resolveSingleConflict('cloud')">Keep Cloud</button><small id="conflict-resolution-result" class="st-note"></small><button type="button" class="btn s" style="margin:0" onclick="diagnoseFailedSinglePull()">Diagnose Failed Pull</button><small id="failed-pull-result" class="st-note"></small>`:''}</div>`}
+  function productionSettingsHtml(){
+    const html=settingsHtml();
+    return window.CapProductionSync?html.replace(/<div class="st-r">[\s\S]*?<\/span><\/div>/,CapProductionSync.settingsHtml()).replace(/<div class="st-note" id="sync-engine-status">[\s\S]*?<\/div>/,''):html;
+  }
+  window.CapSync={queue,status,settingsHtml:productionSettingsHtml,inspectPendingOutbox,discardPendingOutbox,recordFingerprints,fingerprintDiagnostics,contentFingerprint,fingerprintRow:(entity,row)=>contentFingerprint(canonical(row,'',entity)),planOutbox,processOutbox,executeOutboxOperation,inspectOutboxConflicts,chooseOutboxConflict,rehearseNotePush,controlledNoteRoundTrip,inspectNotesTestBlocker,cleanupStaleTestOutbox,buildDemoRefreshCandidate,refreshLocalDemo,notesRecoveryReport,notesSnapshotDiff,inspectNotesTestRecovery,notesTestFinalizeReceipt,finalizeNotesTestRecovery,ORDER};
   /* Read-only balance consistency report. Shows balances and drift on this
      device only; never writes. Gated behind ?dev=1 in the settings panel. */
   window.checkBalanceConsistency=()=>{
@@ -1061,7 +1063,7 @@ window.CAP_DEV_TOOLS=(()=>{try{return localStorage.getItem('cap_dev_tools')==='1
     if(!off)return confirmBox('Turn off derived balances?','Balances will stop being recalculated from the ledger on save. Accounts keep their stored values, so drift will no longer self-correct.',go,'Turn off');
     go();
   };
-  window.testCapSyncEngine=async()=>{const o=document.getElementById('sync-engine-result');if(o)o.textContent='Running disposable sync test…';try{const r=await test();if(o)o.textContent=r.report.map(x=>x[0]+' '+(x[1]?'✓':'✕')).join(' · ')+' · Existing data untouched ✓';toast('Sync engine test passed',true)}catch(e){if(o)o.textContent='Sync test failed: '+e.message;toast('Sync engine test failed')}};
+  window.testCapSyncEngine=async()=>{const o=document.getElementById('sync-engine-result');if(o)o.textContent='The disposable cloud sync test was removed with the direct-table executor. The production contract has no account create or delete RPC, so no test record can be written.';toast('Disposable sync test removed')};
   window.inspectCapPendingOutbox=async()=>{const o=document.getElementById('outbox-inspect-result');if(o)o.textContent='Inspecting outbox read-only…';try{const r=await inspectPendingOutbox();if(!r.count){if(o)o.textContent='Pending real-data outbox operations: 0';return}if(o)o.innerHTML=r.results.map(x=>`${x.entity} · ${x.operation} · local ${x.localId} · Supabase ${x.supabaseId||'not assigned'} · queued ${x.queuedAt} · local ${x.localExists?'exists':'missing'} · cloud ${x.cloudExists?'exists':'missing'} · match ${x.match?'yes':'no'} · <b>${x.recommendation}</b>${x.recommendation==='SAFE TO DISCARD STALE OUTBOX ENTRY'?` <button type="button" class="pill" onclick="discardCapPendingOutbox('${x.operationId}')">Discard this entry</button>`:''}`).join('<br>');}catch(e){if(o)o.textContent='Outbox inspection failed: '+e.message;toast('Outbox inspection failed')}};
   window.runCapSyncDryRunButton=async()=>{const o=document.getElementById('sync-dry-run-result');try{await runCapSyncDryRun()}catch(e){console.error('[Cap sync dry run] failed',e);if(o)o.textContent='Sync dry run failed: '+e.message;toast('Sync dry run failed')}};
   window.discardCapPendingOutbox=async operationId=>{const o=document.getElementById('outbox-inspect-result');try{await discardPendingOutbox(operationId)}catch(e){console.error('[Cap sync outbox discard] failed',e);if(o)o.textContent='Discard failed: '+e.message;toast('Discard failed')}};
