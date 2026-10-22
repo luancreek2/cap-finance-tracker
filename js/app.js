@@ -3862,7 +3862,7 @@ function stPrivacy(){ stStart();
       stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")]);
   stSheet(h,'set-privacy',stKeep);
-  window.CapCloudBootstrap?.refresh();
+  requestAnimationFrame(()=>window.CapCloudBootstrap?.refresh());
 }
 async function upgradeCapSyncBaseline(){
   const out=$('#sync-baseline-upgrade-result');if(out)out.textContent='Running guarded read-only checks…';let stage='baseline read';

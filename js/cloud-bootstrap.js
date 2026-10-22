@@ -274,4 +274,8 @@
   let controller;
   if(typeof module!=='undefined' && module.exports) module.exports=api;
   if(typeof window!=='undefined') {window.CapCloudBootstrap=api;controller=createController(browserIO());}
+  // If Settings panel is already open when module loads, refresh button state
+  if(typeof document!=='undefined' && document.getElementById('cloud-bootstrap-button')){
+    CapCloudBootstrap.refresh();
+  }
 })();
