@@ -50,7 +50,7 @@
     // Only a successful, fresh server response establishes cloud identity.
     // Cached session.user is exclusively evidence for local offline access.
     if(!session.user?.id)writeSession({...session,user:u});
-    const newlyVerified=!verifiedUser;verifiedUser=u;localAccess=true;verification='verified';notice();if(newlyVerified)window.CapProductionSync?.request('authenticated');return u;
+    const newlyVerified=!verifiedUser;verifiedUser=u;localAccess=true;verification='verified';notice();if(newlyVerified){window.CapProductionSync?.request('authenticated');window.CapCloudBootstrap?.refresh();}return u;
   }
   const accessRejected=e=>e?.status===401||e?.status===403;
   const refreshRejected=e=>accessRejected(e)||e?.status===400&&['refresh_token_not_found','refresh_token_already_used','session_not_found','user_not_found','user_banned','invalid_credentials','invalid_grant'].includes(e.code);
