@@ -36,7 +36,7 @@
   // No network work is permitted inside this transaction. Missing metadata is
   // read as null, never initialized/reset as a side effect of opening the app.
   const productionMeta = ['production-sync-v1', 'baseline', 'production-sync-journal-v1',
-    'controlled-notes-test-v1', 'demo-local-refresh-state-v1', 'manual-notes-pull-v1'];
+    'controlled-notes-test-v1', 'demo-local-refresh-state-v1', 'manual-notes-pull-v1', 'cloud-bootstrap-pending-v1'];
   function productionSyncTransaction(expected, patch, guard) {
     return idb().then(d => new Promise((resolve, reject) => {
       const writing = expected !== undefined;
@@ -80,6 +80,102 @@
       t.onabort = () => reject(failure || Error('Production sync local transaction aborted'));
       t.onerror = () => { failure = failure || Error('Production sync storage failure'); };
     }));
+  }
+
+  // Device provisioning uses the same database, with a complete before image.
+  // No network is allowed inside this transaction. Outbox/conflicts are never changed.
+  function bootstrapStorage(action, payload, guard) {
+    return idb().then(d => new Promise((resolve, reject) => {
+      const t = d.transaction(['kv','syncmeta','outbox','syncconflicts'], action === 'read' ? 'readonly' : 'readwrite');
+      const image = {}, names = ['kv','syncmeta','outbox','syncconflicts'];
+      let left = names.length, result, failure;
+      const pendingKey = 'cloud-bootstrap-pending-v1';
+      const abort = e => { failure = e; t.abort(); };
+      const ready = () => {
+        if (--left) return;
+        try {
+          if (action === 'read') { result = image; return; }
+          if (!guard || guard() !== true) throw Error('Bootstrap local guard changed');
+          const meta = t.objectStore('syncmeta'), kv = t.objectStore('kv');
+          const cp = image.syncmeta.find(x=>x[0]===pendingKey)?.[1];
+          if (action === 'install') {
+            if (!eq(image,payload.before) || cp || image.outbox.length || image.syncconflicts.length) throw Error('Bootstrap storage changed');
+            const checkpoint = {...payload, phase:'installed'};
+            kv.add(checkpoint, payload.backupKey);
+            kv.put(payload.state,'state');
+            meta.put(payload.baseline,'baseline');
+            meta.put({version:1,owner:payload.baseline.user_id,enabled:false,sequence:0},'production-sync-v1');
+            meta.add(checkpoint,pendingKey);
+            result = checkpoint;
+          } else {
+            if (!cp || cp.backupKey !== payload.backupKey) throw Error('Bootstrap checkpoint changed');
+            const state = image.kv.find(x=>x[0]==='state')?.[1];
+            const baseline = image.syncmeta.find(x=>x[0]==='baseline')?.[1];
+            if (action === 'finish') {
+              if (!eq(state,cp.state) || !eq(baseline,cp.baseline) || image.outbox.length || image.syncconflicts.length ||
+                  image.syncmeta.find(x=>x[0]==='production-sync-v1')?.[1]?.enabled) throw Error('Bootstrap installation changed');
+              meta.delete(pendingKey); result = cp;
+            } else if (action === 'rollback') {
+              const originalState = cp.before.kv.find(x=>x[0]==='state')?.[1];
+              const originalBaseline = cp.before.syncmeta.find(x=>x[0]==='baseline')?.[1];
+              if (!(eq(state,cp.state) && eq(baseline,cp.baseline)) &&
+                  !(eq(state,originalState) && eq(baseline,originalBaseline))) throw Error('Bootstrap rollback refused: concurrent changes');
+              if (image.outbox.length || image.syncconflicts.length) throw Error('Bootstrap rollback queue changed');
+              // Do not discard unrelated local work written while verification was awaiting the network.
+              const unchangedKeys = (entries, omit) => entries.filter(([k])=>!omit.includes(k));
+              if (!eq(unchangedKeys(image.kv,['state',cp.backupKey]),unchangedKeys(cp.before.kv,['state'])) ||
+                  !eq(unchangedKeys(image.syncmeta,['baseline','production-sync-v1',pendingKey]),
+                    unchangedKeys(cp.before.syncmeta,['baseline','production-sync-v1']))) throw Error('Bootstrap rollback refused: unrelated storage changed');
+              const settings=image.syncmeta.find(x=>x[0]==='production-sync-v1')?.[1];
+              const expectedSettings=cp.phase==='rolled-back'?cp.before.syncmeta.find(x=>x[0]==='production-sync-v1')?.[1]:
+                {version:1,owner:cp.baseline.user_id,enabled:false,sequence:0};
+              if(!eq(settings,expectedSettings)) throw Error('Bootstrap rollback refused: settings changed');
+              for (const name of ['kv','syncmeta']) {
+                const store=t.objectStore(name), before=new Map(cp.before[name]);
+                for (const [key] of image[name]) if (!before.has(key) && key!==cp.backupKey && key!==pendingKey) store.delete(key);
+                for (const [key,value] of before) store.put(value,key);
+              }
+              meta.put({...cp,phase:'rolled-back'},pendingKey); result=cp;
+            } else if (action === 'rollback-finish') {
+              if (cp.phase!=='rolled-back') throw Error('Bootstrap rollback not completed');
+              meta.delete(pendingKey); result=cp;
+            } else throw Error('Unknown bootstrap storage action');
+          }
+        } catch(e) { abort(e); }
+      };
+      for (const name of names) {
+        const store=t.objectStore(name), keys=store.getAllKeys(), values=store.getAll();
+        values.onsuccess=()=>{ image[name]=values.result.map((v,i)=>[keys.result[i],v]); ready(); };
+      }
+      t.oncomplete=()=>resolve(result);
+      t.onabort=()=>reject(failure||Error('Bootstrap storage transaction aborted'));
+      t.onerror=()=>{failure=failure||t.error;};
+    }));
+  }
+  function installBootstrapState(json, expectedJson) {
+    if (J(api.get()) !== expectedJson) throw Error('Bootstrap memory changed');
+    localStorage.setItem('pera',json);
+    api.set(JSON.parse(json)); resetTracking(); lsBase=json;
+    if (J(api.get())!==json || localStorage.getItem('pera')!==json) throw Error('Bootstrap installation not persisted');
+  }
+  async function recoverBootstrap() {
+    const image=await bootstrapStorage('read');
+    const cp=image.syncmeta.find(x=>x[0]==='cloud-bootstrap-pending-v1')?.[1];
+    if (!cp) return;
+    const memory=J(api.get()), ls=localStorage.getItem('pera');
+    if (![cp.memoryJson,cp.state.json].includes(memory) || ![cp.localStorageJson,cp.state.json].includes(ls))
+      throw Error('HARD FAILURE: bootstrap rollback refused because local work changed');
+    await bootstrapStorage('rollback',cp,()=>true);
+    if (cp.localStorageJson===null) localStorage.removeItem('pera');
+    else localStorage.setItem('pera',cp.localStorageJson);
+    api.set(JSON.parse(cp.memoryJson)); resetTracking(); lsBase=cp.localStorageJson;
+    const check=await bootstrapStorage('read');
+    for (const name of ['kv','syncmeta']) {
+      const restored=check[name].filter(([k])=>k!==cp.backupKey && k!=='cloud-bootstrap-pending-v1');
+      if (!eq(restored,cp.before[name])) throw Error('HARD FAILURE: bootstrap rollback verification failed');
+    }
+    if (localStorage.getItem('pera')!==cp.localStorageJson) throw Error('HARD FAILURE: bootstrap rollback storage failed');
+    await bootstrapStorage('rollback-finish',cp,()=>true);
   }
 
   /* Dormant notes-only acknowledgement. Called only after verified cloud
@@ -1033,6 +1129,9 @@
       return {pera:(()=>{try{return localStorage.getItem('pera')}catch(_){return null}})(),indexeddb:{state:await read('state'),base:await read('base'),backup:await read('backup')},auxiliary:aux,excludedLocalKeys:['cap_lock','cap_bio','cap_supabase_session']};
     },
     syncStore,
+    bootstrapStorage,
+    installBootstrapState,
+    recoverBootstrap,
     productionSyncSnapshot: () => productionSyncTransaction(),
     productionSyncCommit: productionSyncTransaction,
     resetProductionTracking: resetTracking,
@@ -1049,6 +1148,13 @@
     settingsHtml,
     async boot() {
       mkStyle();
+      try { await recoverBootstrap(); }
+      catch(e) {
+        console.error(e); window.CAP_BOOTSTRAP_HARD_FAILURE=true;
+        const alert=document.createElement('div'); alert.setAttribute('role','alert');
+        alert.id='cloud-bootstrap-recovery-error'; alert.textContent='HARD FAILURE: device setup rollback could not be verified. Keep Cloud Sync OFF and preserve this browser storage. '+e.message;
+        document.body.prepend(alert); return;
+      }
       let hadLS = false;
       try { hadLS = !!localStorage.getItem("pera"); } catch (e) {}
       const startMt = (api.get() || {})._mt || 0;
@@ -1240,17 +1346,18 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       try {
         S = JSON.parse(localStorage.getItem("pera") || "null");
       } catch (e) {}
-      S = S || seed();
-      S.goals = S.goals || [
+      const hadSavedCapState = !!S;
+      S = S || {accts:[],tx:[],pend:[],xfer:[],bills:[],budgets:{},notes:[],goals:[],debts:[],cur:'PHP'};
+      S.goals = S.goals || (hadSavedCapState ? [
         { id: 1, name: "Emergency Fund", icon: "🛟", target: 100000, saved: 42000 },
         { id: 2, name: "Japan Trip", icon: "✈️", target: 80000, saved: 15000 },
         { id: 3, name: "New Laptop", icon: "💻", target: 60000, saved: 60000, done: 1 },
-      ];
-      S.debts = S.debts || [
+      ] : []);
+      S.debts = S.debts || (hadSavedCapState ? [
         { id: 1, who: "Alex", note: "Concert tickets", amt: 3000, dir: "in", due: "" },
         { id: 2, who: "Mia", note: "Dinner split", amt: 1200, dir: "in", due: "" },
         { id: 3, who: "Mom", note: "Borrowed", amt: 7500, dir: "out", due: "" },
-      ];
+      ] : []);
       const save = () => {
         if (window.CAP_PRODUCTION_RENDER_ONLY) return;
         try{const _db=localStorage.getItem('cap_derived_balance');if(_db!=='0'&&typeof refreshBalances==='function')refreshBalances()}catch(e){}
@@ -2907,7 +3014,7 @@ const CS=()=>(CURS[S&&S.cur]||CURS.PHP)[0];
 const NF={us:['.',','],eu:[',','.'],sp:[',','\u00a0']};  /* [decimal, grouping] */
 const NEG=[['sign','−₱1,250'],['acct','(₱1,250)']];
 function fmt(n){n=+n||0;const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0,v=Math.abs(n),r=d?Math.round(v*100)/100:Math.round(v),sym=c[0],nf=NF[(S&&S.nf)||'us']||NF.us,st=(S&&S.neg)||'sign';let s=d?r.toFixed(2):String(Math.round(r)),ip=s,fp='';const dt=s.indexOf('.');if(dt>=0){ip=s.slice(0,dt);fp=s.slice(dt+1)}const body=ip.replace(/\B(?=(\d{3})+(?!\d))/g,nf[1])+(fp?nf[0]+fp:'');if(n<0&&r)return st=='acct'?'('+sym+body+')':'−'+sym+body;return sym+body}
-function migrate(){S.pend=S.pend||[];S.xfer=S.xfer||[];S.cur=S.cur||'PHP';(S.accts||[]).forEach(a=>{if(a&&a.bank=='GCash'&&!a.photo&&(a.img=='gcashg'||/^GCash (Mastercard|Visa Debit|Visa Card)$/.test(a.name))){a.name='GCash Visa Card';a.type='ewallet';a.net='visa';a.img='gcashg';a.g=['#0b2a7a','#2f6fe0']}})}
+function migrate(state = S){const S=state;S.pend=S.pend||[];S.xfer=S.xfer||[];S.cur=S.cur||'PHP';(S.accts||[]).forEach(a=>{if(a&&a.bank=='GCash'&&!a.photo&&(a.img=='gcashg'||/^GCash (Mastercard|Visa Debit|Visa Card)$/.test(a.name))){a.name='GCash Visa Card';a.type='ewallet';a.net='visa';a.img='gcashg';a.g=['#0b2a7a','#2f6fe0']}})}
 /* Readable previews for the Settings choices (display only). */
 function nfSample(nf){const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0;let s=d?'1234.56':'1234';const dt=s.indexOf('.');const ip=dt>=0?s.slice(0,dt):s,fp=dt>=0?s.slice(dt+1):'';return ip.replace(/\B(?=(\d{3})+(?!\d))/g,NF[nf][1])+(fp?NF[nf][0]+fp:'')}
 function negSample(k){const K=CS(),f=()=>{const c=CURS[S&&S.cur]||CURS.PHP,d=S&&S.dec&&c[2]!==0?2:0;let s=d?'1250.00':'1250';const dt=s.indexOf('.');const ip=dt>=0?s.slice(0,dt):s,fp=dt>=0?s.slice(dt+1):'';const n=NF[(S&&S.nf)||'us']||NF.us;return ip.replace(/\B(?=(\d{3})+(?!\d))/g,n[1])+(fp?n[0]+fp:'')};const b=f();return k=='acct'?'('+K+b+')':'−'+K+b}
@@ -3681,7 +3788,8 @@ function stFiles(){ stStart();
 let CAP_MIGRATION_PREVIEW=null;
 function migrationUuid(){return crypto.randomUUID()}
 function migrationStableUuid(value){let h=2166136261;for(let i=0;i<String(value).length;i++){h^=String(value).charCodeAt(i);h=Math.imul(h,16777619)}const w=n=>(Math.imul(h^n,2246822519)>>>0).toString(16).padStart(8,'0'),hex=Array.from({length:8},(_,i)=>w(i)).join(''),variant=(8+(parseInt(hex[16],16)%4)).toString(16);return`${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-${variant}${hex.slice(17,20)}-${hex.slice(20,32)}`}
-function migrationPrepare(){
+function migrationPrepare(state = S){
+  const S = state;
   const lists={accounts:S.accts||[],transactions:[...(S.tx||[]),...(S.pend||[])],transfers:S.xfer||[],bills:S.bills||[],goals:S.goals||[],debts:S.debts||[],categories:S.cats||[],notes:Array.isArray(S.notes)?S.notes:(S.notes?[{id:1,t:'Notes',b:S.notes,d:today}]:[])};
   const blockingProblems=[],warnings=[],conversions=[],ids={};
   const block=x=>blockingProblems.push(x),req=(arr,k,fields)=>arr.forEach((x,i)=>fields.forEach(f=>{if(x[f]===undefined||x[f]===null||x[f]==='')block(`${k}[${i}] is missing ${f}`)}));
@@ -3700,7 +3808,8 @@ function migrationPrepare(){
   const balances=(S.accts||[]).map(a=>({legacy_id:a.id,name:a.name,type:a.type,balance:+a.bal||0}));
   return{counts,balances,total_balance:balances.reduce((n,a)=>n+a.balance,0),blockingProblems,warnings,conversions,problems:blockingProblems,maps,generated_at:new Date().toISOString()};
 }
-function buildSupabaseMigrationPlan(report, syncOwner){
+function buildSupabaseMigrationPlan(report, syncOwner, state = S){
+  const S = state;
   const userId=syncOwner||CapSupabase.status().userId;if(!userId)throw Error('No authenticated Supabase user');
   const find=(k,id)=>report.maps[k].find(x=>String(x.legacy_id)===String(id))?.supabase_id;
   const cat=(name)=>report.maps.categories.find(x=>x.name===String(name))?.supabase_id;
@@ -3710,7 +3819,7 @@ function buildSupabaseMigrationPlan(report, syncOwner){
   const statementId=s=>s?report.maps.account_statements.find(x=>x.legacy_id===String(s))?.supabase_id:null;
   const txRows=[...(S.tx||[]).map(t=>[t,'posted']),...(S.pend||[]).map(t=>[t,'pending'])].map(([t,status])=>({id:find('transactions',t.id),user_id:userId,account_id:find('accounts',t.acct),category_id:cat(t.cat),bill_id:t.billId!=null?find('bills',t.billId):null,parent_transaction_id:t.parentId!=null?find('transactions',t.parentId):null,statement_id:statementId(t.statementId),legacy_id:String(t.id),amount:+t.amt,transaction_date:t.d,posting_date:t.pd||null,status,title:t.note||null,description:t.desc||null,metadata:t}));
   const transferRows=(S.xfer||[]).map(x=>({id:find('transfers',x.id),user_id:userId,from_account_id:x.from!=null?find('accounts',x.from):null,to_account_id:x.to!=null?find('accounts',x.to):null,goal_id:x.goalId!=null?find('goals',x.goalId):null,statement_id:statementId(x.statementId),legacy_id:String(x.id),transfer_type:x.kind||'account-transfer',amount:+x.amt,transfer_date:x.d,note:x.note||null,metadata:x}));
-  const billPaymentRows=[];(S.bills||[]).forEach(b=>(typeof billPayments==='function'?billPayments(b):[]).forEach(p=>billPaymentRows.push({id:migrationStableUuid('bill-payment:'+p.tx.id),user_id:userId,bill_id:find('bills',b.id),transaction_id:find('transactions',p.tx.id),transfer_id:null,due_date:p.due||null,paid_date:p.d,amount:+p.amt||0,status:'paid'})));
+  const billPaymentRows=[];(S.bills||[]).forEach(b=>(typeof billPayments==='function'?billPayments(b,S):[]).forEach(p=>billPaymentRows.push({id:migrationStableUuid('bill-payment:'+p.tx.id),user_id:userId,bill_id:find('bills',b.id),transaction_id:find('transactions',p.tx.id),transfer_id:null,due_date:p.due||null,paid_date:p.d,amount:+p.amt||0,status:'paid'})));
   const categoryRows=(S.cats||[]).map(c=>({id:cat(c.n),user_id:userId,legacy_id:String(c.id??c.n),name:c.n,emoji:c.i||null,logo_url:c.l||null,archived:!!c.a}));
   const goalRows=(S.goals||[]).map(g=>({id:find('goals',g.id),user_id:userId,account_id:g.accountId?find('accounts',g.accountId):null,legacy_id:String(g.id),name:g.name,icon:g.icon||null,target_amount:+g.target||0,saved_amount:+g.saved||0,target_date:g.targetDate||null,completed:!!g.done}));
   const debtRows=(S.debts||[]).map(d=>({id:find('debts',d.id),user_id:userId,legacy_id:String(d.id),person:d.who,note:d.note||null,amount:+d.amt||0,direction:d.dir,due_date:d.due||null}));
@@ -3746,12 +3855,14 @@ function stPrivacy(){ stStart();
     +`<p class="st-note">Cap works fully offline. Nothing is uploaded unless you connect cloud sync.</p>`
      +`<div class="st-grp eyebrow">Supabase connection test</div><div class="st-box st-col"><p class="st-note" style="margin:0">This verifies authentication, your profile RLS row, and that another user's profile is not visible. It never uploads Cap data.</p><button class="btn" style="margin:0" onclick="testSupabaseConnection()">Test Supabase Connection</button><small id="sb-test-result" class="st-note"></small><button class="btn s" style="margin:0" onclick="testSupabaseCloudDatabase()">Test Cloud Database</button><small id="sb-crud-result" class="st-note"></small>${CapSupabase?.status().authenticated?'<button class="btn s" style="margin:0" onclick="CapSupabase.signOut()">Sign Out</button>':''}</div>`
       +`<div class="st-grp eyebrow">Cloud Sync</div>${window.CapSync?CapSync.settingsHtml():''}`
+      +(window.CapCloudBootstrap?CapCloudBootstrap.settingsHtml():'')
       +`<div class="st-grp eyebrow">Migration preparation</div><div class="st-box st-col"><p class="st-note" style="margin:0">Creates a downloadable local backup and validation/mapping preview only. No financial data is uploaded or changed.</p><button class="btn" style="margin:0" onclick="prepareCloudMigration()">Prepare Cloud Migration</button><button class="btn s" style="margin:0" onclick="migrateCapData()">Migrate Data to Supabase</button><small id="migration-result" class="st-note"></small></div>`
      +stGrp('On this device',[
       stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
       stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")]);
   stSheet(h,'set-privacy',stKeep);
+  window.CapCloudBootstrap?.refresh();
 }
 async function upgradeCapSyncBaseline(){
   const out=$('#sync-baseline-upgrade-result');if(out)out.textContent='Running guarded read-only checks…';let stage='baseline read';

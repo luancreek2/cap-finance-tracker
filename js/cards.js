@@ -797,8 +797,8 @@ function billDueShown(b,t){
   const k=billDueKeyFor(b,t);
   return k&&String(k).slice(0,7)==String(t.d).slice(0,7)?k:"";
 }
-function billPayments(b){
-  return S.tx.filter(t=>billTxMatches(b,t))
+function billPayments(b, state = S){
+  return state.tx.filter(t=>billTxMatches(b,t))
     .map(t=>({tx:t,d:t.d,amt:Math.abs(t.amt),acct:t.acct,acctName:t.acctName,due:billDueShown(b,t),linked:t.billId!=null}))
     .sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.tx.id-x.tx.id);
 }
