@@ -51,6 +51,23 @@ async function fixture({ stringNotes = false } = {}) {
         return { committed: true, verified: true };
       },
     },
+    CapProductionRpc: {
+      readNoteRecord: async (ownerId, selector) => {
+        if (!f.cloud) return null;
+        return { row: clone(f.cloud), lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } };
+      },
+      changeNote: async opts => {
+        assert.ok(f.confirms > 0 && f.consent && f.meta.has(key), 'No mutation before consent/checkpoint');
+        assert.equal(opts.id, id); assert.notEqual(opts.expected, null);
+        if (f.raceOnRpc) f.cloud.body = 'new-remote-edit';
+        if (f.failRestore && f.writes === 1) throw Error('private lost restore response');
+        if (JSON.stringify(pick(f.cloud)) !== JSON.stringify(pick(opts.expected.content))) return { status: 'CONFLICT' };
+        f.cloud = { id, user_id: owner, ...clone(opts.desired) }; f.writes++;
+        if (f.loseResponse) throw Error('private response lost');
+        return { status: 'APPLIED' };
+      },
+      createTransaction: async () => ({ status: 'APPLIED' }),
+    },
     CapSupabase: {
       currentUser: async () => ({ id: f.owner }), status: () => ({ userId: f.owner }),
       refreshNotesRpcReadiness: async () => f.ready, notesRpcReady: () => f.ready,
@@ -58,18 +75,7 @@ async function fixture({ stringNotes = false } = {}) {
         const equal = JSON.stringify(pick(plan.tables[0][1][0])) === JSON.stringify(pick(f.cloud));
         return { dataOk: equal, missingCount: 0, unexpectedCount: 0, mismatchCount: equal ? 0 : 1, foreignKeyErrorCount: 0, snapshot: { notes: [clone(f.cloud)] } };
       },
-      syncRequest: async (url, options) => {
-        if (!options) { assert.ok(url.startsWith('/rest/v1/notes?select=')); return [clone(f.cloud)]; }
-        assert.equal(url, '/rest/v1/rpc/cap_sync_note_put'); assert.equal(options.method, 'POST');
-        assert.ok(f.confirms > 0 && f.consent && f.meta.has(key), 'No mutation before consent/checkpoint');
-        const args = JSON.parse(options.body); assert.equal(args.p_id, id); assert.notEqual(args.p_expected, null);
-        if (f.raceOnRpc) f.cloud.body = 'new-remote-edit';
-        if (f.failRestore && f.writes === 1) throw Error('private lost restore response');
-        if (JSON.stringify(pick(f.cloud)) !== JSON.stringify(args.p_expected)) return { status: 'CONFLICT' };
-        f.cloud = { id, user_id: owner, ...clone(args.p_desired) }; f.writes++;
-        if (f.loseResponse) throw Error('private response lost');
-        return { status: 'APPLIED' };
-      },
+      syncRequest: async () => { throw Error('DIRECT_TABLE_ACCESS_DISABLED'); },
     },
   };
   context.window = context;

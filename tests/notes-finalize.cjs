@@ -112,7 +112,9 @@ async function test(label, body) { await reset(); await body(); passed++; }
     const result = await sync.rehearseNotePush(entry.id, {
       currentUser: async () => ({ id: owner }),
       readState: async () => ({ baseline: await baseline(), entries: await queue() }),
-      readLocal: async () => clone(payload), readCloud: async () => clone(remote), ready: async () => true,
+      readLocal: async () => clone(payload),
+      readCloud: async () => remote === null ? null : { row: clone(remote), lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } },
+      ready: async () => true,
       cas: async args => { writes++; remote = { id, user_id: owner, ...clone(args.p_desired) }; return { status: 'APPLIED' }; },
       finalize: r => off.finalizeVerifiedNotePush(r, () => true),
     });

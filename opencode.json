@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "finlynq": {
+        "type": "remote",
+        "url": "https://finlynq.com/mcp"
+      }
+    }
+  }
+}

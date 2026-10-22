@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(`${__dirname}/../js/supabase.js`, 'utf8');
+const rpcSource = fs.readFileSync(`${__dirname}/../js/production-rpc.js`, 'utf8');
 const KEY = 'cap_supabase_session';
 const saved = { access_token: 'token-secret', refresh_token: 'refresh-secret', expires_at: 1, user: { id: 'owner-secret' } };
 const clone = x => JSON.parse(JSON.stringify(x));
@@ -38,7 +39,8 @@ function fixture(options = {}) {
       return response(200, []);
     },
   };
-  context.window = context; vm.createContext(context); vm.runInContext(source, context);
+  context.window = context; vm.createContext(context);
+  vm.runInContext(rpcSource, context); vm.runInContext(source, context);
   f.api = context.CapSupabase; f.context = context; f.storage = storage; f.nodes = nodes;
   f.finish = async () => { await f.api.boot(); while (f.timers.length) f.timers.shift()(); };
   f.session = () => storage.get(KEY);
@@ -47,7 +49,8 @@ function fixture(options = {}) {
     assert.equal(storage.get('pera'), '{"financial":"do-not-touch"}');
     assert.equal(storage.get('baseline-fixture'), 'do-not-touch'); assert.equal(storage.get('outbox-fixture'), 'do-not-touch');
     assert.ok(f.writes.every(w => w.k === KEY), 'Only auth storage may change');
-    assert.ok(f.calls.every(c => !c.url.includes('/rest/v1/') || !c.args.method || c.args.method === 'GET' || c.url.includes('cap_verify_')), 'No application data mutations');
+    assert.ok(f.calls.every(c => !c.url.includes('/rest/v1/') || !c.args.method || c.args.method === 'GET' ||
+      c.url.includes('cap_verify_') || c.url.includes('cap_sync_snapshot_v1')), 'No application data mutations');
   };
   return f;
 }
@@ -65,8 +68,9 @@ async function test(name, body) { await body(); passed++; }
   });
   await test('offline REST writes and reads are blocked before fetch', async () => {
     const f = fixture({ online: false }); await f.finish();
-    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*'));
-    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_note_put', { method: 'POST', body: '{}' }));
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' }));
+    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*'), /DIRECT_TABLE_ACCESS_DISABLED/);
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_note_put', { method: 'POST', body: '{}' }), /DIRECT_TABLE_ACCESS_DISABLED/);
     assert.equal(f.calls.length, 0); assert.equal(await f.api.refreshNotesRpcReadiness(), false); assert.equal(f.api.notesRpcReady(), false); f.untouched();
   });
   await test('offline reload retains original credentials repeatedly', async () => {
@@ -86,7 +90,10 @@ async function test(name, body) { await body(); passed++; }
   await test('online verified user establishes cloud identity', async () => {
     const f = fixture(); await f.finish(); assert.equal(f.api.status().authenticated, true); assert.equal(f.api.status().userId, 'owner-secret');
     assert.equal(f.api.status().verification, 'verified'); assert.equal(f.nodes.has('cap-local-auth-notice'), false); assert.equal(f.localVisible(), true);
-    await f.api.syncRequest('/rest/v1/notes?select=*'); assert.equal(f.calls.length, 2); f.untouched();
+    await f.api.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' }); assert.equal(f.calls.length, 2);
+    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*'), /DIRECT_TABLE_ACCESS_DISABLED/);
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_note_put', { method: 'POST', body: '{}' }), /DIRECT_TABLE_ACCESS_DISABLED/);
+    assert.equal(f.calls.length, 2, 'A refused path never reaches the network'); f.untouched();
   });
   await test('expired token refreshes only after explicit rejection', async () => {
     let users = 0;
@@ -133,17 +140,17 @@ async function test(name, body) { await body(); passed++; }
   });
   await test('reconnect alone does not authorize cloud requests or push', async () => {
     const f = fixture({ online: false }); await f.finish(); f.online = true;
-    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*')); assert.equal(f.calls.length, 0);
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' })); assert.equal(f.calls.length, 0);
     await f.api.currentUser(); assert.equal(f.api.status().authenticated, true); assert.equal(f.nodes.has('cap-local-auth-notice'), false); assert.equal(f.calls.length, 1); f.untouched();
   });
   await test('losing network invalidates verified cloud identity', async () => {
     const f = fixture(); await f.finish(); f.online = false;
     assert.equal(f.api.status().authenticated, false); assert.equal(f.api.status().userId, null);
-    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*')); assert.equal(f.calls.length, 1); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' })); assert.equal(f.calls.length, 1); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();
   });
   await test('failed data read invalidates verification but preserves local session', async () => {
     const f = fixture(); await f.finish(); f.handler = () => { throw TypeError('network'); };
-    await assert.rejects(f.api.syncRequest('/rest/v1/notes?select=*')); assert.equal(f.api.status().authenticated, false); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();
+    await assert.rejects(f.api.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' })); assert.equal(f.api.status().authenticated, false); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();
   });
   await test('explicit offline sign-out clears auth only', async () => {
     const f = fixture({ online: false }); await f.finish(); await f.api.signOut(); assert.equal(f.session(), undefined);
@@ -191,8 +198,8 @@ async function test(name, body) { await body(); passed++; }
   });
   await test('offline transition invalidates prior notes RPC readiness', async () => {
     const f = fixture(); await f.finish();
-    f.handler = () => response(200, { exists: true, signature_ok: true, security_invoker: true, search_path_ok: true, version_ok: true,
-      authenticated_execute: true, anon_execute: false, public_execute: false, rls_ok: true, policy_ok: true, table_grants_ok: true, version: 'CAP_NOTES_CAS_V1', ready: true });
+    f.handler = () => response(200, { version: 'CAP_NOTES_SIDECAR_V1', contract_ready: true, roles_ok: true, tables_ok: true,
+      rls_ok: true, policies_ok: true, grants_ok: true, functions_ok: true, legacy_lockout_ok: true, coverage_ok: true, ready: false, production_ready: false });
     assert.equal(await f.api.refreshNotesRpcReadiness(), true); f.online = false; f.api.status();
     assert.equal(f.api.notesRpcReady(), false); assert.equal(f.api.status().authenticated, false); f.untouched();
   });

@@ -3,3 +3,6 @@ supabase-config.js
 
 # Local secrets
 .env
+
+# Local editor/backup files
+*.bak

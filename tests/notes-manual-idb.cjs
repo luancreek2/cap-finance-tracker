@@ -37,6 +37,26 @@ async function fixture() {
   vm.runInContext(sync, context); vm.runInContext(manual, context);
   f.cloud = note(); f.cloudAccount = account();
   const snapshot = () => ({ notes: [clone(f.cloud)], accounts: [clone(f.cloudAccount)], profiles: [profile], user_preferences: [prefs] });
+  context.CapProductionRpc = {
+    readNoteRecord: async (ownerId, selector) => {
+      f.reads++;
+      if (f.failRead) throw Error('private secret read failed');
+      if (f.absent) return null;
+      return { row: clone(f.cloud), lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } };
+    },
+    changeNote: async opts => {
+      assert.ok(f.consents >= 2, 'Queue consent and separate cloud consent required');
+      assert.notEqual(opts.expected, null); assert.equal(opts.id, id);
+      if (f.raceCloud) f.cloud.body = 'remote-user-edit';
+      const pick = r => Object.fromEntries(['legacy_id', 'title', 'body', 'note_date'].map(k => [k, r[k]]));
+      if (JSON.stringify(pick(f.cloud)) !== JSON.stringify(pick(opts.expected.content))) return { status: 'CONFLICT' };
+      f.writes++; f.cloud = { id, user_id: owner, ...clone(opts.desired) };
+      if (f.onWrite) f.onWrite();
+      if (f.lostResponse) throw Error('private lost response');
+      return { status: 'APPLIED' };
+    },
+    createTransaction: async () => ({ status: 'APPLIED' }),
+  };
   context.CapSupabase = {
     status: () => ({ userId: f.owner || owner }), currentUser: async () => ({ id: f.owner || owner }),
     refreshNotesRpcReadiness: async () => { if (f.onReady) await f.onReady(); return f.ready; }, notesRpcReady: () => f.ready,
@@ -47,19 +67,7 @@ async function fixture() {
       if (f.mutateValidation) f.mutateValidation(result);
       return result;
     },
-    syncRequest: async (url, options) => {
-      if (!options) { f.reads++; if (f.failRead) throw Error('private secret read failed'); return f.absent ? [] : [clone(f.cloud)]; }
-      assert.equal(url, '/rest/v1/rpc/cap_sync_note_put'); assert.equal(options.method, 'POST');
-      assert.ok(f.consents >= 2, 'Queue consent and separate cloud consent required');
-      const args = JSON.parse(options.body); assert.notEqual(args.p_expected, null); assert.equal(args.p_id, id);
-      if (f.raceCloud) f.cloud.body = 'remote-user-edit';
-      const pick = r => Object.fromEntries(['legacy_id', 'title', 'body', 'note_date'].map(k => [k, r[k]]));
-      if (JSON.stringify(pick(f.cloud)) !== JSON.stringify(args.p_expected)) return { status: 'CONFLICT' };
-      f.writes++; f.cloud = { id, user_id: owner, ...clone(args.p_desired) };
-      if (f.onWrite) f.onWrite();
-      if (f.lostResponse) throw Error('private lost response');
-      return { status: 'APPLIED' };
-    },
+    syncRequest: async () => { throw Error('DIRECT_TABLE_ACCESS_DISABLED'); },
   };
   const off = context.CapOff;
   const p = context.buildSupabaseMigrationPlan(), records = await context.CapSync.recordFingerprints(p, { snapshot: snapshot() });

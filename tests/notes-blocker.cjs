@@ -13,9 +13,15 @@ const context = { crypto: webcrypto, TextEncoder, URLSearchParams, location: { s
   document: { getElementById: () => out }, S: { accts: [] },
   migrationPrepare: () => ({ blockingProblems: [] }),
   buildSupabaseMigrationPlan: () => ({ userId: owner, tables: [['accounts', []]] }),
+  CapProductionRpc: {
+    snapshotRows: async () => { f.reads++; if (f.readFails) throw Error(owner + ' financial-secret');
+      return { snapshot: {}, rows: { accounts: (f.cloud || []).map(row => ({ entity: 'accounts', row, lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } })) } }; },
+    readNoteRecord: async () => null, changeNote: async () => ({ status: 'APPLIED' }),
+    createTransaction: async () => ({ status: 'APPLIED' }),
+  },
   CapSupabase: {
     currentUser: async () => ({ id: owner }),
-    syncRequest: async () => { f.reads++; if (f.readFails) throw Error(owner + ' financial-secret'); return f.cloud; },
+    syncRequest: async () => { throw Error('DIRECT_TABLE_ACCESS_DISABLED'); },
     validateRealData: async () => ({ missingCount: 0, unexpectedCount: 0, mismatchCount: 0, foreignKeyErrorCount: 0, snapshot: { accounts: [] } }),
   },
   CapOff: { syncStore: async (store, op, key) => {

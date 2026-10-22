@@ -2,49 +2,69 @@ function toast(m,ok,tone){document.querySelectorAll('.toast').forEach(x=>x.remov
 function fx(){const a=$('#app');a.classList.add('fx');clearTimeout(window._fx);window._fx=setTimeout(()=>a.classList.remove('fx'),800)}
 function pageAnim(){const k=tab+'|'+(tab=='Plan'?pt:''),a=$('#app');if(window._pk!==k){window._pk=k;const sn=window._seen=window._seen||{},re=sn[k];sn[k]=1;a.classList.remove('pg','pg2');void a.offsetWidth;a.classList.add(re?'pg2':'pg');if(!re)fx()}if(window._fl){const e=document.querySelector(`[data-tx="${window._fl}"]`);if(e)e.classList.add('new');window._fl=0}}
 /* Net-balance count-up: visual only. The formatted values, balance masking, chart
-   data, range controls, and pointer inspection continue to use their existing code. */
+   data, range controls, and pointer inspection continue to use their existing code.
+   A save/post/delete can hand us the values that were on screen, so the balance
+   counts from there to the new total instead of restarting from zero. */
+let netBalanceStartupComplete=false,
+    netBalanceFrom=0,
+    netBalanceDeltaFrom=0,
+    netBalanceStatsFrom=null;
+function setNetBalanceDelta(v){
+  if(!v)return;
+  netBalanceFrom=+v.net||0;
+  netBalanceDeltaFrom=+v.delta||0;
+  netBalanceStatsFrom=Array.isArray(v.stats)?v.stats.slice():null;
+}
 function animateNetBalance(){
+  if(window.capLaunchActive)return;
   const balance=document.getElementById('chv'),delta=document.querySelector('[data-ch-delta]');
-  if(!balance)return;
+  if(!balance){netBalanceFrom=0;netBalanceDeltaFrom=0;netBalanceStatsFrom=null;return}
+  netBalanceStartupComplete=true;
   const reduce=document.documentElement.classList.contains('noanim')||document.documentElement.classList.contains('rm')||matchMedia('(prefers-reduced-motion:reduce)').matches||S.hide==1;
-  const count=(el,end,duration,delay)=>{
+  const target=+balance.dataset.chBalance||0,targetDelta=+delta.dataset.chDelta||0,
+    from=netBalanceFrom,fromDelta=netBalanceDeltaFrom,fromStats=netBalanceStatsFrom;
+  netBalanceFrom=0;netBalanceDeltaFrom=0;netBalanceStatsFrom=null;
+  const hasDelta=fromStats!=null||from!==0||fromDelta!==0;
+  const count=(el,start,end,duration,delay)=>{
     if(!el)return;
     if(el._countRaf)cancelAnimationFrame(el._countRaf);
     const final=php(end);
     if(reduce){el.textContent=final;return}
-    el.textContent=php(0);
-    const start=()=>{
+    el.textContent=php(start);
+    const begin=()=>{
       const t0=performance.now(),tick=t=>{
+        if(!el.isConnected){el._countRaf=0;return}
         const p=Math.min(1,(t-t0)/duration),ease=1-Math.pow(1-p,3);
-        const value=p===1?end:Math.round((end*ease)*100)/100;
-        el.textContent=php(value);
+        el.textContent=php(p===1?end:start+(end-start)*ease);
         if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
       };
       el._countRaf=requestAnimationFrame(tick);
     };
-    if(delay)setTimeout(start,delay);else start();
+    if(delay)setTimeout(begin,delay);else begin();
   };
-  count(balance,+balance.dataset.chBalance||0,1200,90);
-  count(delta,+delta.dataset.chDelta||0,900,380);
-  animateHomeBalanceStats(reduce);
+  count(balance,from,target,1200,hasDelta?180:90);
+  count(delta,fromDelta,targetDelta,900,hasDelta?320:380);
+  animateHomeBalanceStats(reduce,fromStats);
 }
 /* The IN / OUT / NET cards mirror the balance count-up while retaining their
    exact signs, colours, balance masking, and responsive stat-card layout. */
-function animateHomeBalanceStats(reduce){
+function animateHomeBalanceStats(reduce,fromStats){
   document.querySelectorAll('[data-home-stat]').forEach((el,i)=>{
     if(el._countRaf)cancelAnimationFrame(el._countRaf);
     if(el._countTimer)clearTimeout(el._countTimer);
-    const end=+el.dataset.homeStat||0,prefix=el.dataset.statPrefix||'',final=prefix+php(end);
+    const end=+el.dataset.homeStat||0,prefix=el.dataset.statPrefix||'',final=prefix+php(end),
+      start=fromStats&&fromStats[i]!=null?+fromStats[i]||0:0;
     if(reduce){el.textContent=final;return}
-    el.textContent=prefix+php(0);
+    el.textContent=prefix+php(start);
     el._countTimer=setTimeout(()=>{
       const t0=performance.now(),tick=t=>{
+        if(!el.isConnected){el._countRaf=0;return}
         const p=Math.min(1,(t-t0)/720),ease=1-Math.pow(1-p,3);
-        el.textContent=prefix+(p===1?php(end):php(Math.round(end*ease*100)/100));
+        el.textContent=prefix+php(p===1?end:start+(end-start)*ease);
         if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
       };
       el._countRaf=requestAnimationFrame(tick);
-    },220+i*95);
+    },(fromStats?180:220)+i*95);
   });
 }
 /* Hovering a new graph date gets a short, immediate count rather than the
@@ -76,6 +96,15 @@ function replayNetBalanceOnVisit(){
 }
 addEventListener('pageshow',e=>{if(e.persisted)replayNetBalanceOnVisit()});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')replayNetBalanceOnVisit()});
+/* Initial render can precede this file, and a count-up under the launch overlay
+   finishes unseen. Begin the first Home count only once the intro has departed. */
+function startNetBalanceAfterLaunch(){
+  const play=()=>requestAnimationFrame(()=>requestAnimationFrame(()=>{if(!netBalanceStartupComplete&&tab==='Home')animateNetBalance()}));
+  if(window.capLaunchActive)document.addEventListener('cap:launch-complete',play,{once:true});
+  else if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',play,{once:true});
+  else play();
+}
+startNetBalanceAfterLaunch();
 const flash=id=>{window._fl=id};
 /* ---- One stable modal shell: #sheet (dimmed backdrop + blur) > #sb (the container) > #sv (the
    animated view). The backdrop and the container are built once. Moving between screens only

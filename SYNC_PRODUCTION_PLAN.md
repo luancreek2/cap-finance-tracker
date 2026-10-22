@@ -108,8 +108,10 @@ outbox change, baseline update, or cloud write; neither version is overwritten.
 Identical two-sided content is not mislabelled as a conflict and still requires
 separate baseline review. Pending operations and recovery checkpoints take
 precedence. Tests cover pull and push conflicts, retained backups, reload
-behavior, and the self-check. No live conflict trial was performed; merge and
-automatic resolution remain unimplemented. Details: `CONFLICT_PROTECTION.md`.
+behavior, and the self-check. A separate live keep-cloud resolution trial later
+passed; the separately authorized keep-local live trial also passed on
+2026-10-21. Merge and automatic resolution remain unimplemented. Details:
+`CONFLICT_PROTECTION.md`.
 
 **First live manual note trial passed (user screenshots).** Following the
 offline-auth verification and separate authorization, the user previewed one
@@ -397,7 +399,8 @@ All JavaScript and service-worker syntax checks and manifest/config JSON
 parsing pass. The actual Privacy & Sync panel was also exercised on a disposable
 origin in light and dark themes with simulated conflicting records: BLOCKED
 and CONFLICT rendered, identifiers/payloads remained redacted, and no fixture
-storage writes occurred. Interactive conflict resolution remains unimplemented.
+storage writes occurred. Guarded note conflict resolution is now a separate
+manual flow; this outbox release does not apply it automatically.
 
 **Authorized demo reset (2026-10-20).** The user confirmed that the current
 data was demo/test-only and authorized resetting both local and cloud demo
@@ -446,9 +449,13 @@ does not update the cloud or authorize the controlled notes test by itself.
 - A divergent note opens a **read-only on-device comparison** of the local and
   cloud versions. **Keep cloud** is implemented in shell v313: it saves a
   verified backup, replaces only that local note and its baseline
-  acknowledgement, and makes no Supabase write. **Keep local** (overwriting the
-  cloud) remains disabled and requires separate destructive-write design and
-  authorization.
+  acknowledgement, and makes no Supabase write.
+- **Keep local** is implemented in shell v314: after a verified backup and
+  explicit destructive confirmation, it performs one exact CAS write to the
+  reviewed cloud note, then acknowledges only that note in the baseline. It
+  does not replace the local note, touch the outbox, or change financial data.
+  Its separately authorized live trial passed on 2026-10-21. Further cloud
+  writes require new explicit authorization.
 - Resolution checkpoints and backups are retained until separately reviewed;
   there is no automatic merge or re-prompt suppression yet. See
   `CONFLICT_RESOLUTION.md`.
@@ -465,14 +472,229 @@ manual-note-pull checkpoints, and all comparison difference categories 0, with
 Cloud Sync OFF. A read-only cloud recheck confirmed the cloud marker remained
 and the local marker was not present, so resolution made no second Supabase
 write. The cloud marker remains by user approval; no restoration was
-authorized. Keep-local remains disabled. Details: `CONFLICT_RESOLUTION.md`.
+authorized. That trial covered keep-cloud only; keep-local was implemented
+later in v314 and a live keep-local overwrite still requires separate explicit
+authorization. Details: `CONFLICT_RESOLUTION.md`.
+
+**Keep-local isolated milestone (2026-10-21).** The v314 backup-first CAS flow
+passes 29 planning/confirmation checks and 39 UI/atomic IndexedDB checks. Its
+retained backup now includes the losing cloud snapshot, not just local state
+and baseline. A disposable-browser rehearsal with synthetic inputs and mocked
+transport passed cancellation, successful overwrite, baseline acknowledgement,
+backup retention, light/dark rendering, and reload persistence. Mode remained
+OFF, outbox 0, checkpoint absent after success. No live overwrite or marker
+cleanup was performed; separate authorization is still required.
+The proposed live checklist in `CONFLICT_RESOLUTION.md` separates any cloud
+conflict-setup edit from the actual overwrite: the last converged real profile
+would require two separately authorized cloud mutation calls for a new trial,
+not one. Lost-response, already-applied, post-CAS read failure, checkpoint-staging
+failure, and cleanup-failure paths are now isolated-test covered without retries.
+
+**Authorized keep-local setup only (2026-10-21).** After a clean 46-record
+real-profile read-only preflight and five passing self-check lines, the user
+authorized one cloud setup edit. A verified on-device original-cloud backup
+preceded one CAS call, which returned `APPLIED`; an owned-row read verified the
+appended generic setup marker with original content, prior marker, title, and
+date preserved. Mode stayed OFF. The authenticated automation profile has no
+baseline and none was initialized; no local note, financial record, baseline,
+or outbox changed. The user-driven local edit and read-only conflict preview
+are next. The actual keep-local overwrite is **not yet authorized or executed**.
+
+**Keep-local live trial passed (2026-10-21).** The local
+edit changed `body` and the automatically stamped `note_date`. After reviewing
+both fields and separately authorizing their overwrite, the user confirmed
+keep-local in their normal browser; the screenshot reported `RESOLVED — LOCAL
+VERSION KEPT; CLOUD OVERWRITTEN; LOCAL BACKUP RETAINED`, mode OFF. A read-only
+cloud recheck verified one owned row, unchanged title, reviewed local date,
+original content/prior marker preserved, local marker present, and temporary
+cloud setup marker absent. No verification mutation was sent. Following the
+requested reload/check steps, the user's normal-browser screenshots confirmed
+local/baseline/cloud agreement and a clean blocker: baseline/current 46, owned
+v2 baseline, outbox 0, all test/demo/manual-pull checkpoints absent, and every
+comparison difference category 0; Cloud Sync OFF. The successful resolution
+status reports the backup retained. No further write, marker cleanup, reset,
+or restoration is authorized. Deletions/tombstones are the next design milestone,
+followed by financial-record sync, server/race hardening, and controlled rollout.
 
 ## 4. Deletions
 
-- Local delete: write a tombstone (`deleted_at`) locally, push it.
-- Cloud delete: tombstone in cloud; the other device observes it.
-- Purge only when both sides agree and the tombstone is older than a retention
-  window. Never infer deletion from a failed read.
+**Notes-only lifecycle design (2026-10-21; design only).** See
+`NOTES_TOMBSTONES.md`. No deletion executor, SQL deployment, schema migration, or
+live deletion has been performed. Cloud Sync remains OFF.
+
+- Current queued `delete` transport physically deletes rows; it is not a
+  durable tombstone implementation and must not be reused by the new pilot.
+- Local deletion needs explicit retained owner-bound intent and a verified
+  backup, not inference from absence. Cloud deletion needs a retained row,
+  explicit lifecycle state, and server revision/CAS evidence.
+- New lifecycle fields require versioned readers/writers and explicit note
+  content projection to preserve existing v2 fingerprints. No baseline reset.
+- Delete-versus-edit conflicts preserve both versions and require review;
+  timestamps, absent rows, failed reads, and import omissions never resolve them.
+- Direct table-writer bypass protection and real two-session staging races are
+  deployment gates, not assumed properties of the existing RPC or own-row RLS.
+- No purge: both present tabs agreeing is insufficient for offline devices or
+  old backups. Retain evidence until device acknowledgement/resurrection
+  barriers and a retention policy are separately implemented and reviewed.
+- The pure unwired planner is now implemented (see below), followed next by
+  local backup/recovery, server design, and disposable rehearsals. Any
+  live SQL installation or tombstone write needs separate explicit approval.
+
+**Pure tombstone planner (2026-10-21; isolated only).**
+`js/notes-tombstone-plan.js` and `tests/notes-tombstone-plan.cjs` implement the
+read-only matrix with 105 passing synthetic checks. Missing/unreadable evidence
+does not imply deletion; owner/mapping/content/revision/capability drift fails
+closed. Preview tickets bind detached evidence and never authorize execution.
+There is no transport, storage adapter, UI, app boot hook, schema migration,
+restoration, purge, or cloud write. The module is not loaded by HTML or cached
+in the shell; existing v314 behavior is unchanged. Tests explicitly forbid
+storage/network/DOM/timer access. The new suite brings the isolated suite count
+to 23 at that step. Server lifecycle support and app integration remain pending.
+
+**Isolated local tombstone staging (2026-10-21).**
+`js/notes-tombstone-local.js` adds an unwired dependency-injected prototype, with
+37 passing fake-IDB tests. It verifies a full original local/cloud backup before
+atomically staging one local deletion intent and its recovery checkpoint.
+Baseline/outbox/financial data remain unchanged; no cloud transport is present.
+Recovery distinguishes prepared versus committed stages and never claims cloud
+verification. Database reopen and private recovery export validation pass;
+existing app merge/import compatibility is not claimed. There is no real
+database adapter, Delete UI wiring, schema/default change, restore/purge API,
+or live deletion. All 24 isolated suites and syntax checks pass. The subsequent
+remote-apply extension is recorded below; server lifecycle and integration gates
+still block live use.
+
+**Isolated remote tombstone apply (2026-10-21).** The unwired local factory now
+offers a separately ticketed/confirmed remote-apply path. It verifies a retained
+original snapshot before atomically removing one synthetic local note,
+retaining remote-origin deletion evidence, acknowledging one baseline record,
+and writing an applied checkpoint. Exact post-apply cloud reads and local
+read-back precede checkpoint cleanup; backups remain. Failed reads/divergence,
+atomic rollback, cleanup failure, replay, database reopen, and stale evidence
+are covered. No cloud writer exists. The combined persistence suite now passes
+59 checks, and the pure planner passes 105. Checkpoint/backup prototype version
+2 rejects prior bundles without changing them. No app, database schema, SQL
+deployment, Delete UI, or automatic sync integration changed. Next is the server
+lifecycle/bypass-protection contract and isolated SQL testing; live use remains
+blocked pending those and merge/import/integration gates.
+
+**Isolated lifecycle SQL lab (2026-10-21).** A separate-schema SQL draft and
+70-check PGlite suite now cover a least-privilege SECURITY DEFINER writer,
+forced owner RLS, denied direct writes/role escalation, strict content/lifecycle
+CAS, private operation receipts, idempotence, ABA rejection, and trigger rollback.
+The lab does not migrate public notes or change deployed RPCs; its verifier
+always returns production readiness false. All 25 isolated suites pass. This
+does not prove concurrent PostgreSQL/Supabase safety. Next are two-session
+disposable race tests and an existing-privilege/writer/migration audit before
+any proposed live deployment. Details: `NOTES_LIFECYCLE_SERVER.md`.
+
+**Two-session race harness prepared (2026-10-21; NOT RUN).**
+`tests/manual/notes-lifecycle-races.cjs` requires a fresh dedicated literal-
+loopback PostgreSQL cluster/database and explicit test acknowledgement. It
+checks independent backend IDs and real `pg_blocking_pids` contention for
+edit/delete, retry, rollback, cross-note receipt collisions, and repeatable-read/
+serializable failures, plus denied direct writes during a lock. No destructive
+cleanup or app/Supabase URL is accepted. Its 21 target/static guard tests pass;
+all 26 ordinary isolated suites pass. Actual races are blocked by the absence
+of PostgreSQL/Docker/Podman in this environment. They have not been replaced by
+PGlite simulation or counted as passed. Progress remains approximately 85%; the
+next actual run requires a fresh disposable local runtime, not a live database.
+Details and remaining gates: `NOTES_LIFECYCLE_RACES.md`.
+
+**Real disposable PostgreSQL races passed (2026-10-21).** The user installed
+Docker Desktop and explicitly authorized one loopback-only PostgreSQL container.
+The harness then passed once on PostgreSQL 16.15: 10 checks, three independent
+backends, and eight observed `pg_blocking_pids` waits covering all planned
+contention cases, plus concurrent direct-write denial. Production readiness
+remained false. The same healthy container was retained for inspection; data
+is tmpfs-only, with no host/app-data mount. No Supabase, app-state, baseline,
+outbox, or real financial data changed. A setup interruption was inspected and
+resumed without recreating the container or repeating completed work. The
+runtime blocker is resolved; next are lifecycle-safe client integration,
+merge/import/export compatibility, and the production privilege/migration audit.
+Overall progress remains approximate (85–88%); no rollout/live deletion is authorized.
+
+**Pure tombstone compatibility guards (2026-10-21; unwired).**
+`js/notes-tombstone-compat.js` and its 73-check suite cover owner-bound sidecar
+validation, three-way note proposals, old JSON merge/replace/undo, private export
+round trips, CSV separation, stale tickets, and retention of omitted evidence.
+Edited/ambiguous restored content and divergent lifecycle evidence require
+review instead of timestamps deciding. Candidates contain note fields only;
+financial importer/balance semantics are not modified or authorized. All 27
+ordinary suites and syntax checks pass. No live app entry point, schema default,
+state merge/import/undo, or cloud transport was wired. Next is disposable
+composition with the existing app entry points plus verified atomic local apply,
+then the production privilege/migration audit. See `NOTES_TOMBSTONE_COMPAT.md`.
+
+**Real-definition compatibility rehearsals (2026-10-21; synthetic only).**
+The new 28-check `tests/notes-tombstone-entrypoints.cjs` loads actual normalizer,
+merge, export, JSON/CSV parser, Replace, and Undo definitions into isolated VMs
+with fake storage. Local/remote tombstone outputs survive real export/parser
+round trips. Regression cases expose raw Replace/Undo evidence loss, swallowed
+backup failure, and generic merge timestamp/conflict problems. Guarded previews
+block or retain evidence without applying state or balances. A critical wrapper
+gate is tested: pass the original backup envelope to lifecycle validation,
+because the legacy parser strips owner/version metadata. All 28 ordinary
+isolated suites pass. Live entry points remain unchanged; next is a verified-
+backup atomic note-only apply adapter and fresh-origin rehearsal, not a financial
+import or live tombstone operation. Localhost:8000 was restored separately as a
+loopback-only static server; Cloud Sync remains OFF.
+
+**Atomic compatibility note-only apply (2026-10-21; unwired).** The new
+`js/notes-tombstone-compat-apply.js` verifies original full state, owned baseline,
+source envelope, empty queue/recovery, fresh ticket, and explicit confirmation.
+A verified backup precedes the atomic local note-state/applied-checkpoint
+transaction; all non-note state (including tombstone evidence), baseline, and
+outbox remain unchanged. It cannot introduce lifecycle evidence or remove
+current active note IDs, consume imported financial changes, restore/purge, or
+call a cloud writer. Its 43 fake-IDB checks and the expanded 31 real-definition
+entrypoint rehearsals pass. A native IndexedDB/Web Locks rehearsal on a fresh
+synthetic origin passed cancellation, apply, backup retention, cleanup, exact
+sidecar retention, and reopen persistence. All 29 ordinary suites pass. Actual
+app script/default/schema/import/undo/reset/storage wiring is still unchanged;
+next is coherent guarding and disposable UI integration, followed by production
+privilege/migration review. No real state or Supabase was changed.
+
+**Static production privilege/migration audit (2026-10-21; no live run).**
+`PRODUCTION_PRIVILEGE_AUDIT.md` and the read-only
+`tests/sql/production-privilege-audit.sql` record the repository-derived
+deployed posture: `authenticated` has direct table and possible column-level
+`INSERT`/`UPDATE`/`DELETE` on `public.notes`; the policy is permissive `FOR ALL`;
+RLS is not forced; the legacy content-only CAS/verifier remains executable; test
+transaction RPCs may remain; and default privileges, memberships, definer
+endpoints, extensions, and PostgREST exposure are not attested. These are
+blocking facts for a tombstone boundary, not cosmetic hardening.
+
+The design recommends a private lifecycle sidecar with content-only
+`public.notes`, explicit RPC-only reads, a non-login forced-RLS writer role,
+private operation ledger, and server-side old-client lockout by revoking all
+direct note privileges and retiring the legacy writer/verifier. Adding lifecycle
+columns to `public.notes` is the fallback only after every client projects
+explicit fields and old clients are locked out, because `select=*` would change
+v2 fingerprints and expose tombstone state. The audit SQL is read-only; its
+8-check PGlite harness passes and deliberately never claims production
+readiness. No live Supabase connection, grant, policy, SQL, sidecar, or
+migration was executed. At that stage all 30 ordinary isolated suites passed. Next is a user
+decision on sidecar/reader/lockout and one separately authorized live read-only
+audit. Overall progress remains approximate (85–88%).
+
+**Private sidecar contract lab (2026-10-21; no live run).**
+`tests/sql/notes-sidecar-lab.sql` and `tests/notes-sidecar-sql.cjs` now implement
+and exercise the recommended production shape in disposable PGlite: content-only
+`public.notes`, private `cap_notes_private.note_lifecycle`/`operations` with
+forced RLS, a dedicated non-login writer owner, RPC-only reader/writer/verifier
+endpoints, and no client table/schema access. The 83 checks cover exact backfill,
+a cutover that revokes direct note grants and drops both legacy RPCs, old-client
+denial, new edit/tombstone CAS and retry binding, direct/column/schema/`SET ROLE`
+bypass denial, metadata drift, restored-legacy-RPC blocking, a tombstone-aware
+rollback guard, and reinstall without resetting evidence. A separate 5-check
+rollback rehearsal covers the clean-abort path after cutover but before any
+tombstone, restoring the old policy/grants/RPCs and verifying old CAS again.
+Both always report `production_ready: false`. No live SQL, grant, policy, sidecar,
+or migration was executed. All 32 ordinary isolated suites pass. The user
+decisions on sidecar/reader/lockout and a separately authorized live read-only
+audit are still required before any live action. Overall progress remains
+approximate (88–90%).
 
 ## 5. Server side
 

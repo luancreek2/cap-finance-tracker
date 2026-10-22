@@ -66,10 +66,14 @@
       nav {
         position: sticky;
         top: env(safe-area-inset-top, 0px);
-        z-index: 5;
+        z-index: 50;
         display: flex;
         justify-content: center;
         padding: 10px 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
       }
       nav div {
         display: flex;
@@ -375,7 +379,7 @@
         display: none;
         align-items: flex-end;
         justify-content: center;
-        z-index: 20;
+        z-index: 1000;
       }
       #sheet.open {
         display: flex;
@@ -2095,12 +2099,18 @@ html.rm *,html.rm *:before,html.rm *:after{animation-duration:.001ms!important;a
 
 /* Settings stays an icon on the page, not a floating control container. */
 .sbtn,.sbtn:hover,.sbtn:active{
-  width:44px;height:44px;padding:0;border:0;border-radius:0;background:transparent;
+  width:44px;height:44px;padding:0;border:0;border-radius:12px;background:transparent;
   box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;transform:none;
-  color:var(--tx)
+  color:var(--tx);
+  position:fixed!important;
+  z-index:1100!important;
+  pointer-events:auto!important;
+  transition:transform .1s cubic-bezier(.2,.8,.2,1),background-color .15s ease
 }
 .sbtn::before{display:none;content:none}
-.sbtn svg{display:block;width:24px;height:24px}
+.sbtn svg{display:block;width:24px;height:24px;transition:transform .6s cubic-bezier(.68,-.55,.265,1.55);will-change:transform}
+.sbtn:active{transform:scale(.94)}
+.sbtn:hover{background:color-mix(in srgb,var(--ac) 12%,transparent)}
 .sbtn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 
 /* Account cards flip in place: the grid slot stays fixed while only the inner
@@ -2199,6 +2209,20 @@ html.rm *,html.rm *:before,html.rm *:after{animation-duration:.001ms!important;a
 @media(prefers-reduced-motion:reduce){.acct-money-actions button{transition:none}.acct-money-actions button:active{transform:none}}
 html.noanim .acct-money-actions button,html.rm .acct-money-actions button{transition:none!important}
 html.noanim .acct-money-actions button:active,html.rm .acct-money-actions button:active{transform:none;box-shadow:none}
+.wrap~*{}
+nav>div#tabs{box-sizing:border-box;width:min(286px,calc(100vw - 32px));height:52px;display:flex;align-items:center;justify-content:center;gap:4px;padding:4px;overflow:hidden}
+nav>div#tabs button{box-sizing:border-box;display:inline-flex;flex:0 0 44px;width:44px;height:42px;align-items:center;justify-content:center;gap:7px;overflow:hidden;padding:8px 10px;border-radius:99px;color:var(--tx);white-space:nowrap;transition:width .42s cubic-bezier(.32,.72,.28,1),background-color .22s ease,color .22s ease,box-shadow .22s ease,transform .15s ease}
+nav>div#tabs button.on{flex-basis:124px;width:124px;background:var(--ac);color:var(--ac-t);box-shadow:0 2px 8px #0002}
+nav>div#tabs .nav-icon{display:grid;flex:0 0 22px;width:22px;height:22px;place-items:center}
+nav>div#tabs .nav-icon svg{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav>div#tabs .nav-label{display:block;max-width:84px;overflow:visible;opacity:0;transform:translateX(-5px);font:inherit;font-weight:650;will-change:opacity,transform;transition:opacity .18s ease .08s,transform .32s cubic-bezier(.32,.72,.28,1)}
+nav>div#tabs button.on .nav-label{opacity:1;transform:none}
+nav>div#tabs button.pop{animation:navActivePop .62s cubic-bezier(.22,.9,.26,1) both}
+@keyframes navActivePop{0%{transform:scale(1)}20%{transform:scale(.94)}52%{transform:scale(1.035)}76%{transform:scale(.99)}100%{transform:scale(1)}}
+@media(max-width:380px){nav>div#tabs{width:calc(100vw - 10px)}nav>div#tabs button.on{flex-basis:112px;width:112px}nav>div#tabs .nav-label{font-size:13px}}
+@media(prefers-reduced-motion:reduce){nav>div#tabs button,nav>div#tabs .nav-label{transition:none}nav>div#tabs button.pop{animation:none}}
+html.noanim nav>div#tabs button,html.rm nav>div#tabs button,html.noanim nav>div#tabs .nav-label,html.rm nav>div#tabs .nav-label{transition:none!important}
+html.noanim nav>div#tabs button.pop,html.rm nav>div#tabs button.pop{animation:none!important}
 .acct-setup-form input.setup-invalid,.acct-setup-form select.setup-invalid{border-color:#ff453a!important;box-shadow:0 0 0 2px #ff453a44,0 0 14px #ff453a20!important}
 .acct-setup-form input.setup-invalid:focus,.acct-setup-form select.setup-invalid:focus{outline-color:#ff453a!important}
 .acct-setup-form .setup-label-invalid{color:#ff453a!important}
@@ -2206,3 +2230,71 @@ html.noanim .acct-money-actions button:active,html.rm .acct-money-actions button
 @keyframes setupFieldErrorIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.acct-setup-form .setup-field-error{animation:none}}
 html.noanim .acct-setup-form .setup-field-error,html.rm .acct-setup-form .setup-field-error{animation:none!important}
+/* Account setup confirmation: a calm surface above the card artwork. */
+.acct-setup-panel.success{overflow:hidden;border:1px solid color-mix(in srgb,var(--line) 72%,transparent);border-radius:24px;background:linear-gradient(145deg,color-mix(in srgb,var(--card) 94%,#fff 6%),var(--card));box-shadow:0 22px 55px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.acct-setup-panel.success::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--g) 18%,transparent),transparent 58%)}
+.acct-setup-panel.success .acct-setup-success{position:relative;z-index:1;padding:24px 22px 22px;border-radius:inherit;text-align:center}
+.acct-setup-panel.success .acct-setup-success-mark{margin:0 auto 11px;box-shadow:0 10px 24px color-mix(in srgb,var(--g) 28%,transparent)}
+/* Keep the transient success state compact rather than reusing the full setup form footprint. */
+.acct-setup-panel.success{width:min(320px,calc(100vw - 40px));min-height:0!important;left:50%!important;transform:translateX(-50%)}
+.acct-setup-panel.success .acct-setup-success{padding:17px 18px 18px}
+.acct-setup-panel.success .acct-setup-success-mark{width:50px;height:50px;margin-bottom:8px;font-size:29px;line-height:50px}
+.acct-setup-panel.success .acct-setup-success h2{margin:0;font-size:21px}
+.acct-setup-panel.success .acct-setup-success p{margin:7px 0 0;font-size:14px}
+.acct-setup-panel.success{width:min(270px,calc(100vw - 44px));padding:0!important;box-sizing:border-box}
+.acct-setup-panel.success .acct-setup-success{min-height:0!important;height:auto!important;padding:14px 16px 15px}
+.acct-setup-panel.success .acct-setup-success-mark{width:44px;height:44px;margin-bottom:7px;font-size:25px;line-height:44px}
+.acct-setup-panel.success .acct-setup-success h2{font-size:18px}
+.acct-setup-panel.success .acct-setup-success p{margin-top:5px;font-size:13px}
+.acct-setup-panel.success{width:220px!important;border-radius:18px}
+.acct-setup-panel.success .acct-setup-success{padding:10px 12px 12px}
+.acct-setup-panel.success .acct-setup-success-mark{width:36px;height:36px;margin-bottom:5px;font-size:21px;line-height:36px}
+.acct-setup-panel.success .acct-setup-success h2{font-size:16px}
+.acct-setup-panel.success .acct-setup-success p{margin-top:3px;font-size:12px}
+/* Internal-transfer moment: transparent overlay, with blur only—no tinted backdrop. */
+.account-transfer-animation{position:fixed;z-index:31000;inset:0;display:grid;place-items:center;pointer-events:none;opacity:0;backdrop-filter:blur(0);-webkit-backdrop-filter:blur(0);transition:opacity .2s ease,backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease}.account-transfer-animation.show{opacity:1;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.ata-scene{display:grid;grid-template-columns:minmax(100px,150px) 34px minmax(100px,150px);align-items:center;gap:12px;width:min(360px,calc(100vw - 28px))}.ata-account{min-width:0;text-align:center}.ata-account .cc{width:100%;aspect-ratio:1.586;height:auto;margin:0;box-shadow:0 12px 30px #0005;transition:transform .3s ease,box-shadow .3s ease}.ata-account small{display:block;overflow:hidden;margin-top:7px;color:var(--tx);font-size:11px;font-weight:700;line-height:1.2;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 5px var(--bg)}.ata-flow{color:var(--g);font-size:28px;font-weight:800;text-align:center;filter:drop-shadow(0 2px 6px #0005);animation:ataFlow .8s ease-in-out infinite alternate}.ata-pulse{transform:scale(1.045);box-shadow:0 0 0 2px color-mix(in srgb,var(--g) 70%,transparent),0 18px 38px color-mix(in srgb,var(--g) 28%,transparent)!important}.ata-coin{position:fixed;z-index:2;display:grid;width:28px;height:28px;place-items:center;border:1px solid #ffe487;border-radius:50%;background:radial-gradient(circle at 32% 28%,#fff8b0,#f4c842 58%,#bd8010);color:#805100;font-size:15px;font-style:normal;font-weight:900;box-shadow:0 5px 14px #dba40066}.ata-success{position:absolute;top:calc(50% + 88px);left:50%;display:flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid color-mix(in srgb,var(--line) 75%,transparent);border-radius:14px;background:color-mix(in srgb,var(--card) 92%,transparent);box-shadow:0 10px 28px #0003;opacity:0;transform:translate(-50%,8px) scale(.94);transition:opacity .22s ease,transform .25s cubic-bezier(.2,.8,.2,1);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap}.ata-success.show{opacity:1;transform:translate(-50%,0) scale(1)}.ata-success i{display:grid;width:22px;height:22px;place-items:center;border-radius:50%;background:var(--g);color:#062517;font-size:14px;font-style:normal;font-weight:900}.ata-success b{font-size:12px}.ata-success small{color:var(--mut);font-size:11px;font-weight:700}@keyframes ataFlow{to{transform:translateX(4px)}}
+@media(prefers-reduced-motion:reduce){.account-transfer-animation,.ata-success{transition-duration:.1s}.ata-flow{animation:none}}
+.ata-flow{animation-duration:1.15s}.ata-status{position:absolute;top:calc(50% + 84px);left:50%;display:flex;align-items:center;gap:7px;color:var(--tx);font-size:12px;font-weight:750;letter-spacing:.01em;opacity:0;transform:translate(-50%,6px);transition:opacity .32s ease,transform .35s ease;white-space:nowrap}.account-transfer-animation.show .ata-status{opacity:1;transform:translate(-50%,0)}.ata-status i{width:8px;height:8px;border:2px solid color-mix(in srgb,var(--g) 36%,transparent);border-top-color:var(--g);border-radius:50%;animation:ataSpin .75s linear infinite}.ata-status.done{opacity:0;transform:translate(-50%,-5px)}.ata-success{top:calc(50% + 78px);transition:opacity .28s ease,transform .38s cubic-bezier(.2,.8,.2,1)}@keyframes ataSpin{to{transform:rotate(360deg)}}
+@media(min-width:600px){.ata-scene{grid-template-columns:minmax(180px,230px) 48px minmax(180px,230px);gap:18px;width:min(540px,calc(100vw - 80px))}.ata-flow{font-size:36px}.ata-account small{margin-top:10px;font-size:13px}.ata-status{top:calc(50% + 128px);font-size:14px}.ata-status i{width:10px;height:10px}.ata-success{top:calc(50% + 120px);padding:10px 14px}.ata-success i{width:25px;height:25px;font-size:15px}.ata-success b{font-size:14px}.ata-success small{font-size:12px}.ata-coin{width:34px;height:34px;font-size:18px}}
+@media(min-width:1000px){.ata-scene{grid-template-columns:minmax(220px,270px) 54px minmax(220px,270px);gap:22px;width:620px}.ata-flow{font-size:40px}.ata-status{top:calc(50% + 150px)}.ata-success{top:calc(50% + 142px)}}
+.transfer-detail-hero .pd-tt small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.transfer-detail-hero .paid-chip{font-weight:750}.transfer-detail-rows .pd-r{min-height:42px}.transfer-detail-rows .psrc{justify-content:flex-end;max-width:70%;color:var(--tx)}.transfer-detail-rows .psrc .xcl{width:28px;height:auto}
+.transfer-detail-hero .pd-tt small{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
+.transfer-detail-rows .pd-r>b{max-width:74%;min-width:0;white-space:normal;overflow-wrap:anywhere}
+.transfer-detail-rows .psrc{max-width:100%;min-width:0;white-space:normal}
+.transfer-detail-rows .psrc>span{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;text-align:right;line-height:1.25}
+
+/* Bottom navigation: the existing icon/pill interaction is kept, but the bar
+   now occupies the old quick-entry position and leaves the content unobstructed. */
+nav{position:fixed;top:auto;bottom:0;left:0;width:100%;box-sizing:border-box;z-index:50;display:flex;justify-content:center;pointer-events:none;padding:0 16px calc(14px + env(safe-area-inset-bottom,0px));background:transparent}
+nav>div#tabs{pointer-events:auto;width:min(334px,calc(100vw - 24px));height:58px;padding:5px;box-sizing:border-box;box-shadow:0 12px 32px #0003}
+nav>div#tabs button{position:relative;z-index:1}
+nav>div#tabs button.nav-action{flex:0 0 44px;width:44px;padding:0;background:transparent;color:var(--tx);box-shadow:none}
+nav>div#tabs button.nav-action:active{transform:scale(.88)}
+nav>div#tabs .nav-action-plus{display:grid;width:40px;height:40px;place-items:center;border:1px solid var(--gb);border-radius:50%;background:var(--gl);box-shadow:inset 0 1px 0 #fff8,0 2px 7px #0002;font-size:26px;font-weight:500;line-height:1;transition:transform .3s cubic-bezier(.2,.9,.25,1.2),background-color .2s ease}
+nav>div#tabs button.nav-action:active .nav-action-plus{transform:scale(.86);background:var(--gon)}
+nav>div#tabs button.on{flex-basis:124px;width:124px}
+.sbtn{top:calc(12px + env(safe-area-inset-top,0px))!important;bottom:auto!important}
+body{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+#app{padding-top:calc(18px + env(safe-area-inset-top,0px))}
+@media(prefers-reduced-motion:reduce){nav>div#tabs button.nav-action,.nav-action-plus{transition:none!important}.nav-action-plus{transform:none!important}}
+html.noanim nav>div#tabs button.nav-action,html.rm nav>div#tabs button.nav-action,html.noanim .nav-action-plus,html.rm .nav-action-plus{transition:none!important;animation:none!important}
+@media(max-width:380px){nav>div#tabs{width:calc(100vw - 6px)}nav>div#tabs button.on{flex-basis:112px;width:112px}nav>div#tabs .nav-label{max-width:76px;font-size:13px}}
+@media(max-width:600px){nav>div#tabs{width:calc(100vw - 16px)}nav>div#tabs button.on{flex-basis:112px;width:112px}nav>div#tabs .nav-label{max-width:76px}}
+/* Keep inactive labels out of the flex layout; this prevents icons from
+   overlapping while the active label expands. */
+nav>div#tabs button{flex-shrink:0}
+nav>div#tabs .nav-label{flex:0 0 0;width:0;max-width:0;overflow:hidden;white-space:nowrap}
+nav>div#tabs button.on{flex-basis:128px;width:128px}
+nav>div#tabs button.on .nav-label{flex:0 0 76px;width:76px;max-width:76px}
+nav>div#tabs button.nav-tab-home.on,nav>div#tabs button.nav-tab-activity.on,nav>div#tabs button.nav-tab-plan.on{flex-basis:112px;width:112px}
+nav>div#tabs button.nav-tab-home.on .nav-label,nav>div#tabs button.nav-tab-activity.on .nav-label,nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:64px;width:64px;max-width:64px}
+nav>div#tabs button.nav-tab-home.on{flex-basis:104px;width:104px}
+nav>div#tabs button.nav-tab-home.on .nav-label{flex-basis:48px;width:48px;max-width:48px}
+nav>div#tabs button.nav-tab-plan.on{flex-basis:100px;width:100px}
+nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:44px;width:44px;max-width:44px}
+nav>div#tabs button.nav-tab-activity.on{flex-basis:112px;width:112px}
+nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:64px;width:64px;max-width:64px}
+@media(max-width:600px){nav>div#tabs button.on{flex-basis:120px;width:120px}nav>div#tabs button.on .nav-label{flex-basis:68px;width:68px;max-width:68px}}
+@media(max-width:600px){nav>div#tabs button.nav-tab-home.on,nav>div#tabs button.nav-tab-activity.on,nav>div#tabs button.nav-tab-plan.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-home.on .nav-label,nav>div#tabs button.nav-tab-activity.on .nav-label,nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}
+@media(max-width:600px){nav>div#tabs button.nav-tab-home.on{flex-basis:100px;width:100px}nav>div#tabs button.nav-tab-home.on .nav-label{flex-basis:44px;width:44px;max-width:44px}nav>div#tabs button.nav-tab-plan.on{flex-basis:96px;width:96px}nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:40px;width:40px;max-width:40px}nav>div#tabs button.nav-tab-activity.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}

@@ -3273,7 +3273,7 @@ function calWheel(e){if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.2||Math.abs(e.d
    Every page renders through stSheet() -> navS(), so the modal, its backdrop
    and its scroll position stay stable while pages slide/fade in and out.
    ========================================================================== */
-const APP_VERSION='1.0.3',APP_VER=APP_VERSION;
+const APP_VERSION='1.0.4',APP_VER=APP_VERSION;
 const LOCK_KEY='cap_lock',BIO_KEY='cap_bio',NOTIF_SEEN='cap_notif_seen',BK_KEY='cap_lastbackup';
 const ST_IC={
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.4"/><path d="M4.9 20c.7-3.5 3.6-5.6 7.1-5.6s6.4 2.1 7.1 5.6"/></svg>',
@@ -3296,7 +3296,14 @@ const APP_REPOSITORY_URL='https://github.com/luancreek2/cap-finance-tracker',WHA
 /* Auto-present the release note once per version, after the launch animation. */
 const WHATS_NEW_AUTO=true;
 let WHATS_NEW_MEMORY_SEEN='';
-const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.3 brings clearer payment details, separate bill and subscription planning, and more useful debit, e-wallet, and cash accounts.',changes:[
+const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-22',title:'What’s New in Cap',summary:'Cap 1.0.4 brings smarter account transfers, a bottom navigation bar, steadier balance animations, and a stronger production-sync foundation.',changes:[
+  {category:'New',icon:'💸',title:'Smarter deposits and transfers',description:'Choose another debit card, e-wallet, or cash account as the source of a deposit, or record money arriving from outside Cap. Internal transfers now show a card-to-card animation and update both balances.'},
+  {category:'New',icon:'🧾',title:'Opening balances in history',description:'Accounts created with a starting balance now get an opening transaction, keeping balance history and reconciliation consistent from day one.'},
+  {category:'Improved',icon:'🧭',title:'Bottom navigation',description:'The main tabs now sit in a fixed bottom bar. The active tab expands with its label, while Add stays within easy reach.'},
+  {category:'Improved',icon:'✨',title:'Smoother balance updates',description:'Home balance and IN, OUT, and NET figures count from the values already on screen after a save, post, or delete. The first count now waits until the launch animation finishes.'},
+  {category:'Design',icon:'🎨',title:'Refined setup and visuals',description:'A compact account-added confirmation, refreshed Cap icons, and smoother sheet transitions with reduced-motion support.'},
+  {category:'Improved',icon:'☁️',title:'Production sync foundation',description:'The production sync client now uses a restricted RPC-only transport and a deployment-generated publishable configuration. Cloud Sync remains OFF.'}
+]},{version:'1.0.3',releaseDate:'2026-10-18',title:'What’s New in Cap',summary:'Cap 1.0.3 brings clearer payment details, separate bill and subscription planning, and more useful debit, e-wallet, and cash accounts.',changes:[
   {category:'New',icon:'💵',title:'Cash wallet account',description:'Add a Cash account with a transparent, card-sized wallet design based on your image, plus deposit and transfer actions.'},
   {category:'New',icon:'⇄',title:'Deposit and transfer',description:'Add money to debit cards and e-wallets, or transfer money between eligible accounts with balances and activity updated automatically.'},
   {category:'Improved',icon:'🧾',title:'Bills and subscriptions',description:'Choose a required category when adding an item; Upcoming now groups Bills and Subscriptions separately.'},

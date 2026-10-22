@@ -245,6 +245,15 @@ html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::be
 /* view swaps inside the sheet (Edit bill ↔ Payment history ↔ Payment details).
    navS() fades #sv and animates #sb's height; only the entering content animates itself. */
 .pcard{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards}
+.sv-transitioning{overflow:hidden!important}
+.sv-transitioning #sv{will-change:transform,opacity}
+.sv-forward #sv{transform-origin:50% 50%;}
+.sv-back #sv{transform-origin:50% 50%;}
+#sb .st-row{transition:transform .16s cubic-bezier(.2,.8,.2,1),background-color .16s ease}
+#sb .st-row:not(.st-ro):active{transform:scale(.985);background-color:color-mix(in srgb,var(--mut) 12%,transparent)}
+#sb .st-row:not(.st-ro):active .st-c{transform:translateX(3px)}
+#sb .st-c{transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+@media(prefers-reduced-motion:reduce){#sb .st-row,#sb .st-c{transition:none!important}.sv-transitioning #sv{will-change:auto}}
 @media (prefers-reduced-motion:reduce){.pcard{animation:none}}
 
 /* subtle press feedback for the sheet's own controls (150-250ms) */
@@ -259,10 +268,13 @@ html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::be
 .paid-chip{position:relative;animation:paidBadgeLoop 2.25s .62s ease-in-out infinite}
 .paid-checkmark{display:block;width:13px;height:13px;flex:none;overflow:visible;fill:none;stroke:currentColor;
   stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.paid-checkmark path{stroke-dasharray:18;stroke-dashoffset:18;transform-box:fill-box;transform-origin:center;
+.paid-checkmark path{--paid-mark-length:18;stroke-dasharray:var(--paid-mark-length);stroke-dashoffset:var(--paid-mark-length);transform-box:fill-box;transform-origin:center;
   animation:paidCheckCycle 2.35s .12s ease-in-out infinite,paidMarkGlow 2.35s .12s ease-in-out infinite}
+.transfer-arrow-mark{display:block;width:14px;height:14px;flex:none;overflow:visible;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.transfer-arrow-mark path{--paid-mark-length:22;stroke-dasharray:var(--paid-mark-length);stroke-dashoffset:var(--paid-mark-length);animation:paidCheckCycle 2.35s .12s ease-in-out infinite,paidMarkGlow 2.35s .12s ease-in-out infinite}
+.transfer-arrow-mark .transfer-arrow-left{animation-delay:.34s,.34s}
 @keyframes paidBadgeLoop{0%,100%{transform:scale(1);box-shadow:0 0 0 0 transparent}50%{transform:scale(1.045);box-shadow:0 0 11px 1px color-mix(in srgb,var(--g) 26%,transparent)}}
-@keyframes paidCheckCycle{0%,10%{stroke-dashoffset:18;opacity:.16}38%{stroke-dashoffset:0;opacity:1}68%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:18;opacity:.16}}
+@keyframes paidCheckCycle{0%,10%{stroke-dashoffset:var(--paid-mark-length,18);opacity:.16}38%{stroke-dashoffset:0;opacity:1}68%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:var(--paid-mark-length,18);opacity:.16}}
 @keyframes paidMarkGlow{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 3px color-mix(in srgb,var(--g) 72%,transparent))}}
 .pcard[role=button]{transition:transform .12s ease}
 .pcard[role=button]:active{transform:scale(.994)}
@@ -272,12 +284,12 @@ html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::be
 .ph-years .pill:active{transform:scale(.95)}
 @media (prefers-reduced-motion:reduce){
   #sb .pd-hero,.pd-r{animation:none}
-  .paid-chip,.paid-checkmark,.paid-checkmark path{animation:none!important;transform:none;box-shadow:none}
-  .paid-checkmark path{stroke-dashoffset:0}
+  .paid-chip,.paid-checkmark,.paid-checkmark path,.transfer-chip,.transfer-arrow-mark,.transfer-arrow-mark path{animation:none!important;transform:none;box-shadow:none}
+  .paid-checkmark path,.transfer-arrow-mark path{stroke-dashoffset:0}
   .pcard[role=button],#sb .ph-row,.ph-years .pill{transition:none}
 }
-html.noanim .paid-chip,html.noanim .paid-checkmark,html.noanim .paid-checkmark path,html.rm .paid-chip,html.rm .paid-checkmark,html.rm .paid-checkmark path{animation:none!important;transform:none;box-shadow:none}
-html.noanim .paid-checkmark path,html.rm .paid-checkmark path{stroke-dashoffset:0}
+html.noanim .paid-chip,html.noanim .paid-checkmark,html.noanim .paid-checkmark path,html.noanim .transfer-chip,html.noanim .transfer-arrow-mark,html.noanim .transfer-arrow-mark path,html.rm .paid-chip,html.rm .paid-checkmark,html.rm .paid-checkmark path,html.rm .transfer-chip,html.rm .transfer-arrow-mark,html.rm .transfer-arrow-mark path{animation:none!important;transform:none;box-shadow:none}
+html.noanim .paid-checkmark path,html.noanim .transfer-arrow-mark path,html.rm .paid-checkmark path,html.rm .transfer-arrow-mark path{stroke-dashoffset:0}
 
 /* Settings rows arrive with a small stagger, the way a native list settles in. */
 .st-row{animation:pgIn .22s cubic-bezier(.22,.61,.36,1) backwards;animation-delay:calc(var(--i,0)*16ms)}

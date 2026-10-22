@@ -32,7 +32,7 @@ function noContentInStatus(r) {
     assert.equal(r.allowed, true); assert.equal(r.mode, 'resolve'); assert.equal(r.status, 'CONFLICT — resolution preview ready');
     assert.equal(r.action, 'REVIEW ONE NOTE CONFLICT'); assert.equal(JSON.stringify(r.fields), '["body"]');
     assert.equal(r.local.body, 'local-secret'); assert.equal(r.cloud.body, 'cloud-secret'); assert.equal(r.record.contentFingerprint, await hash(base));
-    assert.equal(r.canKeepCloud, true); assert.equal(r.canKeepLocal, false); assert.equal(JSON.stringify(s), before); noContentInStatus(r);
+    assert.equal(r.canKeepCloud, true); assert.equal(r.canKeepLocal, true); assert.equal(JSON.stringify(s), before); noContentInStatus(r);
   });
   await test('multiple differing fields are reported by name', async () => {
     const s = await fixture({ local: { title: 'local-title', note_date: '2026-10-21' }, cloud: { title: 'cloud-title', note_date: '2026-10-22' } });
@@ -72,6 +72,10 @@ function noContentInStatus(r) {
     const r = await api.run('resolve', 't', io()); assert.equal(r.allowed, true); assert.match(r.status, /RESOLVED — CLOUD VERSION KEPT/);
     assert.equal(commits, 1); assert.equal(confirms, 1);
   });
+  await test('keep-local success status is surfaced', async () => {
+    const r = await api.run('resolve', 't', io({ resolve: async () => { commits++; return { committed: true, verified: true, status: 'RESOLVED — LOCAL VERSION KEPT; CLOUD OVERWRITTEN; LOCAL BACKUP RETAINED' }; } }));
+    assert.equal(r.allowed, true); assert.match(r.status, /RESOLVED — LOCAL VERSION KEPT; CLOUD OVERWRITTEN/); assert.equal(commits, 1);
+  });
   await test('cancellation performs no resolution', async () => { const r = await api.run('resolve', 't', io({ confirm: async () => false })); assert.equal(r.allowed, false); assert.equal(commits, 0); });
   await test('stale ticket never prompts', async () => { await api.run('resolve', 'old', io()); assert.equal(commits + confirms, 0); });
   await test('changed evidence blocks resolution', async () => {
@@ -84,6 +88,16 @@ function noContentInStatus(r) {
   await test('postcommit failure is distinct', async () => {
     const r = await api.run('resolve', 't', io({ resolve: async () => { throw Object.assign(Error('private'), { committed: true }); } }));
     assert.match(r.status, /LOCAL WRITE OCCURRED — RESOLUTION/); assert.equal(r.allowed, false);
+  });
+  await test('cloud-written failure is distinct and redacted', async () => {
+    const status = 'CLOUD WRITE OCCURRED — RESOLUTION VERIFICATION FAILED; INSPECT NOTE-PULL RECOVERY';
+    const r = await api.run('resolve', 't', io({ resolve: async () => { throw Object.assign(Error('private'), { status }); } }));
+    assert.equal(r.status, status); assert.equal(r.allowed, false); assert.ok(!r.status.includes('private'));
+  });
+  await test('unknown cloud outcome is distinct and redacted', async () => {
+    const status = 'CLOUD WRITE OUTCOME UNKNOWN — INSPECT NOTE-PULL RECOVERY BEFORE ANY RETRY';
+    const r = await api.run('resolve', 't', io({ resolve: async () => { throw Object.assign(Error('private'), { status }); } }));
+    assert.equal(r.status, status); assert.equal(r.allowed, false); assert.ok(!r.status.includes('private'));
   });
   await test('unverified resolution cannot pass', async () => {
     const r = await api.run('resolve', 't', io({ resolve: async () => ({ committed: true, verified: false }) })); assert.equal(r.allowed, false);

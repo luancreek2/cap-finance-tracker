@@ -22,9 +22,14 @@ const context = {
   crypto: webcrypto, TextEncoder, URLSearchParams,
   location: { search: '' }, localStorage: { getItem: () => null },
   document: { getElementById: () => output, createElement: element, createTextNode: text => ({ textContent: text }) }, toast() {},
+  CapProductionRpc: {
+    snapshotRows: async () => ({ snapshot: {}, rows: new Proxy({}, { get: (t, key) => cloud === null ? [] : [{ entity: String(key), row: cloud, lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } }] }) }),
+    readNoteRecord: async () => null, changeNote: async () => ({ status: 'APPLIED' }),
+    createTransaction: async () => ({ status: 'APPLIED' }),
+  },
   CapSupabase: {
     currentUser: async () => ({ id: owner }),
-    syncRequest: async () => cloud === null ? [] : [cloud],
+    syncRequest: async () => { throw Error('DIRECT_TABLE_ACCESS_DISABLED'); },
   },
   CapOff: { syncStore: async (store, op) => {
     if (op === 'get') return baseline;
@@ -161,12 +166,12 @@ async function check(label, operation, remote, expected, classification, b = bas
   context.CapSupabase.currentUser = originalUser;
   passed++;
   review = await sync.inspectOutboxConflicts(); token = review.conflicts[0].token;
-  const originalRequest = context.CapSupabase.syncRequest;
-  context.CapSupabase.syncRequest = async () => { throw Error(owner + ' sensitive-value'); };
+  const originalRequest = context.CapProductionRpc.snapshotRows;
+  context.CapProductionRpc.snapshotRows = async () => { throw Error(owner + ' sensitive-value'); };
   choice = await sync.chooseOutboxConflict(token, 'local');
   assert.equal(choice.recorded, false);
   assert.ok(!JSON.stringify(choice).includes('sensitive-value'));
-  context.CapSupabase.syncRequest = originalRequest;
+  context.CapProductionRpc.snapshotRows = originalRequest;
   passed++;
   assert.equal((await sync.chooseOutboxConflict('unknown', 'local')).recorded, false);
   assert.equal((await sync.chooseOutboxConflict(token, 'invalid')).recorded, false);

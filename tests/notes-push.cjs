@@ -27,14 +27,20 @@ async function fixture({ insert = false, noop = false } = {}) {
     currentUser: async () => ({ id: f.owner }),
     readState: async () => clone({ baseline: f.baseline, entries: f.entries }),
     readLocal: async () => clone(f.local),
-    readCloud: async () => { f.calls.reads++; return clone(f.cloud); },
+    readCloud: async () => { f.calls.reads++; if (f.cloud === null) return null;
+      return { row: clone(f.cloud), lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } }; },
     ready: async () => true,
     cas: async args => {
       f.calls.cas++;
       assert.equal(args.p_id, id);
       assert.deepEqual(clone(args.p_desired), content(desired));
+      assert.ok(['create', 'edit'].includes(args.p_action), 'Action must be create or edit');
+      if (args.p_action === 'edit') assert.ok(args.p_expected && args.p_expected.content && args.p_expected.lifecycle, 'Expected content and lifecycle envelope');
+      else assert.equal(args.p_expected, null, 'A create must not carry an expected state');
+      assert.equal(args.p_operation_id, 'op-1');
       const now = f.cloud === null ? null : content(f.cloud);
-      if (JSON.stringify(now) !== JSON.stringify(args.p_expected)) return { status: 'CONFLICT' };
+      const expected = args.p_expected === null ? null : args.p_expected.content;
+      if (JSON.stringify(now) !== JSON.stringify(expected)) return { status: 'CONFLICT' };
       f.cloud = { id, user_id: owner, ...clone(args.p_desired), updated_at: '2026-10-20T01:00:00Z' };
       return { status: 'APPLIED' };
     },
@@ -119,7 +125,8 @@ async function test(label, fn) { await fn(); checks++; }
   });
   for (const failRead of [false, true]) await test('failed post-write verification', async () => {
     const f = await fixture(), read = f.io.readCloud;
-    f.io.readCloud = async () => { if (f.calls.cas) { if (failRead) throw Error('read failed'); return { ...f.cloud, body: 'wrong' }; } return read(); };
+    f.io.readCloud = async () => { if (f.calls.cas) { if (failRead) throw Error('read failed');
+      return { row: { ...f.cloud, body: 'wrong' }, lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } }; } return read(); };
     assert.equal((await f.run()).status, 'CLOUD WRITE OCCURRED — VERIFICATION FAILED');
     assert.equal(f.calls.finalize, 0); assert.equal(f.entries.length, 1);
   });

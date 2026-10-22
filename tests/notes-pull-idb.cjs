@@ -33,6 +33,16 @@ async function fixture() {
   vm.runInContext(sync, c); vm.runInContext(manual, c);
   c.CapOff.init({ get: () => c.S, set: value => { if (f.failSet) throw Error('Set failed'); c.S = value; } });
   f.cloud = clone(row()); f.originalCloud = clone(f.cloud); f.cloudAccount = clone(account());
+  c.CapProductionRpc = {
+    readNoteRecord: async (ownerId, selector) => {
+      f.exactReads++; if (f.onExactRead) await f.onExactRead();
+      if (f.failRead) throw Error('private read error');
+      if (f.absent) return null;
+      return { row: clone(f.cloud), lifecycle: { version: 1, revision: 1, deleted_at: null, operation_id: null } };
+    },
+    changeNote: async () => { f.cloudWrites++; throw Error('Forbidden cloud mutation'); },
+    createTransaction: async () => { f.cloudWrites++; throw Error('Forbidden cloud mutation'); },
+  };
   c.CapSupabase = {
     currentUser: async () => { if (f.authFails) throw Error('private auth error'); return { id: f.owner || owner }; }, status: () => ({ userId: f.owner || owner }),
     validateRealData: async () => {
@@ -41,12 +51,7 @@ async function fixture() {
         snapshot: { notes: [clone(f.cloud)], accounts: [clone(f.cloudAccount)], profiles: [profile], user_preferences: [preferences] } };
       if (f.mutateValidation) f.mutateValidation(result); return result;
     },
-    syncRequest: async (url, options) => {
-      if (options) { f.cloudWrites++; throw Error('Forbidden cloud mutation'); }
-      f.exactReads++; if (f.onExactRead) await f.onExactRead();
-      if (f.failRead) throw Error('private read error');
-      return f.absent ? [] : [clone(f.cloud)];
-    },
+    syncRequest: async () => { f.cloudWrites++; throw Error('DIRECT_TABLE_ACCESS_DISABLED'); },
   };
   const p = c.buildSupabaseMigrationPlan(), validation = await c.CapSupabase.validateRealData(p);
   const records = await c.CapSync.recordFingerprints(p, validation);

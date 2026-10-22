@@ -63,14 +63,15 @@ record is overwritten by this flow.
 
 ## Keep-cloud conflict resolution reuse
 
-Shell v313 reuses the `manual-notes-pull-v1` checkpoint and
+Shell v314 reuses the `manual-notes-pull-v1` checkpoint and
 `manual-notes-pull-backup:` namespace for the non-destructive **keep-cloud**
-resolution of one conflicted note. The same backup, atomic local-note + baseline
-update, cloud re-read, and checkpoint cleanup rules apply; the only difference
-is that the current local note is allowed to differ from the baseline because
-both sides changed. The recovery inspector labels such a checkpoint
-`READ-ONLY NOTE-RESOLUTION RECOVERY`. Keeping the browser version (overwriting
-the cloud) is not implemented. See `CONFLICT_RESOLUTION.md`.
+resolution and the destructive **keep-local** overwrite of one conflicted note.
+The same backup-first, atomic baseline acknowledgement, cloud re-read, and
+checkpoint cleanup rules apply. Keep-local additionally performs one exact CAS
+write through `cap_sync_note_put` and can leave a `cloud-written` checkpoint if
+the baseline acknowledgement does not complete. The recovery inspector labels
+such a checkpoint `READ-ONLY NOTE-RESOLUTION RECOVERY` and shows the mode.
+See `CONFLICT_RESOLUTION.md`.
 
 ## Interrupted work
 

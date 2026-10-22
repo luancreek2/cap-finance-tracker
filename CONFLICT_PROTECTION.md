@@ -1,12 +1,15 @@
 # Conflict protection
 
-Shell `cap-shell-v312`, with keep-cloud resolution added in `cap-shell-v313`
-(see `CONFLICT_RESOLUTION.md`). The original conflict-protection work was
-**simulated only**. A separately authorized live conflict trial was later
-performed on one baseline-mapped note; see [Live conflict trial](#live-conflict-trial).
+Shell `cap-shell-v314`, with keep-cloud resolution added in `cap-shell-v313`
+and keep-local resolution implemented in v314 (see `CONFLICT_RESOLUTION.md`).
+The original conflict-protection work was **simulated only**. A separately
+authorized live conflict trial was later performed for the keep-cloud path on
+one baseline-mapped note; see [Live conflict trial](#live-conflict-trial).
 Cloud Sync remained OFF throughout. The checks verify that Cap refuses to
 overwrite a note when both the browser and Supabase changed it after the same
-baseline.
+baseline. A separately authorized keep-local live trial also passed on
+2026-10-21, including cloud recheck and normal-browser convergence/blocker
+verification; see `CONFLICT_RESOLUTION.md`.
 
 ## What counts as a conflict
 
@@ -50,8 +53,8 @@ through the same planner four times:
 1. simultaneous different local/cloud edits → blocked as `CONFLICT`;
 2. the same pending edit against a changed cloud note → blocked as `CONFLICT`;
 3. a cloud-only change → still allowed as a pull preview;
-4. the same divergent note → allowed only as a resolution preview with
-   keep-cloud available and keep-local unavailable.
+4. the same divergent note → allowed only as a resolution preview with both
+   keep-cloud and keep-local available.
 
 It confirms the inputs were unchanged after planning. It does not read real
 notes, localStorage, IndexedDB, or the network, and it makes no writes. Expected:
@@ -75,15 +78,18 @@ first. Do not retry, reset, clear storage, or delete metadata.
   single/multiple field conflicts, same-content convergence, local-only vs
   cloud-only changes, pending/recovery precedence, push-side conflicts, leakage,
   and repeatable synthetic self-check. The self-check now also proves that a
-  divergent note can be previewed for keep-cloud resolution while keep-local is
-  unavailable.
+  divergent note can be previewed for resolution with both keep-cloud and
+  keep-local available.
 - `node tests/notes-pull-idb.cjs`: 50 UI/real-helper/atomic IndexedDB checks.
-  Six new conflict cases cover UI field names, no offered action, no writes or
+  Six conflict cases cover UI field names, no offered action, no writes or
   backup/checkpoint, push-side blocking, retained-backup preservation, reload
   behavior, recovery precedence, and the self-check button.
-- Keep-cloud resolution adds `node tests/notes-resolution.cjs` (26 pure checks)
-  and `node tests/notes-resolution-idb.cjs` (22 UI/atomic IndexedDB checks).
-  Details and the disposable-origin result are in `CONFLICT_RESOLUTION.md`.
+- Resolution adds `node tests/notes-resolution.cjs` (29 pure checks) and
+  `node tests/notes-resolution-idb.cjs` (39 UI/atomic IndexedDB checks).
+  Keep-local uses a mocked CAS transport and covers success, cancellation,
+  stale cloud evidence, CAS conflict, unknown outcome, and cloud-written/
+  baseline-not-updated recovery. Details and the disposable-origin result are
+  in `CONFLICT_RESOLUTION.md`.
 - Native disposable-browser rehearsal (`127.0.0.1:8036`, 43-record fixture,
   mocked cloud) produced `CONFLICT` for both previews with only `body` named,
   no action button, zero cloud mutations/exact reads, no outbox/backup/checkpoint,
@@ -113,9 +119,13 @@ conflict created:
 
 At that point no real note, financial, or cloud data was changed. The
 keep-cloud path was only previewed synthetically in the self-check; it had not
-yet been executed on real data. Keep-local remains unavailable. This verifies
-the installed read-only conflict checks before the later authorized trial; it
-was not itself a live conflict trial, merge, or resolution apply.
+yet been executed on real data. Keep-local was unavailable in that shell. This
+verifies the installed read-only conflict checks before the later authorized
+trial; it was not itself a live conflict trial, merge, or resolution apply.
+
+Shell v314 makes keep-local available in the review UI with the backup-first
+CAS guard. The later separately authorized live trial is recorded in
+`CONFLICT_RESOLUTION.md`; this document does not authorize additional writes.
 
 ### Shell v312 (historical)
 
@@ -162,5 +172,6 @@ cloud marker remains by user approval; no restoration was authorized.
 
 The retained backup was not deleted. The cloud marker remains by user approval;
 restoration would require a separate authorization and another guarded cloud
-write. Keep-local, merge, automatic resolution, background sync, and
-financial-record changes remain unimplemented or blocked.
+write. Keep-local was not part of that trial; a live keep-local overwrite still
+requires separate explicit authorization. Merge, automatic resolution,
+background sync, and financial-record changes remain unimplemented or blocked.
