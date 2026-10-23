@@ -222,7 +222,6 @@ html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::be
 #sheet.cardfx.open{animation:capBgIn .4s ease both}
 #sheet.cardfx.closing{animation:capBgOut .34s ease forwards}
 .cardfx-tilt{will-change:transform;transform-origin:50% 50%}
-.cardfx-fly .cc{will-change:box-shadow}
 #sb .cc.detail .at small,#sb .cc.detail .at .v{will-change:transform,opacity}
 .row .f small.du{transition:color .45s ease}
 .row>b.du{transition:color .45s ease}
@@ -374,3 +373,11 @@ html.noanim .pt-ripple,html.rm .pt-ripple{display:none}
   40%{opacity:1;transform:translateY(-3px)}
 }
 @media (prefers-reduced-motion:reduce){.pdots i{animation:none;opacity:.75}}
+#cap-overlays{position:fixed;inset:0;z-index:var(--layer-popover);pointer-events:none}
+#cap-overlays>.cap-portaled{pointer-events:auto;position:fixed;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#cap-overlays>.cap-portaled.out{pointer-events:none}
+#sheet,#pop,.acct-setup-overlay,.custom-card-dialog,.whats-new-overlay{z-index:var(--layer-modal)}
+#cfm{z-index:var(--layer-confirmation)}
+#lock{z-index:var(--layer-lock)}
+.toast,.payment-success,.account-transfer-animation{z-index:var(--layer-notice)}
+.sbtn,.sbtn:hover,.sbtn:active{z-index:var(--layer-navigation)!important}

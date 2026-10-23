@@ -857,7 +857,18 @@ function showAccountTransferAnimation(from,to,amount){
   requestAnimationFrame(()=>{el.classList.add('show');const a=el.querySelector('.ata-from .cc'),b=el.querySelector('.ata-to .cc'),status=el.querySelector('.ata-status');a?.classList.add('ata-pulse');setTimeout(()=>b?.classList.add('ata-pulse'),reduce?0:720);if(!reduce){const ar=a?.getBoundingClientRect(),br=b?.getBoundingClientRect();if(ar&&br)for(let i=0;i<6;i++){const coin=document.createElement('i');coin.className='ata-coin';coin.textContent='₱';coin.style.left=(ar.left+ar.width/2)+'px';coin.style.top=(ar.top+ar.height/2)+'px';el.append(coin);const dx=br.left+br.width/2-(ar.left+ar.width/2),dy=br.top+br.height/2-(ar.top+ar.height/2),lift=-48-(i%3)*18;coin.animate([{opacity:0,transform:'translate(-50%,-50%) scale(.25)'},{opacity:1,offset:.14,transform:`translate(-50%,-50%) translate(${dx*.42}px,${dy*.42+lift}px) scale(1)`},{opacity:1,offset:.78,transform:`translate(-50%,-50%) translate(${dx*.8}px,${dy*.8+lift*.24}px) scale(.86)`},{opacity:0,transform:`translate(-50%,-50%) translate(${dx}px,${dy}px) scale(.45)`}],{duration:1350,delay:i*145,easing:'cubic-bezier(.22,.75,.2,1)',fill:'forwards'})}}setTimeout(()=>{status?.classList.add('done');el.querySelector('.ata-success')?.classList.add('show');if(typeof playPaymentConfirmation==='function')playPaymentConfirmation()},reduce?100:1900);setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),280)},reduce?800:3250)})
 }
 function acctMenu(id){const a=acct(id),cr=a.type=='credit',cash=['debit','ewallet'].includes(a.type),interest=cash&&a.img!='cash';openS(`<div style="display:flex;justify-content:flex-end;position:relative;margin-bottom:6px"><button class="pill" aria-label="Card options" aria-haspopup="menu" onclick="event.stopPropagation();kebab()">⋯</button><div id="km" class="menu" role="menu"><button role="menuitem" onclick="kebab(1);cardSettings(${id})">Card overview &amp; fees</button><button role="menuitem" onclick="kebab(1);${cr?`cardAbout(${id})`:`debitAbout(${id})`}">✎ Edit card details</button></div></div>${cardH(a,1,1)}${cash?accountMoneyActions(id):''}${interest?savingsInterestSummary(a):''}${acctTx(id)}`)}
-function kebab(c){const m=$('#km');if(m)m.classList.toggle('open',!c&&!m.classList.contains('open'))}
+function kebab(c){
+  const m=$('#km');if(!m)return;
+  const show=!c&&!m.classList.contains('open'),button=m._anchor||m.previousElementSibling;
+  m._anchor=button;m.classList.toggle('open',show);button?.setAttribute('aria-expanded',String(show));
+  m._release?.();m._release=null;
+  if(show&&window.CapOverlays){
+    m._release=CapOverlays.attach(m,button);
+    m.querySelector('button')?.focus({preventScroll:true});
+    if(!m._portalBound){m._portalBound=true;m.addEventListener('cap:overlay-dismiss',()=>kebab(1));
+      m.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();kebab(1);button?.focus()}})}
+  }
+}
 /* ---- bills: choose payment account */
 function billAcct(id){const b=S.bills.find(x=>x.id==id);if(!b)return;if(!S.accts.length)return toast('Add an account first');openS(`<h2>Pay ${esc(b.name)} with</h2><select id="bpa">${S.accts.map(a=>`<option value="${a.id}" ${a.id==b.acct?'selected':''}>${esc(a.name)} · ${a.type=='credit'?'Credit card':a.type=='ewallet'?'E-wallet':'Bank account'}</option>`).join('')}</select><p class="m" style="font-size:12px">Used when you record the payment — that account’s balance updates then, not before.</p><button class="btn" onclick="billAcctOk(${id})">Save</button> <button class="btn s" onclick="closeS()">Cancel</button>`)}
 function billAcctOk(id){const b=S.bills.find(x=>x.id==id);if(b)b.acct=+$('#bpa').value;closeS();render();toast('Payment account saved')}
@@ -867,16 +878,16 @@ function initCardAnimations() {
 
 /* Card zoom animation + credit balance flip.
    - The tapped card is hidden in the background by a stylesheet rule while its detail view is open.
-   - A single floating copy of the card is RESIZED and moved between its slot and the detail view
-     (not scaled), so the bank name, type label, balance and padding keep their real sizes and land
-     on exactly the same pixels as the real card - nothing shifts after the animation ends.
+   - One floating copy bridges the source and detail card above the modal layer.
+     Geometry uses compositor transforms; the separate balance overlay lands on
+     the real detail text before the synchronous visibility hand-off.
    - Credit cards with a limit flip between available credit and balance when tapped. */
 (function(){
   if(window.__cardfx||typeof window.acctMenu!=='function'||typeof window.closeS!=='function')return;
   window.__cardfx=1;
   const origOpen=window.acctMenu,origClose=window.closeS;
   const OPEN_MS=480,CLOSE_MS=360,OUT='cubic-bezier(.2,.8,.2,1)',IN='cubic-bezier(.32,.72,0,1)';
-  const reduce=()=>window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce=()=>document.documentElement.matches('.noanim,.rm')||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
   const $1=s=>document.querySelector(s);
   let fx=null,busy=false,phase='',pend=false,hid=null,cur=null,tg=null;const mode={};
 
@@ -930,6 +941,7 @@ function initCardAnimations() {
     Object.assign(root.style,px(rect));
     const tilt=document.createElement('div');tilt.className='cardfx-tilt';
     const body=card.cloneNode(true);body.removeAttribute('onclick');body.classList.remove('cfx-tap');body.style.visibility='visible';
+    root.setAttribute('aria-hidden','true');
     tilt.appendChild(body);root.appendChild(tilt);document.body.appendChild(root);
     return{root,tilt,body};
   }
@@ -947,7 +959,7 @@ function initCardAnimations() {
   function textFx(f,src,det,rect,opening,o){
     const own=f.body.querySelector('.at');if(own)own.style.visibility='hidden';   // never two copies of the balance
     if(!det||!det.querySelector('.at'))return;
-    const root=document.createElement('div');root.className='cardfx-txt';Object.assign(root.style,px(rect));
+    const root=document.createElement('div');root.className='cardfx-txt';root.setAttribute('aria-hidden','true');Object.assign(root.style,px(rect));
     const cc=det.cloneNode(true);cc.removeAttribute('onclick');cc.classList.remove('cfx-tap');cc.style.visibility='visible';
     [].slice.call(cc.children).forEach(function(c){if(!c.classList.contains('at'))c.style.visibility='hidden';});
     root.appendChild(cc);document.body.appendChild(root);f.ghost=root;
@@ -973,14 +985,18 @@ function initCardAnimations() {
       });
     });
   }
-  function fly(f,src,small,big,opening,shSmall,shBig,det){
+  function fly(f,src,small,big,opening,det){
     const [sx]=center(small),[bx]=center(big),dir=sx>=bx?1:-1;
     const dur=opening?OPEN_MS:CLOSE_MS,o={duration:dur,easing:opening?OUT:IN,fill:'forwards'};
-    const move=f.root.animate(opening?[px(small),px(big)]:[px(big),px(small)],o);
+    // Lay out once at the destination size; only compositor transforms move it.
+    Object.assign(f.root.style,px(big),{transformOrigin:'0 0'});
+    const smallTransform='translate3d('+(small.left-big.left)+'px,'+(small.top-big.top)+'px,0) scale('+(small.width/big.width)+','+(small.height/big.height)+')';
+    const ends=[{transform:smallTransform},{transform:'translate3d(0,0,0) scale(1)'}];
+    const move=f.root.animate(opening?ends:ends.slice().reverse(),o);
     const t=(rx,ry)=>({transform:'perspective(1100px) rotateX('+rx+'deg) rotateY('+ry+'deg)'});
     f.tilt.animate([t(0,0),Object.assign(t(opening?6:4,dir*(opening?3:2)),{offset:.4}),t(0,0)],{duration:dur,easing:'ease-in-out',fill:'forwards'});
     const mid='0 38px 72px rgba(0,0,0,.42)';
-    f.body.animate(opening?[{boxShadow:shSmall},{boxShadow:mid,offset:.45},{boxShadow:shBig}]:[{boxShadow:shBig},{boxShadow:mid,offset:.35},{boxShadow:shSmall}],{duration:dur,easing:'ease-in-out',fill:'forwards'});
+    f.body.style.boxShadow=mid;
     textFx(f,src,det,big,opening,o);
     return move.finished;
   }
@@ -1052,29 +1068,32 @@ function initCardAnimations() {
 
   /* ---------- open / close ---------- */
   window.acctMenu=function(id){
+    // Never replace the destination DOM while a flying copy owns the hand-off.
+    if(busy)return;
     settle();
     const sheet=$1('#sheet'),src=slot(id);
     const live=sheet.classList.contains('open')&&!sheet.classList.contains('closing');
     cur=id;if(!live)mode[id]='avail';
-    if(live||busy||reduce()||!src||src.getBoundingClientRect().width<8){
-      const r=origOpen.apply(this,arguments);setHide(id);applyMode($1('#sb .cc.detail'));return r;}
-    const from=src.getBoundingClientRect(),shSmall=getComputedStyle(src).boxShadow;
+    if(live||reduce()||!src||src.getBoundingClientRect().width<8){
+      plain();clearHide();
+      const r=origOpen.apply(this,arguments);applyMode($1('#sb .cc.detail'));return r;}
+    const from=src.getBoundingClientRect();
     sheet.classList.add('cardfx');
     origOpen.apply(this,arguments);
     const sb=$1('#sb'),card=sb.querySelector('.cc.detail');
-    if(!card){sheet.classList.remove('cardfx');setHide(id);return;}
-    const to=card.getBoundingClientRect(),shBig=getComputedStyle(card).boxShadow;
-    if(to.width<8){sheet.classList.remove('cardfx');setHide(id);return;}
+    if(!card){plain();clearHide();return;}
+    const to=card.getBoundingClientRect();
+    if(to.width<8){plain();clearHide();return;}
     fx={id:id};busy=true;phase='open';pend=false;applyMode(card);
     const f=flyer(card,to);
+    sb.style.pointerEvents='none';
     card.style.visibility='hidden';setHide(id);
-    sb.animate([{opacity:0},{opacity:1}],{duration:300,delay:40,easing:'ease-out',fill:'backwards'});
     [].slice.call((sb.querySelector('#sv')||sb).children).forEach(function(ch,i){
       if(ch===card)return;
       ch.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:340,delay:180+Math.min(i,6)*40,easing:OUT,fill:'backwards'});
     });
-    const done=function(){card.style.visibility='';f.root.remove();if(f.ghost)f.ghost.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
-    fly(f,src,from,to,true,shSmall,shBig,card).then(done,done);
+    const done=function(){card.style.visibility='';sb.style.pointerEvents='';f.root.remove();if(f.ghost)f.ghost.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
+    try{fly(f,src,from,to,true,card).then(done,done)}catch(_){done()}
   };
   function plain(){$1('#sheet').classList.remove('cardfx');fx=null;}
   window.closeS=function(){
@@ -1083,21 +1102,22 @@ function initCardAnimations() {
     if(busy){if(phase==='open')pend=true;return;}      // closing while it is still opening: close right after it lands
     settle();
     const card=fx&&$1('#sb .cc.detail'),src=fx&&slot(fx.id);
-    if(!card||!src||reduce()){plain();return origClose.apply(this,arguments);}
+    if(!card||!src||reduce()){plain();clearHide();return origClose.apply(this,arguments);}
     const from=card.getBoundingClientRect(),to=src.getBoundingClientRect();
-    if(to.bottom<0||to.top>innerHeight||from.bottom<0||from.top>innerHeight||from.width<8||to.width<8){plain();return origClose.apply(this,arguments);}
-    const shBig=getComputedStyle(card).boxShadow,shSmall=getComputedStyle(src).boxShadow;
+    if(to.bottom<0||to.top>innerHeight||from.bottom<0||from.top>innerHeight||from.width<8||to.width<8){plain();clearHide();return origClose.apply(this,arguments);}
     busy=true;phase='close';
     const f=flyer(card,from);
+    $1('#sb').style.pointerEvents='none';
     card.style.visibility='hidden';
     sheet.classList.add('closing');
     $1('#sb').animate([{opacity:1},{opacity:0}],{duration:240,easing:'ease-in',fill:'forwards'});
     const done=function(){
-      f.root.remove();if(f.ghost)f.ghost.remove();clearHide();
+      clearHide();card.style.visibility='';f.root.remove();if(f.ghost)f.ghost.remove();
       sheet.classList.remove('open','closing','cardfx');document.body.classList.remove('sheet-open');
       $1('#sb').getAnimations().forEach(function(a){a.cancel()});
+      $1('#sb').style.pointerEvents='';
       fx=null;busy=false;phase='';};
-    fly(f,src,to,from,false,shSmall,shBig,card).then(done,done);
+    try{fly(f,src,to,from,false,card).then(done,done)}catch(_){done()}
   };
   new MutationObserver(function(){const s=$1('#sheet');if(hid!=null&&!busy&&!s.classList.contains('open')){settle();clearHide();}})
     .observe($1('#sheet'),{attributes:true,attributeFilter:['class']});

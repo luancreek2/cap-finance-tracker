@@ -287,7 +287,7 @@ function payTerminal(name,amount,sub,preDelay,done){
   };
   if(preDelay>0)window._ptPre=setTimeout(tick,preDelay);else tick();
 }
-document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))m.classList.remove('open')});
+document.addEventListener('click',e=>{const m=$('#km');if(m&&!e.target.closest('#km'))kebab(1)});
 
 
 function initGlobalNoSelection() {

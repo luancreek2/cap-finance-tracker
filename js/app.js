@@ -3470,6 +3470,25 @@ function stRow(icon,title,val,go){
   return go?`<button class="st-row" style="--i:${i}" onclick="${go}">${body}</button>`:`<div class="st-row st-ro" style="--i:${i}">${body}</div>`;
 }
 function stSw(label,sub,on,fn){return `<label class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><span class="swx"><input type="checkbox" ${on?'checked':''} onchange="${fn}"><i></i></span></label>`}
+// Device-only presentation preference. Never enters S, backups, sync, or backend gates.
+function developerOptionsEnabled(){try{return localStorage.getItem('cap_developer_options')==='1'}catch(_){return false}}
+function setDeveloperOptions(input){
+  try{localStorage.setItem('cap_developer_options',input.checked?'1':'0')}
+  catch(_){input.checked=developerOptionsEnabled();toast('Could not save Developer Options on this device')}
+}
+function developerSyncSettingsHtml(){
+  const html=window.CapSync?CapSync.settingsHtml():'';
+  if(developerOptionsEnabled())return html;
+  // Keep the existing runtime toggle/status intact; omit only the diagnostic tail.
+  const template=document.createElement('template');template.innerHTML=html;
+  const box=template.content.querySelector('.st-box');
+  let diagnostic=false;
+  if(box)Array.from(box.children).forEach(el=>{
+    if(el.tagName==='BUTTON')diagnostic=true;
+    if(diagnostic)el.remove();
+  });
+  return template.innerHTML;
+}
 function stSel(label,sel,sub){return `<div class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span>${sel}</div>`}
 function stBtn(label,go,cls,sub){return `<div class="st-r st-bt"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><button class="pill" onclick="${go}">${cls||'Open'}</button></div>`}
 const ST_PAGES={};
@@ -3529,7 +3548,8 @@ function stHome(){
       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")])
     +stGrp('About',[
       stRow(ST_IC.info,'About Cap',null,"stGo('about')"),
-      stRow(ST_IC.ver,'App Version',APP_VER,null)]);
+      stRow(ST_IC.ver,'App Version',APP_VER,null)])
+    +`<div class="st-grp eyebrow">Advanced</div><div class="st-box">${stSw('Developer Options','Show advanced diagnostic and development controls on this device only.',developerOptionsEnabled(),'setDeveloperOptions(this)')}</div>`;
   stSheet(h,'set-home',1);
 }
 /* ---- Profile ---- */
@@ -3853,10 +3873,11 @@ function stPrivacy(){ stStart();
   const h=stHead('Privacy &amp; Sync','openSettings()')
     +`<div class="st-grp eyebrow">Data storage</div><div class="st-box"><div class="st-r"><span class="f"><b>${cloud?'Synced with your account':'Saved on this device'}</b><small>${cloud?'Cloud sync is connected for this device.':'Your financial data is stored locally on this device.'}</small></span><span class="st-pill" data-s="${st}"><i></i>${cloud?(navigator.onLine?'Online':'Offline'):'Local only'}</span></div></div>`
     +`<p class="st-note">Cap works fully offline. Nothing is uploaded unless you connect cloud sync.</p>`
-     +`<div class="st-grp eyebrow">Supabase connection test</div><div class="st-box st-col"><p class="st-note" style="margin:0">This verifies authentication, your profile RLS row, and that another user's profile is not visible. It never uploads Cap data.</p><button class="btn" style="margin:0" onclick="testSupabaseConnection()">Test Supabase Connection</button><small id="sb-test-result" class="st-note"></small><button class="btn s" style="margin:0" onclick="testSupabaseCloudDatabase()">Test Cloud Database</button><small id="sb-crud-result" class="st-note"></small>${CapSupabase?.status().authenticated?'<button class="btn s" style="margin:0" onclick="CapSupabase.signOut()">Sign Out</button>':''}</div>`
-      +`<div class="st-grp eyebrow">Cloud Sync</div>${window.CapSync?CapSync.settingsHtml():''}`
+     +(developerOptionsEnabled()?`<div class="st-grp eyebrow">Supabase connection test</div><div class="st-box st-col"><p class="st-note" style="margin:0">Advanced connection diagnostics. No Cap data is uploaded.</p><button class="btn" style="margin:0" onclick="testSupabaseConnection()">Test Supabase Connection</button><small id="sb-test-result" class="st-note"></small><button class="btn s" style="margin:0" onclick="testSupabaseCloudDatabase()">Test Cloud Database</button><small id="sb-crud-result" class="st-note"></small></div>`:'')
+      +(window.CapSupabase?.status().authenticated?'<div class="st-box"><button class="btn s" style="margin:0" onclick="CapSupabase.signOut()">Sign Out</button></div>':'')
+      +`<div class="st-grp eyebrow">Cloud Sync</div>${developerSyncSettingsHtml()}`
       +(window.CapCloudBootstrap?CapCloudBootstrap.settingsHtml():'')
-      +`<div class="st-grp eyebrow">Migration preparation</div><div class="st-box st-col"><p class="st-note" style="margin:0">Creates a downloadable local backup and validation/mapping preview only. No financial data is uploaded or changed.</p><button class="btn" style="margin:0" onclick="prepareCloudMigration()">Prepare Cloud Migration</button><button class="btn s" style="margin:0" onclick="migrateCapData()">Migrate Data to Supabase</button><small id="migration-result" class="st-note"></small></div>`
+      +(developerOptionsEnabled()?`<div class="st-grp eyebrow">Migration preparation</div><div class="st-box st-col"><p class="st-note" style="margin:0">Creates a downloadable local backup and validation/mapping preview only. No financial data is uploaded or changed.</p><button class="btn" style="margin:0" onclick="prepareCloudMigration()">Prepare Cloud Migration</button><button class="btn s" style="margin:0" onclick="migrateCapData()">Migrate Data to Supabase</button><small id="migration-result" class="st-note"></small></div>`:'')
      +stGrp('On this device',[
       stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
       stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
@@ -4657,11 +4678,49 @@ function bindStaticEvents() {
 
 function initUiEnhancements() {
 
+/* A single, untransformed body-level host: menus never inherit sheet clipping,
+   transforms or opacity. Fixed coordinates follow the field and visual viewport. */
+window.CapOverlays={
+  attach(menu,anchor,maxHeight=300){
+    let host=document.getElementById('cap-overlays');
+    if(!host){host=document.createElement('div');host.id='cap-overlays';document.body.appendChild(host)}
+    const parent=menu.parentNode,next=menu.nextSibling,owner=anchor.closest('#sheet');
+    host.appendChild(menu);menu.classList.add('cap-portaled');
+    let raf=0,last='',disposed=false;
+    const dispose=()=>{
+      if(disposed)return;disposed=true;cancelAnimationFrame(raf);
+      if(parent&&parent!==host)parent.insertBefore(menu,next?.parentNode===parent?next:null);
+      menu.classList.remove('cap-portaled');
+      if(parent)for(const key of ['left','top','right','bottom','width','maxHeight'])menu.style[key]='';
+    };
+    const position=()=>{
+      if(disposed)return;
+      if(!anchor.isConnected||(owner&&(!owner.classList.contains('open')||owner.classList.contains('closing')))){
+        menu.dispatchEvent(new Event('cap:overlay-dismiss'));dispose();return;
+      }
+      const r=anchor.getBoundingClientRect(),v=window.visualViewport;
+      const left=v?.offsetLeft||0,top=v?.offsetTop||0,w=v?.width||innerWidth,h=v?.height||innerHeight;
+      const below=top+h-r.bottom-14,above=r.top-top-14,need=Math.min(maxHeight,menu.scrollHeight);
+      const down=below>=need||below>=above,width=Math.min(Math.max(r.width,menu.classList.contains('menu')?190:0),w-24);
+      const height=Math.max(0,Math.min(maxHeight,down?below:above));
+      const x=Math.max(left+12,Math.min(r.left,left+w-width-12));
+      const y=down?Math.max(top+8,r.bottom+6):Math.max(top+8,r.top-6-Math.min(menu.scrollHeight,height));
+      const signature=[x,y,width,height,down].join(':');
+      if(signature!==last){
+        last=signature;Object.assign(menu.style,{left:x+'px',top:y+'px',right:'auto',bottom:'auto',width:width+'px',maxHeight:height+'px'});
+        menu.classList.toggle('up',!down);
+      }
+      raf=requestAnimationFrame(position);
+    };
+    position();return dispose;
+  }
+};
+
 /* ===== Floating sheet + picker dropdowns with images ===== */
 (function(){
   const CHEV='<svg class="ps-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
   const CHECK='<svg class="ck" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
-  let pop=null,cur=null;
+  let pop=null,cur=null,detach=null;
   const base=t=>String(t).split(' · ')[0].trim();
   const acctOf=v=>S.accts.find(a=>String(a.id)==String(v));
   const typeLbl=a=>a.type=='credit'?'Credit card':a.type=='ewallet'?'E-wallet':'Bank account';
@@ -4687,34 +4746,35 @@ function initUiEnhancements() {
     const a=kind=='acct'?acctOf(o.value):null;
     b.innerHTML=`${icon(kind,o.value)}<span class="ps-t">${kind=='cat'?esc(o.value):esc(a?a.name:o.text)}</span>${CHEV}`;
   }
-  function close(refocus){
+  function close(refocus,immediate){
     if(!pop)return; const p=pop,c=cur; pop=null;cur=null;
-    c.b.setAttribute('aria-expanded','false'); p.classList.add('out'); setTimeout(()=>p.remove(),140);
-    if(refocus)c.b.focus();
+    const release=detach;detach=null;
+    c.b.setAttribute('aria-expanded','false');p.style.pointerEvents='none';p.classList.add('out');
+    const remove=()=>{release?.();p.remove()};if(immediate)remove();else setTimeout(remove,140);
+    if(refocus&&c.b.isConnected)c.b.focus({preventScroll:true});
   }
   function open(s,b,kind){
-    close();
+    close(false,true);
     const p=document.createElement('div'); p.className='ps-pop'; p.setAttribute('role','listbox');
     if(kind=='acct'){p.classList.add('grid');
       p.innerHTML=[...s.options].map((o,i)=>{if(o.disabled)return'';const a=acctOf(o.value);
         return `<div class="ps-copt${o.selected?' on':''}" role="option" tabindex="0" aria-selected="${o.selected}" aria-label="${esc(a?a.name:o.text)}" data-i="${i}"><div class="pick">${a?cardH(a,false,false):''}</div><span class="ps-cap">${a?esc(a.name)+(a.l4?' •• '+esc(a.l4):''):esc(o.text)}</span></div>`}).join('');
     }else
-    p.innerHTML=[...s.options].map((o,i)=>`<button type="button" class="ps-opt${o.selected?' on':''}" role="option" aria-selected="${o.selected}" data-i="${i}">${icon(kind,o.value)}<span class="ps-t">${label(kind,o)}</span>${o.selected?CHECK:''}</button>`).join('');
-    document.body.appendChild(p);
-    const r=b.getBoundingClientRect(),vh=innerHeight,below=vh-r.bottom-14,above=r.top-14,need=Math.min(kind=='acct'?420:300,p.scrollHeight);
-    const down=below>=need||below>=above;
-    p.style.left=r.left+'px'; p.style.width=r.width+'px';
-    p.style.maxHeight=Math.max(140,Math.min(kind=='acct'?420:300,down?below:above))+'px';
-    if(down)p.style.top=(r.bottom+6)+'px'; else{p.style.bottom=(vh-r.top+6)+'px';p.classList.add('up')}
+    p.innerHTML=[...s.options].map((o,i)=>o.disabled?'':`<button type="button" class="ps-opt${o.selected?' on':''}" role="option" aria-selected="${o.selected}" data-i="${i}">${icon(kind,o.value)}<span class="ps-t">${label(kind,o)}</span>${o.selected?CHECK:''}</button>`).join('');
+    detach=CapOverlays.attach(p,b,kind=='acct'?420:300);
+    p.addEventListener('cap:overlay-dismiss',()=>close());
     pop=p;cur={s,b,kind}; b.setAttribute('aria-expanded','true');
-    const sel=p.querySelector('.on'); if(sel)sel.scrollIntoView({block:'nearest'});
+    const sel=p.querySelector('.on');if(sel)p.scrollTop=Math.max(0,sel.offsetTop-p.clientHeight/2);
     p.addEventListener('click',e=>{const x=e.target.closest('.ps-opt,.ps-copt');if(!x)return;
+      if(s.options[+x.dataset.i]?.disabled)return;
       s.selectedIndex=+x.dataset.i; s.dispatchEvent(new Event('change',{bubbles:true})); close(true)});
     p.addEventListener('keydown',e=>{const L=[...p.querySelectorAll('.ps-opt,.ps-copt')],i=L.indexOf(document.activeElement),st=kind=='acct'?2:1;
       if(e.key=='ArrowDown'||e.key=='ArrowRight'){e.preventDefault();L[Math.min(L.length-1,i+(e.key=='ArrowDown'?st:1))].focus()}
       else if(e.key=='ArrowUp'||e.key=='ArrowLeft'){e.preventDefault();L[Math.max(0,i-(e.key=='ArrowUp'?st:1))].focus()}
       else if((e.key=='Enter'||e.key==' ')&&document.activeElement.classList.contains('ps-copt')){e.preventDefault();document.activeElement.click()}
-      else if(e.key=='Escape'){e.stopPropagation();close(true)}});
+      else if(e.key=='Escape'){e.preventDefault();e.stopPropagation();close(true)}
+      else if(e.key=='Tab')close();});
+    (sel||p.querySelector('[role=option]'))?.focus({preventScroll:true});
   }
   function enhance(){
     const root=document.getElementById('sb'); if(!root)return;
@@ -4726,11 +4786,12 @@ function initUiEnhancements() {
       s.style.display='none'; s.after(b); paint(s,b,kind);
       s.addEventListener('change',()=>paint(s,b,kind));
       b.addEventListener('click',()=>{cur&&cur.s===s?close():open(s,b,kind)});
+      b.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+        e.preventDefault();if(cur?.s!==s)open(s,b,kind);(pop?.querySelector('.on')||pop?.querySelector('[role=option]'))?.focus();
+      }});
     });
-    if(!root.dataset.psScroll){root.dataset.psScroll=1;root.addEventListener('scroll',()=>close(),{passive:true});}
   }
   document.addEventListener('pointerdown',e=>{if(pop&&!e.target.closest('.ps-pop,.ps-btn'))close()},true);
-  addEventListener('resize',()=>close());
   window.psEnhance=enhance;
   const _open=window.openS,_close=window.closeS;
   window.openS=function(h){close();_open.call(this,h);enhance()};

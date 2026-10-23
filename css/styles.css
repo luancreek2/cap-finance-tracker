@@ -1766,15 +1766,19 @@ body.sheet-open .fab.ai{display:none}
 
 
 
+/* Shared layer contract. Keep all body-level overlays in this order; children
+   inside sheets cannot escape a transformed/clipped ancestor with z-index. */
+:root{--layer-navigation:50;--layer-backdrop:900;--layer-modal:1000;--layer-card-transition:1010;--layer-popover:1100;--layer-confirmation:1200;--layer-notice:1300;--layer-lock:1400}
+
 /* ===== Card zoom: tap a card -> it expands into the detail view, closes back to its slot ===== */
-/* the flying card is really resized (not scaled), so its text/padding match the tile at both ends */
-.cardfx-fly{position:fixed;margin:0;z-index:60;pointer-events:none;contain:layout style}
+/* The flying card is laid out once; geometry is animated using transforms. */
+.cardfx-fly{position:fixed;margin:0;z-index:var(--layer-card-transition);pointer-events:none;contain:layout style;will-change:transform}
 .cardfx-tilt{position:relative;width:100%;height:100%}
 .cardfx-fly .cc{position:absolute;inset:0;width:100%;height:100%;margin:0;aspect-ratio:auto;cursor:default;
   overflow:hidden;isolation:isolate;contain:paint;transform:translateZ(0);
   -webkit-mask-image:-webkit-radial-gradient(white,black)}
 .cardfx-fly .cc *{max-width:100%}
-.cardfx-txt{position:fixed;margin:0;z-index:61;pointer-events:none;contain:layout style}
+.cardfx-txt{position:fixed;margin:0;z-index:calc(var(--layer-card-transition) + 1);pointer-events:none;contain:layout style}
 .cardfx-txt .cc{position:absolute;inset:0;width:100%;height:100%;margin:0;aspect-ratio:auto;cursor:default;overflow:visible!important;background:none!important;box-shadow:none!important;border-radius:0;-webkit-user-select:none;user-select:none}
 .cardfx-txt .cc:before,.cardfx-txt .cc:after{display:none!important}
 /* credit card detail: tappable to flip balance <-> available credit */

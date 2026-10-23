@@ -8,7 +8,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
     caches:{open:async name=>{cacheName=name;return cache;}},fetch:async()=>{throw Error('Offline');},
     self:{location:{origin:'https://synthetic.invalid'},skipWaiting:async()=>{},addEventListener:(n,fn)=>events.set(n,fn)}};
   vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(root,'service-worker.js'),'utf8'),c);
-  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v324');
+  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v325');
   const html=stored.get('./index.html').toString();
   for(const name of ['cloud-to-local','cloud-bootstrap','sync-production']){
     const asset='./js/'+name+'.js';assert.ok(stored.has(asset));assert.ok(html.includes('src="'+asset.slice(2)+'"'));
