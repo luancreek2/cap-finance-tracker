@@ -1,7 +1,7 @@
 /* Phase 2: Supabase Auth and read-only connection checks.
    This module never reads or uploads Cap financial state. */
 (function(){
-  const cfg=window.CAP_SUPABASE_CONFIG||{},KEY='cap_supabase_session';let session=null,rpcReadyState=false;
+  const cfg=window.CapEnvironment?.local?CapEnvironment.browserConfig():(window.CAP_SUPABASE_CONFIG||{}),KEY='cap_supabase_session';let session=null,rpcReadyState=false;
   let verifiedUser=null,localAccess=false,verification='signed-out',sessionRevision=0,bootPromise=null;
   // The complete production RPC surface of the shipped client. Nothing else
   // may reach Supabase: no table endpoint, no legacy write, no test RPC.
@@ -148,9 +148,14 @@
   function boot(){
     if(bootPromise)return bootPromise;
     bootPromise=(async()=>{
-      document.body.insertAdjacentHTML('afterbegin',loginMarkup());await restore();
+      document.body.insertAdjacentHTML('afterbegin',loginMarkup());
+      if(window.CapEnvironment?.local&&!(await CapEnvironment.ready)){
+        document.getElementById('cap-auth')?.classList.add('cap-auth-ready');
+        showError('Local preview cache cleanup failed. Unregister the Cap service worker in browser DevTools, then reload.');return;
+      }
+      await restore();
       if(verifiedUser||localAccess){hideLogin();notice();}
-      else{const e=document.getElementById('cap-auth');if(e)e.classList.add('cap-auth-ready');if(!configured())showError('Add the Supabase URL and Publishable key to supabase-config.js.');else if(offline())showError('Reconnect to sign in. No saved local session is available.');}
+      else{const e=document.getElementById('cap-auth');if(e)e.classList.add('cap-auth-ready');if(!configured())showError(window.CapEnvironment?.local?'Add a valid browser-safe Supabase URL and Publishable/Anon key to supabase-config.local.js, then reload.':'Add the Supabase URL and Publishable key to supabase-config.js.');else if(offline())showError('Reconnect to sign in. No saved local session is available.');}
     })();
     return bootPromise;
   }

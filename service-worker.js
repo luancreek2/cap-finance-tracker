@@ -1,6 +1,7 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v325";
+const VERSION = "cap-shell-v326";
+const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",
   "./manifest.json",
@@ -13,6 +14,7 @@ const CORE = [
   "./css/offline-auth.css",
   "./css/cloud-sync.css",
   "./js/brand.js",
+  "./js/runtime-config.js",
   "./supabase-config.js",
   "./js/production-rpc.js",
   "./js/supabase.js",
@@ -83,6 +85,7 @@ const SOUND = ["./assets/media/payment-confirm.mp3"];
 self.addEventListener("install", (e) => {
   e.waitUntil(
     (async () => {
+      if (LOCAL_PREVIEW) { await self.skipWaiting(); return; }
       const c = await caches.open(VERSION);
       // Core files must cache or the separated app cannot boot offline; media is best-effort.
       await Promise.all(CORE.map((u) => c.add(new Request(u, { cache: "reload" }))));
@@ -96,7 +99,8 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k.startsWith("cap-shell-") && k !== VERSION).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => k.startsWith("cap-shell-") && (LOCAL_PREVIEW || k !== VERSION)).map((k) => caches.delete(k)));
+      if (LOCAL_PREVIEW) { await self.registration.unregister(); return; }
       await self.clients.claim();
     })(),
   );
@@ -132,6 +136,7 @@ async function swr(req) {
 }
 
 self.addEventListener("fetch", (e) => {
+  if (LOCAL_PREVIEW) return;
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);

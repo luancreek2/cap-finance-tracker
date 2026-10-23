@@ -1049,6 +1049,106 @@
       finally { toggleBusy = false; paint(); }
     }
   };
+  
+  /* Read-only presence diagnostic for production debugging.
+     Exposed behind Developer Options. Never writes, mutates, or retries. */
+  async function inspectSyncPresence() {
+    const s = await CapOff.snapshot();
+    if (!s.settings?.owner) return { error: 'No sync owner' };
+    const model = CapOff.model(s.settings.owner, s.baseline);
+    const remote = await CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' });
+    const remoteValid = CapOff.validateSnapshot(remote, s.settings.owner);
+    const hash = (entity, row) => CapSync.fingerprintRow(entity, row);
+    const plan = await CapProductionSync.plan(s, model, remoteValid, hash);
+    const outbox = await CapOff.syncStore('outbox', 'all');
+    const baseline = s.baseline || { version: 0, records: [] };
+    const testTerms = ['PHASE 6N DEVICE TEST', 'FINAL CLOUD SYNC TEST', 'DELETE SYNC TEST', 'Test'];
+    const allRecords = [
+      ...baseline.records.map(r => ({ source: 'baseline', ...r })),
+      ...model.records.map(r => ({ source: 'local', ...r })),
+      ...remoteValid.map(r => ({ source: 'cloud', ...r })),
+      ...outbox.map(r => ({ source: 'outbox', ...r }))
+    ];
+    const termMatches = {};
+    for (const term of testTerms) {
+      const matches = allRecords.filter(r =>
+        (r.row?.note && r.row.note?.includes(term)) ||
+        (r.row?.name && r.row.name?.includes(term)) ||
+        (r.row?.title && r.row.title?.includes(term)) ||
+        (r.localId && String(r.localId).includes(term)) ||
+        (r.legacy_id && String(r.legacy_id).includes(term))
+      );
+      if (matches.length) termMatches[term] = matches.map(m => ({
+        source: m.source, entity: m.entity, localId: m.localId, supabaseId: m.supabase_id,
+        title: m.row?.note || m.row?.name || m.row?.title || '', amount: m.row?.amt || m.row?.amount
+      }));
+    }
+    const phase6oDeleteAudit = {
+      locallyDeletedCloudPresent: [],
+      locallyPresentCloudDeleted: [],
+      missingBothRetainedByBaseline: []
+    };
+    const baseTx = new Map((baseline.records || []).filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
+    const localTx = new Map(model.records.filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
+    const cloudTx = new Map(remoteValid.filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
+    for (const [id, r] of baseTx) {
+      const inLocal = localTx.has(id), inCloud = cloudTx.has(id);
+      if (!inLocal && inCloud) phase6oDeleteAudit.locallyDeletedCloudPresent.push({
+        supabaseId: id, localId: r.localId, title: r.row?.note || r.row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
+      });
+      else if (inLocal && !inCloud) phase6oDeleteAudit.locallyPresentCloudDeleted.push({
+        supabaseId: id, localId: r.localId, title: localTx.get(id).row?.note || localTx.get(id).row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
+      });
+      else if (!inLocal && !inCloud) phase6oDeleteAudit.missingBothRetainedByBaseline.push({
+        supabaseId: id, localId: r.localId, title: r.row?.note || r.row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
+      });
+    }
+    return {
+      syncState: {
+        enabled: s.settings?.enabled,
+        phase: s.phase || 'unknown',
+        pending: s.outbox?.length || 0,
+        conflicts: s.conflicts?.length || 0,
+        reason: s.reason || null,
+        baselineVersion: baseline.version,
+        baselineRecords: baseline.records?.length || 0,
+        outboxCount: outbox.length,
+        journal: s.journal?.kind || 'none'
+      },
+      planner: {
+        pushes: plan.pushes.length,
+        pulls: plan.pulls.length,
+        blocked: plan.blocked.length,
+        conflicts: plan.conflicts.length,
+        financial: plan.financial.length,
+        converged: plan.converged.length
+      },
+      outbox: outbox.map(e => ({
+        id: e.id, sequence: e.sequence, entity: e.entity, record_key: e.record_key,
+        supabase_id: e.supabase_id, local_id: e.local_id, operation: e.operation,
+        kind: e.kind, title: e.payload?.note || e.payload?.name || e.payload?.title || '',
+        amount: e.payload?.amt || e.payload?.amount, retry_count: e.retry_count, last_error: e.last_error
+      })),
+      blocked: plan.blocked.map(b => ({
+        key: b.key, entity: b.base?.entity || b.local?.entity || b.cloud?.entity,
+        localId: b.base?.localId || b.local?.localId || b.cloud?.localId,
+        supabaseId: b.base?.supabase_id || b.local?.supabase_id || b.cloud?.supabase_id,
+        title: b.local?.row?.note || b.local?.row?.name || b.local?.row?.title ||
+               b.cloud?.row?.note || b.cloud?.row?.name || b.cloud?.row?.title || '',
+        baseline: b.base ? 'present' : 'absent',
+        local: b.local ? 'present' : 'absent',
+        cloud: b.cloud ? 'present' : 'absent',
+        baselineFingerprint: b.base?.contentFingerprint?.slice(0, 16) || 'none',
+        localFingerprint: b.localHash?.slice(0, 16) || 'none',
+        cloudFingerprint: b.cloudHash?.slice(0, 16) || 'none',
+        reason: b.reason
+      })),
+      testLabelMatches: termMatches,
+      phase6oDeleteAudit
+    };
+  }
+  if (typeof window !== 'undefined' && window.CapProductionSync) window.CapProductionSync.inspectSyncPresence = inspectSyncPresence;
+  
   window.CapProductionSync = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = { createEngine, plan, ready, validateSnapshot };
   if (!window.CapOff || !window.CapSupabase || !document.addEventListener) return;

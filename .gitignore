@@ -1,5 +1,6 @@
 # Runtime Supabase configuration (generated per deployment)
 supabase-config.js
+supabase-config.local.js
 
 # Local secrets
 .env

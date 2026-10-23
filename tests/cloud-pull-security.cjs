@@ -2,6 +2,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/production-rpc.js','js/supabase.js','js/sync-production.js','service-worker.js',
+  '.gitignore','js/runtime-config.js','supabase-config.local.example.js','docs/local-development.md',
+  'css/offline-auth.css','tests/local-development.cjs','tests/local-development-browser.cjs',
   'js/app.js','js/cards.js','js/animations.js','css/styles.css','css/animations.css',
   'tests/ui-presentation.cjs','tests/helpers/ui-presentation-browser.js',
   'tests/cloud-bootstrap.cjs','tests/cloud-pull.cjs','tests/cloud-pull-shell.cjs','tests/cloud-pull-security.cjs',
