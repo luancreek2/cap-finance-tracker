@@ -1033,6 +1033,7 @@
   }
   const api = { createEngine, plan, ready, validateSnapshot, browserIO, settingsHtml, request, status: () => engine?.status() || { enabled: false },
     pause: reason => engine?.pause(reason), authChanged: () => engine?.authChanged(),
+    inspectSyncPresence: async () => { /* placeholder, will be replaced below */ },
     toggle: async requested => {
       if (toggleBusy || !booted) { paint(); return; }
       const enabled = offSaveFailed ? false : typeof requested === 'boolean' ? requested : !engine.status().enabled;
@@ -1147,8 +1148,7 @@
       phase6oDeleteAudit
     };
   }
-  if (typeof window !== 'undefined' && window.CapProductionSync) window.CapProductionSync.inspectSyncPresence = inspectSyncPresence;
-  
+  api.inspectSyncPresence = inspectSyncPresence;
   window.CapProductionSync = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = { createEngine, plan, ready, validateSnapshot };
   if (!window.CapOff || !window.CapSupabase || !document.addEventListener) return;
