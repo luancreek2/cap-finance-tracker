@@ -63,7 +63,7 @@ test('portal follows the visual viewport and uses body host, not a clipped sheet
   assert.match(app,/detach=CapOverlays\.attach\(p,b/);assert.match(cards,/CapOverlays\.attach\(m,button\)/);
 });
 test('release shell version bumped and changed UI files are in offline CORE',()=>{
-  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v326/);
+  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v327/);
   for(const file of ['js/app.js','js/cards.js','js/animations.js','css/styles.css','css/animations.css'])assert.ok(worker.includes('./'+file),file);
 });
 console.log(`PASS: ${passed} UI presentation regression checks; local preferences, hand-off guards and layer contract`);

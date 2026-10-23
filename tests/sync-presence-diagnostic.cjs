@@ -17,5 +17,12 @@ const test=async(name,fn)=>{try{await fn();passed++;console.log('PASS '+name);}c
     assert.match(app,/Inspect Sync Presence/);
     assert.match(app,/function inspectSyncPresence\(\)/);
   });
-  console.log(`PASS: 3 sync presence diagnostic wiring checks`);
+  await test('diagnostic reuses only the existing production read adapter',()=>{
+    const diagnostic=sync.slice(sync.indexOf('  async function inspectSyncPresence()'),sync.indexOf('  api.inspectSyncPresence ='));
+    assert.match(diagnostic,/const io = browserIO\(\)/);
+    for(const name of ['snapshot','model','remote'])assert.ok(diagnostic.includes('io.'+name+'('));
+    assert.doesNotMatch(diagnostic,/CapOff\.(snapshot|model|validateSnapshot|syncStore)\(/);
+    assert.doesNotMatch(diagnostic,/io\.(commit|write|authenticate|installLocal|rollbackLocal)\(/);
+  });
+  console.log(`PASS: ${passed} sync presence diagnostic wiring checks`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

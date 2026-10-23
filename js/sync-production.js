@@ -1052,23 +1052,49 @@
   };
   
   /* Read-only presence diagnostic for production debugging.
-     Exposed behind Developer Options. Never writes, mutates, or retries. */
+     Exposed behind Developer Options. Never writes, mutates, or retries.
+     Uses the same internal read paths as the production sync engine. */
   async function inspectSyncPresence() {
-    const s = await CapOff.snapshot();
+    // Constructing the adapter performs no I/O. Use only its existing read
+    // functions; never authenticate, capture, commit, install, send or cycle.
+    const io = browserIO();
+    const s = await io.snapshot();
     if (!s.settings?.owner) return { error: 'No sync owner' };
-    const model = CapOff.model(s.settings.owner, s.baseline);
-    const remote = await CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1', { method: 'POST', body: '{}' });
-    const remoteValid = CapOff.validateSnapshot(remote, s.settings.owner);
-    const hash = (entity, row) => CapSync.fingerprintRow(entity, row);
-    const plan = await CapProductionSync.plan(s, model, remoteValid, hash);
-    const outbox = await CapOff.syncStore('outbox', 'all');
-    const baseline = s.baseline || { version: 0, records: [] };
+    const owner = s.settings.owner;
+    if (!s.baseline || !Array.isArray(s.baseline.records)) return { error: 'Baseline missing or corrupt' };
+    const model = io.model(owner, s.baseline);
+    const remoteValid = await io.remote(owner);
+    const p = await plan(s, model, remoteValid, io.hash);
+    // One atomic readonly local snapshot supplies all metadata, including the
+    // outbox. syncStore('all') is deliberately NOT used (it opens readwrite).
+    const { outbox, baseline } = s;
+    const runtime = api.status();
+    const localModelRecords = model.records;
+    const stableId = r => r?.supabase_id ?? r?.row?.id ?? r?.row?.user_id;
+    const titleOf = r => r?.row?.title ?? r?.row?.name ?? r?.row?.note ?? '';
+    const localByKey = new Map(localModelRecords.map(r => [key(r), r]));
+    const cloudByKey = new Map(remoteValid.map(r => [key(r), r]));
+    const baseByKey = new Map(baseline.records.map(r => [key(r), r]));
+    const describe = (b, l, c) => ({
+      entity: b?.entity ?? l?.entity ?? c?.entity,
+      localId: b?.localId ?? l?.localId ?? c?.row?.legacy_id ?? null,
+      supabaseId: stableId(b) ?? stableId(l) ?? stableId(c),
+      title: titleOf(l) || titleOf(c) || titleOf(b),
+      baseline: b ? 'present' : 'absent', local: l ? 'present' : 'absent', cloud: c ? 'present' : 'absent'
+    });
+    const blocked = p.blocked.map(item => ({
+      ...describe(item.base, item.local, item.cloud), key: item.key,
+      baselineFingerprint: item.base?.contentFingerprint ?? 'none',
+      localFingerprint: item.localHash ?? 'none', cloudFingerprint: item.cloudHash ?? 'none', reason: item.reason
+    }));
+
     const testTerms = ['PHASE 6N DEVICE TEST', 'FINAL CLOUD SYNC TEST', 'DELETE SYNC TEST', 'Test'];
     const allRecords = [
       ...baseline.records.map(r => ({ source: 'baseline', ...r })),
-      ...model.records.map(r => ({ source: 'local', ...r })),
+      ...localModelRecords.map(r => ({ source: 'local', ...r })),
       ...remoteValid.map(r => ({ source: 'cloud', ...r })),
-      ...outbox.map(r => ({ source: 'outbox', ...r }))
+      ...outbox.map(r => ({ source: 'outbox', entity: r.entity, localId: r.local_id,
+        supabase_id: r.supabase_id, row: r.payload }))
     ];
     const termMatches = {};
     for (const term of testTerms) {
@@ -1079,9 +1105,10 @@
         (r.localId && String(r.localId).includes(term)) ||
         (r.legacy_id && String(r.legacy_id).includes(term))
       );
-      if (matches.length) termMatches[term] = matches.map(m => ({
-        source: m.source, entity: m.entity, localId: m.localId, supabaseId: m.supabase_id,
-        title: m.row?.note || m.row?.name || m.row?.title || '', amount: m.row?.amt || m.row?.amount
+      termMatches[term] = matches.map(m => ({
+        source: m.source, entity: m.entity, localId: m.localId ?? m.row?.legacy_id ?? null, supabaseId: stableId(m),
+        title: titleOf(m), amount: m.row?.amount ?? m.row?.amt ?? null,
+        blocked: blocked.some(b => b.key === key(m))
       }));
     }
     const phase6oDeleteAudit = {
@@ -1090,60 +1117,43 @@
       missingBothRetainedByBaseline: []
     };
     const baseTx = new Map((baseline.records || []).filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
-    const localTx = new Map(model.records.filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
-    const cloudTx = new Map(remoteValid.filter(r => r.entity === 'transactions').map(r => [r.supabase_id, r]));
+    const localTx = new Map(localModelRecords.filter(r => r.entity === 'transactions').map(r => [stableId(r), r]));
+    const cloudTx = new Map(remoteValid.filter(r => r.entity === 'transactions').map(r => [stableId(r), r]));
     for (const [id, r] of baseTx) {
       const inLocal = localTx.has(id), inCloud = cloudTx.has(id);
-      if (!inLocal && inCloud) phase6oDeleteAudit.locallyDeletedCloudPresent.push({
-        supabaseId: id, localId: r.localId, title: r.row?.note || r.row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
-      });
-      else if (inLocal && !inCloud) phase6oDeleteAudit.locallyPresentCloudDeleted.push({
-        supabaseId: id, localId: r.localId, title: localTx.get(id).row?.note || localTx.get(id).row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
-      });
-      else if (!inLocal && !inCloud) phase6oDeleteAudit.missingBothRetainedByBaseline.push({
-        supabaseId: id, localId: r.localId, title: r.row?.note || r.row?.name || '', baseFp: r.contentFingerprint?.slice(0, 16)
-      });
+      const entry = { ...describe(r, localTx.get(id), cloudTx.get(id)), baseFp: r.contentFingerprint };
+      if (!inLocal && inCloud) phase6oDeleteAudit.locallyDeletedCloudPresent.push(entry);
+      else if (inLocal && !inCloud) phase6oDeleteAudit.locallyPresentCloudDeleted.push(entry);
+      else if (!inLocal && !inCloud) phase6oDeleteAudit.missingBothRetainedByBaseline.push(entry);
     }
     return {
       syncState: {
         enabled: s.settings?.enabled,
-        phase: s.phase || 'unknown',
+        phase: runtime.phase || 'unknown',
         pending: s.outbox?.length || 0,
         conflicts: s.conflicts?.length || 0,
-        reason: s.reason || null,
+        reason: runtime.reason || null,
         baselineVersion: baseline.version,
         baselineRecords: baseline.records?.length || 0,
         outboxCount: outbox.length,
-        journal: s.journal?.kind || 'none'
+        journal: s.journal ? (s.journal.kind || s.journal.group?.kind || 'present') : 'none'
       },
       planner: {
-        pushes: plan.pushes.length,
-        pulls: plan.pulls.length,
-        blocked: plan.blocked.length,
-        conflicts: plan.conflicts.length,
-        financial: plan.financial.length,
-        converged: plan.converged.length
+        pushes: p.pushes.length,
+        pulls: p.pulls.length,
+        blocked: p.blocked.length,
+        conflicts: p.conflicts.length,
+        financial: p.financial.length,
+        converged: p.converged.length
       },
       outbox: outbox.map(e => ({
         id: e.id, sequence: e.sequence, entity: e.entity, record_key: e.record_key,
         supabase_id: e.supabase_id, local_id: e.local_id, operation: e.operation,
-        kind: e.kind, title: e.payload?.note || e.payload?.name || e.payload?.title || '',
-        amount: e.payload?.amt || e.payload?.amount, retry_count: e.retry_count, last_error: e.last_error
+        kind: e.kind, title: e.payload?.title ?? e.payload?.name ?? e.payload?.note ??
+          (titleOf(localByKey.get(e.record_key)) || titleOf(cloudByKey.get(e.record_key)) || titleOf(baseByKey.get(e.record_key))),
+        amount: e.payload?.amount ?? e.payload?.amt ?? null, retry_count: e.retry_count, last_error: e.last_error
       })),
-      blocked: plan.blocked.map(b => ({
-        key: b.key, entity: b.base?.entity || b.local?.entity || b.cloud?.entity,
-        localId: b.base?.localId || b.local?.localId || b.cloud?.localId,
-        supabaseId: b.base?.supabase_id || b.local?.supabase_id || b.cloud?.supabase_id,
-        title: b.local?.row?.note || b.local?.row?.name || b.local?.row?.title ||
-               b.cloud?.row?.note || b.cloud?.row?.name || b.cloud?.row?.title || '',
-        baseline: b.base ? 'present' : 'absent',
-        local: b.local ? 'present' : 'absent',
-        cloud: b.cloud ? 'present' : 'absent',
-        baselineFingerprint: b.base?.contentFingerprint?.slice(0, 16) || 'none',
-        localFingerprint: b.localHash?.slice(0, 16) || 'none',
-        cloudFingerprint: b.cloudHash?.slice(0, 16) || 'none',
-        reason: b.reason
-      })),
+      blocked,
       testLabelMatches: termMatches,
       phase6oDeleteAudit
     };
