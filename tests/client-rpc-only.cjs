@@ -9,7 +9,8 @@ const { webcrypto } = require('node:crypto');
 
 const LEGACY = ['cap_sync_note_put', 'cap_test_transaction_create', 'cap_verify_notes_rpc', 'cap_verify_transaction_rpc'];
 const PRODUCTION_RPCS = ['cap_verify_production_sync_v1', 'cap_sync_snapshot_v1',
-  'cap_sync_transaction_create', 'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle'];
+  'cap_sync_transaction_create', 'cap_sync_transaction_update', 'cap_sync_transaction_delete',
+  'cap_verify_transaction_update_delete_v1', 'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle'];
 const SYNCED_TABLES = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals', 'debts',
   'bills', 'account_statements', 'transactions', 'transfers', 'bill_payments', 'budgets', 'notes'];
 let passed = 0;
@@ -69,7 +70,7 @@ function loadClient() {
     }
   });
 
-  await test('the transport allows only auth and the six production RPCs', async () => {
+  await test('the transport allows only auth and the nine production RPCs', async () => {
     const { context, calls } = loadClient();
     assert.deepEqual(Array.from(context.CapSupabase.productionRpcPaths).sort(),
       PRODUCTION_RPCS.map(n => '/rest/v1/rpc/' + n).sort());

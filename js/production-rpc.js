@@ -1,9 +1,10 @@
 /* Phase 6L: the shipped client's only cloud data surface.
    Production RPC-only. No direct table endpoints, no legacy or test RPCs.
    Every call here is one of the reviewed production contracts:
-     cap_verify_production_sync_v1 / cap_sync_snapshot_v1 /
-     cap_sync_transaction_create / cap_notes_change / cap_notes_read /
-     cap_verify_notes_lifecycle
+      cap_verify_production_sync_v1 / cap_sync_snapshot_v1 /
+      cap_sync_transaction_create / cap_sync_transaction_update /
+      cap_sync_transaction_delete / cap_notes_change / cap_notes_read /
+      cap_verify_notes_lifecycle
    Local-first behaviour is unchanged: this module never touches local
    storage, the baseline or the outbox. */
 (function () {
@@ -12,6 +13,9 @@
     readiness: 'cap_verify_production_sync_v1',
     snapshot: 'cap_sync_snapshot_v1',
     transactionCreate: 'cap_sync_transaction_create',
+    transactionUpdate: 'cap_sync_transaction_update',
+    transactionDelete: 'cap_sync_transaction_delete',
+    transactionCapability: 'cap_verify_transaction_update_delete_v1',
     notesChange: 'cap_notes_change',
     notesRead: 'cap_notes_read',
     notesVerify: 'cap_verify_notes_lifecycle'
@@ -191,11 +195,55 @@
     if (!isObject(raw) || !['APPLIED', 'ALREADY_APPLIED', 'CONFLICT'].includes(raw.status)) throw failure('TRANSACTION_WRITE_UNVERIFIED');
     return raw;
   }
+  async function updateTransaction(options) {
+    if (!uuid(options?.operationId)) throw failure('OPERATION_ID_REQUIRED');
+    if (!uuid(options?.id)) throw failure('TRANSACTION_ID_REQUIRED');
+    if (!isObject(options?.transaction)) throw failure('TRANSACTION_PAYLOAD_INVALID');
+    if (!isObject(options?.expectedTransaction)) throw failure('EXPECTED_TRANSACTION_REQUIRED');
+    if (!Array.isArray(options?.expectedAccounts) || options.expectedAccounts.length > 2 ||
+        options.expectedAccounts.some(a => !isObject(a))) throw failure('EXPECTED_ACCOUNT_REQUIRED');
+    const raw = await call(RPC.transactionUpdate, {
+      p_operation_id: options.operationId,
+      p_id: options.id,
+      p_transaction: options.transaction,
+      p_expected_transaction: options.expectedTransaction,
+      p_expected_accounts: options.expectedAccounts
+    });
+    if (!isObject(raw) || !['APPLIED', 'ALREADY_APPLIED', 'CONFLICT'].includes(raw.status)) throw failure('TRANSACTION_WRITE_UNVERIFIED');
+    return raw;
+  }
+  async function deleteTransaction(options) {
+    if (!uuid(options?.operationId)) throw failure('OPERATION_ID_REQUIRED');
+    if (!uuid(options?.id)) throw failure('TRANSACTION_ID_REQUIRED');
+    if (!isObject(options?.expectedTransaction)) throw failure('EXPECTED_TRANSACTION_REQUIRED');
+    if (!Array.isArray(options?.expectedAccounts) || options.expectedAccounts.length > 1 ||
+        options.expectedAccounts.some(a => !isObject(a))) throw failure('EXPECTED_ACCOUNT_REQUIRED');
+    const raw = await call(RPC.transactionDelete, {
+      p_operation_id: options.operationId,
+      p_id: options.id,
+      p_expected_transaction: options.expectedTransaction,
+      p_expected_accounts: options.expectedAccounts
+    });
+    if (!isObject(raw) || !['APPLIED', 'ALREADY_APPLIED', 'CONFLICT'].includes(raw.status)) throw failure('TRANSACTION_WRITE_UNVERIFIED');
+    return raw;
+  }
+  // Narrow, separate attestation for the update/delete rollout. It never widens
+  // the main readiness contract, so Phase 6N stays independently deployable.
+  async function transactionCapabilities() {
+    try {
+      const raw = await call(RPC.transactionCapability);
+      const ok = !!(isObject(raw) && raw.version === 'CAP_TX_UPDATE_DELETE_READINESS_V1' && raw.ready === true &&
+        raw.update_contract === 'CAP_TX_UPDATE_CAS_RECEIPT_V1' &&
+        raw.delete_contract === 'CAP_TX_DELETE_CAS_RECEIPT_V1');
+      return { ok, raw, reason: ok ? null : 'TRANSACTION_WRITE_CONTRACT_NOT_READY' };
+    } catch (e) { return { ok: false, raw: null, reason: String(e?.message || e) }; }
+  }
   // Operations without a production RPC adapter fail closed with a fixed code.
   function unsupported(operation) { return failure('UNSUPPORTED_OPERATION:' + operation); }
   window.CapProductionRpc = {
     RPC, ALLOWED, ENTITIES, READINESS_CHECKS, CONTRACTS, CONTENT,
     call, ready, readiness, notesContract, snapshot, snapshotRows,
-    readNote, readNoteRecord, changeNote, createTransaction, unsupported, contentOf, lifecycleOf
+    readNote, readNoteRecord, changeNote, createTransaction, updateTransaction, deleteTransaction,
+    transactionCapabilities, unsupported, contentOf, lifecycleOf
   };
 })();

@@ -7,6 +7,8 @@
   // may reach Supabase: no table endpoint, no legacy write, no test RPC.
   const PRODUCTION_RPC_PATHS=['/rest/v1/rpc/cap_verify_production_sync_v1',
     '/rest/v1/rpc/cap_sync_snapshot_v1','/rest/v1/rpc/cap_sync_transaction_create',
+    '/rest/v1/rpc/cap_sync_transaction_update','/rest/v1/rpc/cap_sync_transaction_delete',
+    '/rest/v1/rpc/cap_verify_transaction_update_delete_v1',
     '/rest/v1/rpc/cap_notes_change','/rest/v1/rpc/cap_notes_read',
     '/rest/v1/rpc/cap_verify_notes_lifecycle'];
   const clean=v=>String(v||'').replace(/\/$/,'');

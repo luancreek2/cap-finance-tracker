@@ -85,10 +85,17 @@ async function refused(mutate){const f=await setup();const tx=f.add();await muta
     assert.ok(!(await f.plan()).pulls.some(g=>g.kind==='transaction-pull'));await f.engine.cycle();await f.unchanged();
   });
   await test('existing conflict refuses',async()=>{const f=await setup();f.add();await f.c.CapOff.syncStore('syncconflicts','put',{id:'conflict',key:'accounts:'+account(f).row.id,status:'unresolved'});await assert.rejects(f.plan);await f.engine.cycle();await f.unchanged();});
-  for(const entity of ['accounts','transactions','goals'])await test(entity+' edit remains unsupported',async()=>{
-    const f=await setup();const r=f.raw.records.find(r=>r.entity===entity);if(entity==='accounts')r.row.balance--;else if(entity==='transactions')r.row.title='Edited';else r.row.name='Edited';await f.engine.cycle();await f.unchanged();assert.equal(f.engine.status().phase,'paused');
+  for(const entity of ['accounts','goals'])await test(entity+' edit remains unsupported',async()=>{
+    const f=await setup();const r=f.raw.records.find(r=>r.entity===entity);if(entity==='accounts')r.row.balance--;else r.row.name='Edited';await f.engine.cycle();await f.unchanged();assert.equal(f.engine.status().phase,'paused');
   });
-  await test('transaction delete remains unsupported',async()=>{const f=await setup();f.raw.records.splice(f.raw.records.findIndex(r=>r.entity==='transactions'),1);f.raw.record_count--;f.raw.counts.transactions--;await f.engine.cycle();await f.unchanged();assert.equal(f.engine.status().phase,'paused');});
+  await test('transaction edit with independently changed account is a conflict',async()=>{
+    const f=await setup();
+    f.raw.records.find(r=>r.entity==='transactions').row.title='Edited';
+    f.raw.records.find(r=>r.entity==='accounts').row.balance--;
+    await f.engine.cycle();await f.unchanged();assert.equal(f.engine.status().phase,'paused');
+    assert.ok((await f.io.snapshot()).conflicts.length>=1);
+  });
+  await test('transaction delete without account correction pauses',async()=>{const f=await setup();f.raw.records.splice(f.raw.records.findIndex(r=>r.entity==='transactions'),1);f.raw.record_count--;f.raw.counts.transactions--;await f.engine.cycle();await f.unchanged();assert.equal(f.engine.status().phase,'paused');});
   await test('unrelated financial mutation cannot accompany a group',()=>refused(f=>{f.raw.records.find(r=>r.entity==='goals').row.name='Edited';}));
   await test('multiple independent groups fail closed (policy B)',async()=>{const f=await setup();f.add();f.add(-50,2,9002);assert.ok(!(await f.plan()).pulls.some(g=>g.kind==='transaction-pull'));await f.engine.cycle();await f.unchanged();});
   await test('two creates on same account fail closed',async()=>{const f=await setup();f.add();f.add(-50,1,9002);await f.engine.cycle();await f.unchanged();});

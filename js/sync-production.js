@@ -10,6 +10,13 @@
   const key = r => r.entity + ':' + (r.supabase_id || r.row?.id || r.row?.user_id);
   const failure = code => Object.assign(Error(code), { code });
   const hex = x => /^[a-f0-9]{64}$/i.test(x || '');
+  // Phase 6O financial-update/delete helpers. Cap's canonical semantics are the
+  // same ones the create RPC already proved: a signed amount moves a debit or
+  // e-wallet balance directly, and a credit balance in the opposite direction.
+  const money = n => Math.round(Number(n) * 100) / 100;
+  const effect = (type, amount) => type === 'credit' ? -amount : amount;
+  const accountTypes = new Set(['cash', 'savings', 'debit', 'credit', 'ewallet']);
+  const txMetadataKeys = new Set(['id', 'ts', '_u', 'd', 'pd', 'amt', 'cat', 'acct', 'note', 'desc']);
   const entities = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals',
     'debts', 'bills', 'account_statements', 'transactions', 'transfers', 'bill_payments', 'budgets', 'notes'];
   const supported = new Set(entities);
@@ -133,6 +140,209 @@
     throw failure('CLOUD_MAPPER_UNAVAILABLE');
   }
 
+  // Phase 6O: a transaction is only eligible for the narrow update/delete
+  // contract when its shape is exactly the one Phase 6L already proved.
+  function txShapeOk(row, owner) {
+    if (!row || row.user_id !== owner || row.status !== 'posted' ||
+        row.bill_id || row.parent_transaction_id || row.statement_id ||
+        row.metadata?.opening || row.metadata?.cardFee) return false;
+    const legacy = String(row.legacy_id ?? '');
+    if (!/^[1-9]\d*$/.test(legacy) || !Number.isSafeInteger(Number(legacy)) ||
+        String(Number(legacy)) !== legacy) return false;
+    if (row.id !== cloudMapper().migrationStableUuid('transactions:' + legacy)) return false;
+    if (!row.metadata || typeof row.metadata !== 'object' || Array.isArray(row.metadata) ||
+        Object.keys(row.metadata).some(k => !txMetadataKeys.has(k))) return false;
+    if (!Number.isFinite(row.amount) || row.amount === 0 || money(row.amount) !== row.amount) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(row.transaction_date || ''))) return false;
+    if (Object.hasOwn(row.metadata, 'id') && String(row.metadata.id) !== legacy) return false;
+    if (Object.hasOwn(row.metadata, 'amt') && row.metadata.amt !== row.amount) return false;
+    if (Object.hasOwn(row.metadata, 'd') && row.metadata.d !== row.transaction_date) return false;
+    if (row.posting_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(row.posting_date))) return false;
+    return true;
+  }
+
+  function accountShapeOk(row) {
+    if (!row || !accountTypes.has(row.account_type) || !Number.isFinite(row.balance)) return false;
+    const legacy = String(row.legacy_id ?? '');
+    if (!/^[1-9]\d*$/.test(legacy) || !Number.isSafeInteger(Number(legacy)) ||
+        String(Number(legacy)) !== legacy) return false;
+    return row.id === cloudMapper().migrationStableUuid('accounts:' + legacy);
+  }
+
+  function txAnomalies(result) {
+    const all = [...result.pushes, ...result.pulls, ...result.blocked, ...result.conflicts];
+    return all.filter(i => i && typeof i.key === 'string' && i.key.startsWith('transactions:'));
+  }
+
+  function accountItem(result, key) {
+    const pools = [['pushes', result.pushes], ['pulls', result.pulls],
+      ['blocked', result.blocked], ['conflicts', result.conflicts]];
+    for (const [name, pool] of pools) {
+      const item = pool.find(i => i && i.key === key);
+      if (item) return { name, item };
+    }
+    return null;
+  }
+
+  function dropItem(result, item) {
+    for (const name of ['pushes', 'pulls', 'blocked', 'conflicts']) {
+      const i = result[name].indexOf(item);
+      if (i >= 0) result[name].splice(i, 1);
+    }
+  }
+
+  function conflictItem(item, reason, operation, accounts) {
+    return { ...item, reason, operation, affectedAccounts: accounts };
+  }
+
+  // Classify a single financial transaction change. Only one financial group is
+  // ever accepted per snapshot (Policy B); anything else remains blocked so the
+  // engine pauses instead of guessing an aggregate balance delta.
+  async function classifyFinancial(s, base, local, cloud, remote, hash, result) {
+    if (result.financial.length) return;
+    const anomalies = txAnomalies(result);
+    if (anomalies.length !== 1) return;
+    const t = anomalies[0];
+    if (!t.base) return; // Phase 6N create is handled separately.
+    if (result.conflicts.includes(t)) return;
+    const b = t.base, l = t.local, c = t.cloud;
+    let op;
+    if (l && c) {
+      if (t.localHash === b.contentFingerprint && t.cloudHash !== b.contentFingerprint) op = 'update-pull';
+      else if (t.cloudHash === b.contentFingerprint && t.localHash !== b.contentFingerprint) op = 'update-push';
+      else op = 'conflict';
+    } else if (l && !c) {
+      op = t.localHash === b.contentFingerprint ? 'delete-pull' : 'conflict';
+    } else if (!l && c) {
+      op = t.cloudHash === b.contentFingerprint ? 'delete-push' : 'conflict';
+    } else {
+      op = 'conflict';
+    }
+
+    const pull = op.endsWith('-pull');
+    const del = op.startsWith('delete');
+    const oldRow = pull ? l?.row : c?.row;
+    const newRow = pull ? c?.row : l?.row;
+
+    // Presence/semantic conflicts are recorded, never auto-resolved.
+    if (op === 'conflict') {
+      const accountKeys = [];
+      if (oldRow?.account_id) accountKeys.push('accounts:' + oldRow.account_id);
+      dropItem(result, t);
+      result.conflicts.push(conflictItem(t, 'LOCAL_AND_CLOUD_FINANCIAL_CHANGE', 'transaction-conflict', accountKeys));
+      return;
+    }
+    if (!txShapeOk(oldRow, s.settings.owner) || (!del && !txShapeOk(newRow, s.settings.owner))) return;
+
+    // Identity may never change during an update or delete.
+    if (!del && (newRow.id !== oldRow.id || String(newRow.legacy_id) !== String(oldRow.legacy_id) ||
+        newRow.user_id !== oldRow.user_id)) return;
+
+    const oldAcctKey = 'accounts:' + oldRow.account_id;
+    const newAcctKey = del ? oldAcctKey : 'accounts:' + newRow.account_id;
+    const accountKeys = oldAcctKey === newAcctKey ? [oldAcctKey] : [oldAcctKey, newAcctKey];
+
+    // Both the old and new account relationships must exist on every side.
+    if (accountKeys.some(k => !base.has(k) || !local.has(k) || !cloud.has(k))) {
+      dropItem(result, t);
+      result.conflicts.push(conflictItem(t, 'ACCOUNT_RELATIONSHIP_UNAVAILABLE', op, accountKeys));
+      return;
+    }
+
+    // Optional relationships must still be mappable.
+    if (!del && newRow.category_id &&
+        (!local.has('categories:' + newRow.category_id) || !cloud.has('categories:' + newRow.category_id))) return;
+
+    const oldAcctRow = pull ? local.get(oldAcctKey)?.row : cloud.get(oldAcctKey)?.row;
+    const newAcctRow = del ? oldAcctRow : (pull ? local.get(newAcctKey)?.row : cloud.get(newAcctKey)?.row);
+    if (!oldAcctRow || !newAcctRow) return;
+    // Metadata may not silently point at a different account than the row.
+    if (Object.hasOwn(oldRow.metadata || {}, 'acct') &&
+        String(oldRow.metadata.acct) !== String(oldAcctRow.legacy_id)) return;
+    if (!del && Object.hasOwn(newRow.metadata || {}, 'acct') &&
+        String(newRow.metadata.acct) !== String(newAcctRow.legacy_id)) return;
+
+    const group = [];
+    const validateAccount = async (key, expectedBalance) => {
+      const found = accountItem(result, key);
+      if (!found) return { ok: false };
+      if (pull ? found.name !== 'pulls' : found.name !== 'pushes') return { ok: false };
+      const item = found.item;
+      const baseRow = pull ? item.local?.row : item.cloud?.row;
+      const nextRow = pull ? item.cloud?.row : item.local?.row;
+      const baseFingerprint = pull ? item.base?.contentFingerprint : item.cloudHash;
+      if (!baseRow || !nextRow || !baseFingerprint || !accountShapeOk(baseRow) || !accountShapeOk(nextRow)) return { ok: false };
+      if (String(item.base?.localId) !== String(baseRow.legacy_id) ||
+          nextRow.id !== baseRow.id || nextRow.legacy_id !== baseRow.legacy_id ||
+          nextRow.account_type !== baseRow.account_type ||
+          nextRow.user_id !== baseRow.user_id) return { ok: false };
+      if (money(nextRow.balance) !== money(expectedBalance)) return { ok: false };
+      if (nextRow.balance === baseRow.balance) return { ok: false };
+      if (await hash('accounts', { ...nextRow, balance: baseRow.balance }) !== baseFingerprint) return { ok: false };
+      return { ok: true, item };
+    };
+
+    // Every account effect must be proved exactly. Any present item that does
+    // not prove the expected delta is an independent account change, so the
+    // whole operation becomes a conflict instead of a guessed group.
+    const validateCandidate = async (key, expectedBalance) => {
+      const v = await validateAccount(key, expectedBalance);
+      if (v.ok) { group.push(v.item); return true; }
+      for (const k of accountKeys) {
+        const found = accountItem(result, k);
+        if (found) dropItem(result, found.item);
+      }
+      dropItem(result, t);
+      result.conflicts.push(conflictItem(t, 'AFFECTED_ACCOUNT_DIVERGED', op, accountKeys));
+      return false;
+    };
+
+    if (del) {
+      const expected = money(Number(oldAcctRow.balance) - effect(oldAcctRow.account_type, oldRow.amount));
+      if (await validateCandidate(oldAcctKey, expected) === false) return;
+    } else if (oldAcctKey === newAcctKey) {
+      const oldEffect = effect(oldAcctRow.account_type, oldRow.amount);
+      const newEffect = effect(oldAcctRow.account_type, newRow.amount);
+      const expected = money(Number(oldAcctRow.balance) + newEffect - oldEffect);
+      if (expected !== money(oldAcctRow.balance)) {
+        // Metadata-only updates leave the account untouched, so require no item.
+        if (await validateCandidate(oldAcctKey, expected) === false) return;
+      } else {
+        // A balance change alongside a metadata-only edit is independent work.
+        const found = accountItem(result, oldAcctKey);
+        if (found) {
+          dropItem(result, found.item);
+          dropItem(result, t);
+          result.conflicts.push(conflictItem(t, 'UNEXPECTED_ACCOUNT_CHANGE', op, [oldAcctKey]));
+          return;
+        }
+      }
+    } else {
+      const oldExpected = money(Number(oldAcctRow.balance) - effect(oldAcctRow.account_type, oldRow.amount));
+      const newExpected = money(Number(newAcctRow.balance) + effect(newAcctRow.account_type, newRow.amount));
+      if (await validateCandidate(oldAcctKey, oldExpected) === false) return;
+      if (await validateCandidate(newAcctKey, newExpected) === false) return;
+    }
+
+    // Policy B: the group is the only difference in the whole snapshot.
+    const members = new Set([t, ...group]);
+    const others = [...result.pushes, ...result.pulls, ...result.blocked, ...result.conflicts, ...result.converged]
+      .filter(i => !members.has(i));
+    if (others.length) return;
+    if (pull && (s.outbox.length || s.conflicts.length)) return;
+    if (!pull && s.conflicts.length) return;
+
+    for (const item of members) dropItem(result, item);
+    if (del) t.action = 'delete';
+    const items = [t, ...group];
+    if (pull) {
+      result.pulls.push({ kind: 'transaction-' + (del ? 'delete' : 'update') + '-pull',
+        items, entries: [], remote: copy(remote) });
+    } else {
+      result.financial.push({ kind: 'transaction-' + (del ? 'delete' : 'update'), items });
+    }
+  }
+
   // Pure, three-way planning. Absence never authorizes physical deletion.
   async function plan(s, model, remote, hash) {
     const owner = s.baseline.user_id;
@@ -145,7 +355,7 @@
     const local = new Map(model.records.map(r => [key(r), r]));
     const cloud = new Map(remote.map(r => [key(r), r]));
     const base = new Map(s.baseline.records.map(r => [key(r), r]));
-    const result = { pushes: [], pulls: [], converged: [], conflicts: [], blocked: [] };
+    const result = { pushes: [], pulls: [], converged: [], conflicts: [], blocked: [], financial: [] };
     for (const k of new Set([...base.keys(), ...local.keys(), ...cloud.keys()])) {
       const b = base.get(k), l = local.get(k), c = cloud.get(k);
       const lf = l ? await hash(l.entity, l.row) : null, cf = c ? await hash(c.entity, c.row) : null;
@@ -159,6 +369,10 @@
       else if (cf === b.contentFingerprint) result.pushes.push(item);
       else result.pulls.push(item);
     }
+
+    // Phase 6O: Detect supported transaction UPDATE/DELETE groups (push or pull)
+    // before the create detection, which only ever matches a baseline-absent row.
+    await classifyFinancial(s, base, local, cloud, remote, hash, result);
 
     // Phase 6N: Detect supported transaction-create + account delta pull groups
     const pullGroup = await isSupportedPullGroup(s, base, local, cloud, hash);
@@ -217,6 +431,8 @@
       for (const e of s.outbox) {
         if (!e.id || !Number.isSafeInteger(e.sequence) || e.sequence < 1 || !supported.has(e.entity) ||
             !['upsert','delete'].includes(e.operation) || e.record_key !== e.entity + ':' + e.supabase_id ||
+            e.kind !== undefined && !['transaction-create','transaction-update','transaction-delete',
+              'account-balance','note-update','upsert','delete'].includes(e.kind) ||
             e.operation === 'upsert' && (!e.payload || (e.entity === 'profiles' ? e.payload.id : e.payload.user_id) !== s.settings.owner ||
               (e.payload.id || e.payload.user_id) !== e.supabase_id || await io.hash(e.entity,e.payload) !== e.fingerprint) ||
             e.operation === 'delete' && (e.payload !== null || e.fingerprint !== null)) throw failure('OUTBOX_INVALID');
@@ -232,10 +448,13 @@
         if (latest ? latest.fingerprint === fingerprint && latest.operation === (row ? 'upsert' : 'delete') :
           b && fingerprint === b.contentFingerprint) continue;
         if (!row && !b) continue;
+        const kind = row ? (row.entity === 'transactions' ? (b ? 'transaction-update' : 'transaction-create') :
+          row.entity === 'accounts' ? 'account-balance' : row.entity === 'notes' ? 'note-update' : 'upsert') :
+          (b && b.entity === 'transactions' ? 'transaction-delete' : 'delete');
         additions.push({ id: io.uuid(), source: SOURCE, user_id: s.settings.owner,
           record_key: k, entity: row?.entity || b.entity, local_id: String(row?.localId ?? b.localId),
           supabase_id: row?.row.id || row?.row.user_id || b.supabase_id,
-          operation: row ? 'upsert' : 'delete', payload: row ? copy(row.row) : null, fingerprint,
+          operation: row ? 'upsert' : 'delete', kind, payload: row ? copy(row.row) : null, fingerprint,
           expectedFingerprint: b?.contentFingerprint || null, sequence: (s.settings.sequence || 0) + additions.length + 1,
           queued_at: io.now(), retry_count: 0, last_error: null });
       }
@@ -260,10 +479,19 @@
     // supported. Edits, pending/post transitions, fees, transfers and deletes
     // must not degrade into independent account or transaction upserts.
     async function groups(s, p) {
-      const result = [], remaining = new Map(p.pushes.map(x => [x.key, x]));
-      for (const item of p.pushes.filter(x => x.local.entity === 'transactions')) {
+      const result = [];
+      // Phase 6O groups are already validated by the planner; only bind their
+      // exact outbox entries here so retries keep the same operation identity.
+      for (const group of (p.financial || [])) {
+        const entries = entriesFor(s, group.items);
+        if (!entries.length || group.items.some(i => !entries.some(e => e.record_key === i.key)))
+          throw failure('OUTBOX_CAPTURE_MISSING');
+        result.push({ ...group, entries });
+      }
+      const remaining = new Map(p.pushes.filter(x => !x.items).map(x => [x.key, x]));
+      for (const item of p.pushes.filter(x => !x.items && x.local.entity === 'transactions')) {
         const tx = item.local.row, acct = remaining.get('accounts:' + tx.account_id);
-        const others = p.pushes.filter(x => x.local.entity === 'transactions' && x.local.row.account_id === tx.account_id);
+        const others = p.pushes.filter(x => !x.items && x.local.entity === 'transactions' && x.local.row.account_id === tx.account_id);
         if (item.base || !acct?.base || !acct.cloud || others.length !== 1 || tx.status !== 'posted' ||
             tx.bill_id || tx.parent_transaction_id || tx.statement_id || tx.metadata?.opening || tx.metadata?.cardFee ||
             !Number.isFinite(tx.amount) || !tx.amount) throw failure('UNSUPPORTED_FINANCIAL_GROUP');
@@ -291,11 +519,15 @@
     async function acknowledge(s, items, entries, model) {
       const base = s.baseline.records.slice();
       for (const item of items) {
+        const i = base.findIndex(b => key(b) === item.key);
+        if (item.action === 'delete') {
+          if (i >= 0) base.splice(i, 1);
+          continue;
+        }
         const r = item.local || item.cloud;
         const next = { ...(item.base || {}), entity: r.entity, supabase_id: r.row.id || r.row.user_id,
           localId: String(r.localId ?? item.base?.localId), user_id: s.baseline.user_id,
           contentFingerprint: item.localHash || item.cloudHash, cloud_updated_at: item.cloud?.row.updated_at || null };
-        const i = base.findIndex(b => key(b) === item.key);
         if (i < 0) base.push(next); else base[i] = next;
       }
       await commit(s, { baseline: { ...s.baseline, records: base,
@@ -306,12 +538,21 @@
     }
 
     async function send(s, group, model, generation, runEpoch) {
-      if (!['transaction-create','note-update'].includes(group?.kind) || !Array.isArray(group.items) ||
-          !Array.isArray(group.entries) || !group.entries.some(e => e.id === group.operationId) ||
+      if (!['transaction-create','transaction-update','transaction-delete','note-update'].includes(group?.kind) ||
+          !Array.isArray(group.items) || !Array.isArray(group.entries) ||
+          !group.entries.some(e => e.id === group.operationId) ||
           group.entries.some(e => !s.outbox.some(current => same(current,e)))) throw failure('JOURNAL_INVALID');
+      if (['transaction-update','transaction-delete'].includes(group.kind) &&
+          (!io.capabilities || !(await io.capabilities()))) throw failure('TRANSACTION_WRITE_CONTRACT_NOT_READY');
       for (const item of group.items) {
         const matches = s.baseline.records.filter(b => key(b) === item.key);
         if (item.base ? matches.length !== 1 || !same(matches[0], item.base) : matches.length !== 0) throw failure('JOURNAL_BASELINE_CHANGED');
+        if (item.action === 'delete') {
+          if (item.local !== null || !item.cloud ||
+              !group.entries.some(e => e.record_key === item.key && e.operation === 'delete' && e.fingerprint === null))
+            throw failure('JOURNAL_INVALID');
+          continue;
+        }
         checkRecords([item.local], s.settings.owner);
         if (await io.hash(item.local.entity,item.local.row) !== item.localHash ||
             !group.entries.some(e => e.record_key === item.key && e.fingerprint === item.localHash)) throw failure('JOURNAL_INVALID');
@@ -338,6 +579,10 @@
       checkRecords(remote, s.settings.owner);
       for (const item of group.items) {
         const c = remote.find(r => key(r) === item.key);
+        if (item.action === 'delete') {
+          if (c) throw failure('POST_WRITE_VERIFICATION_FAILED');
+          continue;
+        }
         if (!c || await io.hash(c.entity, c.row) !== item.localHash) throw failure('POST_WRITE_VERIFICATION_FAILED');
         item.cloud = c;
       }
@@ -364,7 +609,8 @@
       const fresh = await snapshot();
       if (!same(fresh, s) || fresh.state?.json !== model.json) throw failure('LOCAL_CHANGED_DURING_PULL');
       const proved = await plan(fresh, io.model(owner, fresh.baseline), group.remote, io.hash);
-      if (proved.pulls.length !== 1 || !same(proved.pulls[0], group) || proved.blocked.length || proved.conflicts.length)
+      if (proved.pulls.length !== 1 || !same(proved.pulls[0], group) || proved.blocked.length ||
+          proved.conflicts.length || proved.pushes.length || proved.financial.length)
         throw failure('PULL_REQUIRES_REVIEW');
       const nextModel = io.pullModel(model, [group]);
       const verifyModel = async candidate => {
@@ -379,11 +625,15 @@
       await verifyModel(io.modelState(nextModel.json, owner, s.baseline));
       const records = copy(s.baseline.records);
       for (const item of group.items) {
+        const i = records.findIndex(b => key(b) === item.key);
+        if (item.action === 'delete') {
+          if (i >= 0) records.splice(i, 1);
+          continue;
+        }
         const r = item.cloud;
         const entry = { ...(item.base || {}), entity: r.entity, supabase_id: r.row.id,
           localId: String(r.row.legacy_id), user_id: owner, contentFingerprint: item.cloudHash,
           cloud_updated_at: r.row.updated_at || null };
-        const i = records.findIndex(b => key(b) === item.key);
         if (i < 0) records.push(entry); else records[i] = entry;
       }
       const baseline = { ...s.baseline, records, revision: (s.baseline.revision || 0) + 1, aggregateFingerprintStale: true };
@@ -417,9 +667,10 @@
     }
 
     async function pull(s, items, model, generation, runEpoch) {
-      if (items.some(i => i.kind === 'transaction-pull')) {
-        if (items.length !== 1) throw failure('PULL_REQUIRES_REVIEW');
-        return financialPull(s, items[0], model, generation, runEpoch);
+      const financial = items.filter(i => ['transaction-pull','transaction-update-pull','transaction-delete-pull'].includes(i.kind));
+      if (financial.length) {
+        if (items.length !== 1 || financial.length !== 1) throw failure('PULL_REQUIRES_REVIEW');
+        return financialPull(s, financial[0], model, generation, runEpoch);
       }
       if (!io.pullModel || !io.installLocal || items.some(i => i.local?.entity !== 'notes' || !i.base || !i.cloud?.lifecycle))
         throw failure('PULL_REQUIRES_REVIEW');
@@ -481,14 +732,17 @@
           if (p.conflicts.length) {
             await commit(s, { putConflicts: p.conflicts.map(item => ({ id: io.uuid(), source: SOURCE,
               owner: activeOwner, key: item.key, baseline: item.base, local: item.local, cloud: item.cloud,
-              created_at: io.now(), status: 'unresolved' })) }, model);
+              reason: item.reason || 'LOCAL_AND_CLOUD_CHANGED', operation: item.operation || 'upsert',
+              affectedAccounts: item.affectedAccounts || [], created_at: io.now(), status: 'unresolved' })) }, model);
             publish({ conflicts: p.conflicts.length }); throw failure('CONFLICT_REVIEW_REQUIRED');
           }
           if (p.blocked.length) throw failure('PRESENCE_CHANGE_REQUIRES_REVIEW');
           const work = await groups(s, p); // Validate the entire batch before any writes.
           // Generic financial pulls are deliberately not guessed or partially applied.
-          // Allow notes pulls and transaction-pull groups (cloud transaction-create + account delta)
-          if (p.pulls.some(i => i.local?.entity !== 'notes' && i.kind !== 'transaction-pull')) throw failure('PULL_REQUIRES_REVIEW');
+          // Allow notes pulls and the three reviewed financial group kinds.
+          const groupKinds = ['transaction-pull','transaction-update-pull','transaction-delete-pull'];
+          if (p.pulls.some(i => !groupKinds.includes(i.kind) && i.local?.entity !== 'notes')) throw failure('PULL_REQUIRES_REVIEW');
+          if (p.pulls.filter(i => groupKinds.includes(i.kind)).length > 1) throw failure('PULL_REQUIRES_REVIEW');
           if (p.pulls.length) {
             await pull(s, p.pulls, model, generation, runEpoch);
             publish({ phase: 'idle' }); return;
@@ -582,6 +836,16 @@
       uuid: () => crypto.randomUUID(), now: () => new Date().toISOString(), jitter: () => Math.floor(Math.random() * 1000),
       online: () => navigator.onLine !== false, authenticate: () => CapSupabase.currentUser(),
       readiness: () => rpc('cap_verify_production_sync_v1'),
+      // Phase 6O write capability is a separate, narrow attestation so the
+      // already-proven 6N create/notes path is not coupled to its rollout.
+      capabilities: async () => {
+        try {
+          const raw = await rpc('cap_verify_transaction_update_delete_v1');
+          return !!(raw && raw.version === 'CAP_TX_UPDATE_DELETE_READINESS_V1' && raw.ready === true &&
+            raw.update_contract === 'CAP_TX_UPDATE_CAS_RECEIPT_V1' &&
+            raw.delete_contract === 'CAP_TX_DELETE_CAS_RECEIPT_V1');
+        } catch (_) { return false; }
+      },
       remote: async owner => validateSnapshot(await rpc('cap_sync_snapshot_v1'), owner),
       write: group => {
         if (group.kind === 'transaction-create') {
@@ -590,6 +854,19 @@
           const tx = group.items[0].local.row, account = group.items[1].cloud.row;
           return rpc('cap_sync_transaction_create', { p_operation_id: group.operationId,
             p_transaction: tx, p_expected_account: account });
+        }
+        if (group.kind === 'transaction-update' || group.kind === 'transaction-delete') {
+          const tx = group.items.find(i => i.key.startsWith('transactions:'));
+          const accounts = group.items.filter(i => i.key.startsWith('accounts:'));
+          if (!tx?.cloud?.row || (group.kind === 'transaction-update' && !tx?.local?.row)) throw failure('UNSUPPORTED_WRITE');
+          if (group.kind === 'transaction-update') {
+            return rpc('cap_sync_transaction_update', { p_operation_id: group.operationId,
+              p_id: tx.cloud.row.id, p_transaction: tx.local.row, p_expected_transaction: tx.cloud.row,
+              p_expected_accounts: accounts.map(i => i.cloud.row) });
+          }
+          return rpc('cap_sync_transaction_delete', { p_operation_id: group.operationId,
+            p_id: tx.cloud.row.id, p_expected_transaction: tx.cloud.row,
+            p_expected_accounts: accounts.map(i => i.cloud.row) });
         }
         if (group.kind === 'note-update') {
           const item = group.items[0], c = item.cloud;
@@ -602,21 +879,49 @@
       pullModel: (model, items) => {
         if (document.activeElement?.matches('input,textarea,[contenteditable="true"]')) throw failure('PULL_DEFERRED_WHILE_EDITING');
         const state = JSON.parse(model.json);
+        const installAccounts = accounts => {
+          for (const acct of accounts) {
+            const accountId = Number(acct.base?.localId);
+            const found = state.accts.filter(a => a.id === accountId);
+            const balance = acct.cloud?.row?.balance;
+            if (found.length !== 1 || !Number.isFinite(balance) || !acct.base) throw failure('PULL_MAPPING_INVALID');
+            // Install the authoritative balance, never replay business logic.
+            found[0].bal = balance;
+          }
+        };
+        const hydrateRemote = remote => {
+          const mapper = cloudMapper();
+          const raw = { version: SNAPSHOT_VERSION, complete: true, owner: remote[0]?.row?.user_id,
+            record_count: remote.length, counts: Object.fromEntries(entities.map(e => [e, remote.filter(r => r.entity === e).length])), records: remote };
+          return mapper.hydrate(raw, raw.owner);
+        };
         for (const item of items) {
           if (item.kind === 'transaction-pull') {
-            const tx = item.items[0], acct = item.items[1];
+            const tx = item.items[0];
             const mapper = cloudMapper(), remote = item.remote;
             const raw = { version: SNAPSHOT_VERSION, complete: true, owner: tx.cloud.row.user_id,
               record_count: remote.length, counts: Object.fromEntries(entities.map(e => [e, remote.filter(r => r.entity === e).length])), records: remote };
             const restored = mapper.hydrate(raw, raw.owner);
-            const id = Number(tx.cloud.row.legacy_id), accountId = Number(acct.base.localId);
+            const id = Number(tx.cloud.row.legacy_id);
             const incoming = restored.tx.filter(t => t.id === id);
-            const accounts = state.accts.filter(a => a.id === accountId);
-            if (tx.base || tx.local || incoming.length !== 1 || accounts.length !== 1 ||
+            if (tx.base || tx.local || incoming.length !== 1 ||
                 [...state.tx, ...(state.pend || [])].some(t => t.id === id)) throw failure('PULL_MAPPING_INVALID');
             state.tx.push(incoming[0]);
-            // Install the authoritative balance, never call transaction business logic.
-            accounts[0].bal = acct.cloud.row.balance;
+            installAccounts(item.items.slice(1));
+          } else if (item.kind === 'transaction-update-pull' || item.kind === 'transaction-delete-pull') {
+            const tx = item.items[0], accounts = item.items.slice(1);
+            const id = Number(tx.base?.localId);
+            const matches = state.tx.filter(t => t.id === id);
+            if (matches.length !== 1 || (state.pend || []).some(t => t.id === id)) throw failure('PULL_MAPPING_INVALID');
+            if (item.kind === 'transaction-delete-pull') {
+              state.tx = state.tx.filter(t => t.id !== id);
+            } else {
+              const restored = hydrateRemote(item.remote);
+              const incoming = restored.tx.filter(t => t.id === id);
+              if (incoming.length !== 1 || incoming[0].acct == null) throw failure('PULL_MAPPING_INVALID');
+              state.tx = state.tx.map(t => t.id === id ? incoming[0] : t);
+            }
+            installAccounts(accounts);
           } else {
             // Handle notes pull (existing logic)
             if (!Array.isArray(state.notes)) throw failure('PULL_MAPPING_INVALID');
