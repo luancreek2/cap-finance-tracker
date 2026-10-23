@@ -49,6 +49,7 @@ async function fixture(options={}){
   vm.runInContext(source('sync-production.js'),c);
   c.CapProductionSync.status=()=>({enabled:false,phase:'off'});
   vm.runInContext(source('production-rpc.js'),c);
+  vm.runInContext(source('cloud-to-local.js'),c);
   const sup=source('supabase.js');
   vm.runInContext('const configured=()=>true; const user=async()=>({id:"'+OWNER+'"});'+sup.slice(sup.indexOf('  async function validateRealData'),sup.indexOf('  function status()'))+';CapSupabase.validateRealData=validateRealData;',c);
   const production=productionState();if(options.production)options.production(production);
@@ -84,7 +85,8 @@ async function fixture(options={}){
       assert.equal(JSON.stringify(now),before);assert.equal(JSON.stringify(c.S),memory);assert.equal(storage.get('pera'),memory);}};
 }
 const row=(f,e)=>f.raw.records.find(r=>r.entity===e).row;
-(async()=>{
+module.exports={fixture,productionState,OWNER,clone};
+if(require.main===module)(async()=>{
   await test('fresh Device B: real adapters restore production-compatible 44 rows',async()=>{
     const f=await fixture(),r=await f.run();assert.equal(r.ok,true,r.error);assert.equal(r.records,44);assert.equal(r.message,'Device ready — Cloud Sync can now be enabled');
     assert.equal(f.c.S.tx.length,11);assert.equal(f.c.S.accts[0].bal,28449);

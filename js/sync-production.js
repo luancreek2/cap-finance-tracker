@@ -64,6 +64,75 @@
     return r.records;
   }
 
+  // Phase 6N: Check if a transaction+account pair forms a valid supported pull group
+  async function isSupportedPullGroup(s, base, local, cloud, hash) {
+    // Find transaction in cloud but not in local/baseline (new cloud-only transaction)
+    const txKeys = [...cloud.keys()].filter(k => k.startsWith('transactions:') && !local.has(k) && !base.has(k));
+    // Initial policy B: one financial group per snapshot, never guess aggregate deltas.
+    if (txKeys.length !== 1 || s.outbox.length || s.conflicts.length) return null;
+    for (const txKey of txKeys) {
+      const txCloud = cloud.get(txKey);
+      if (!txCloud || txCloud.entity !== 'transactions' || txCloud.row.status !== 'posted') continue;
+      const tx = txCloud.row;
+      const legacy = String(tx.legacy_id ?? '');
+      const metadataKeys = new Set(['id','ts','_u','d','amt','cat','acct','note','desc','pd']);
+      if (!/^[1-9]\d*$/.test(legacy) || !Number.isSafeInteger(Number(legacy)) ||
+          String(Number(legacy)) !== legacy || tx.id !== cloudMapper().migrationStableUuid('transactions:' + legacy) ||
+          !tx.metadata || typeof tx.metadata !== 'object' || Array.isArray(tx.metadata) ||
+          Object.keys(tx.metadata).some(k => !metadataKeys.has(k)) ||
+          tx.bill_id || tx.parent_transaction_id || tx.statement_id || tx.metadata?.opening || tx.metadata?.cardFee ||
+          !Number.isFinite(tx.amount) || !tx.amount ||
+          [...local.values()].some(r => r.entity === 'transactions' && String(r.row.legacy_id) === legacy) ||
+          [...base.values()].some(r => r.entity === 'transactions' && String(r.localId) === legacy)) continue;
+      const acctKey = 'accounts:' + tx.account_id;
+      const b = base.get(acctKey), l = local.get(acctKey), acctCloud = cloud.get(acctKey);
+
+      // Must have matching account in cloud and baseline/local
+      if (!acctCloud || !l || !b) continue;
+
+      // Verify local account matches baseline (no local unsynced changes)
+      const localHash = await hash('accounts', l.row);
+      if (localHash !== b.contentFingerprint) continue;
+
+      // Verify cloud account differs from baseline exactly as expected
+      const bAcct = l.row, cAcct = acctCloud.row;
+      if (!['debit','ewallet','credit'].includes(bAcct.account_type) || !Number.isFinite(bAcct.balance) ||
+          !Number.isFinite(cAcct.balance) || String(b.localId) !== String(bAcct.legacy_id) ||
+          cAcct.legacy_id !== bAcct.legacy_id ||
+          bAcct.id !== cloudMapper().migrationStableUuid('accounts:' + bAcct.legacy_id)) continue;
+      if (Object.hasOwn(tx.metadata,'id') && String(tx.metadata.id) !== legacy ||
+          Object.hasOwn(tx.metadata,'acct') && String(tx.metadata.acct) !== String(b.localId) ||
+          Object.hasOwn(tx.metadata,'amt') && tx.metadata.amt !== tx.amount ||
+          Object.hasOwn(tx.metadata,'d') && tx.metadata.d !== tx.transaction_date) continue;
+      const delta = bAcct.account_type === 'credit' ? -tx.amount : tx.amount;
+      const expectedBalance = Math.round((Number(bAcct.balance) + delta) * 100) / 100;
+      if (Math.abs(Number(cAcct.balance) - expectedBalance) > 0.000001) continue;
+      if (cAcct.balance === bAcct.balance) continue; // No actual change
+
+      // Verify cloud account matches baseline in all other fields
+      const cAcctHash = await hash('accounts', cAcct);
+      if (cAcctHash === b.contentFingerprint) continue; // No actual change
+      if (await hash('accounts', { ...cAcct, balance: bAcct.balance }) !== localHash) continue;
+      if (tx.category_id && (!local.has('categories:' + tx.category_id) || !cloud.has('categories:' + tx.category_id))) continue;
+
+      // Verify transaction is not referenced by other pending items
+      const hasPendingRef = [...cloud.keys()].some(k => {
+        const item = cloud.get(k);
+        return k !== txKey && item && item.row && (item.row.parent_transaction_id === tx.id || item.row.transaction_id === tx.id);
+      });
+      if (hasPendingRef) continue;
+
+      // All checks passed - this is a supported pull group
+      return { txKey, acctKey, tx: txCloud, acct: cloud.get(acctKey) };
+    }
+    return null;
+  }
+
+  function cloudMapper() {
+    if (typeof window !== 'undefined' && window.CapCloudToLocal) return window.CapCloudToLocal;
+    throw failure('CLOUD_MAPPER_UNAVAILABLE');
+  }
+
   // Pure, three-way planning. Absence never authorizes physical deletion.
   async function plan(s, model, remote, hash) {
     const owner = s.baseline.user_id;
@@ -90,6 +159,27 @@
       else if (cf === b.contentFingerprint) result.pushes.push(item);
       else result.pulls.push(item);
     }
+
+    // Phase 6N: Detect supported transaction-create + account delta pull groups
+    const pullGroup = await isSupportedPullGroup(s, base, local, cloud, hash);
+    if (pullGroup) {
+      const { txKey, acctKey } = pullGroup;
+      const txItem = result.blocked.find(i => i.key === txKey);
+      const acctItem = result.pulls.find(i => i.key === acctKey);
+      if (txItem && acctItem && result.blocked.length === 1 && !result.pushes.length &&
+          !result.conflicts.length && !result.converged.length && result.pulls.length === 1) {
+        result.blocked = [];
+        result.pulls = [];
+        result.pulls.push({
+          kind: 'transaction-pull',
+          items: [
+            txItem, acctItem
+          ],
+          entries: [], remote: copy(remote)
+        });
+      }
+    }
+
     return result;
   }
 
@@ -116,7 +206,7 @@
       (!model || io.localJson() === model.json && (!io.localPersisted || io.localPersisted(model.json))) && io.localOwner() === s.baseline?.user_id);
     const current = async (owner, generation, runEpoch) => {
       const s = await snapshot();
-      if (stopped || epoch !== runEpoch || !s.settings?.enabled || s.settings.owner !== owner ||
+      if (stopped || epoch !== runEpoch || !io.online() || !s.settings?.enabled || s.settings.owner !== owner ||
           io.localOwner() !== owner || io.sessionGeneration() !== generation) throw failure('RUN_CANCELLED');
       return s;
     };
@@ -256,8 +346,83 @@
       await acknowledge(latest, group.items, group.entries, model);
     }
 
+    // A financial pull never enters groups()/send()/write(). IDB state, baseline
+    // and a durable before-image journal commit together, then all copies and
+    // canonical fingerprints are verified before the journal can be removed.
+    async function financialPull(s, group, model, generation, runEpoch) {
+      if (!io.pullModel || !io.installLocal || !io.rollbackLocal || !io.modelState || s.outbox.length || s.conflicts.length)
+        throw failure('PULL_REQUIRES_REVIEW');
+      const owner = s.settings.owner, mapper = cloudMapper();
+      const remoteSignature = rows => mapper.stable(rows.slice().sort((a,b) => key(a).localeCompare(key(b))));
+      const initial = remoteSignature(group.remote);
+      const verifyRemote = async () => {
+        const remote = await io.remote(owner); checkRecords(remote, owner);
+        if (remoteSignature(remote) !== initial) throw failure('CLOUD_CHANGED_DURING_PULL');
+      };
+      await current(owner, generation, runEpoch);
+      await verifyRemote();
+      const fresh = await snapshot();
+      if (!same(fresh, s) || fresh.state?.json !== model.json) throw failure('LOCAL_CHANGED_DURING_PULL');
+      const proved = await plan(fresh, io.model(owner, fresh.baseline), group.remote, io.hash);
+      if (proved.pulls.length !== 1 || !same(proved.pulls[0], group) || proved.blocked.length || proved.conflicts.length)
+        throw failure('PULL_REQUIRES_REVIEW');
+      const nextModel = io.pullModel(model, [group]);
+      const verifyModel = async candidate => {
+        checkRecords(candidate.records, owner);
+        if (candidate.records.length !== group.remote.length) throw failure('PULL_FINGERPRINT_MISMATCH');
+        for (const r of group.remote) {
+          const local = candidate.records.find(l => key(l) === key(r));
+          if (!local || await io.hash(r.entity, local.row) !== await io.hash(r.entity, r.row))
+            throw failure('PULL_FINGERPRINT_MISMATCH');
+        }
+      };
+      await verifyModel(io.modelState(nextModel.json, owner, s.baseline));
+      const records = copy(s.baseline.records);
+      for (const item of group.items) {
+        const r = item.cloud;
+        const entry = { ...(item.base || {}), entity: r.entity, supabase_id: r.row.id,
+          localId: String(r.row.legacy_id), user_id: owner, contentFingerprint: item.cloudHash,
+          cloud_updated_at: r.row.updated_at || null };
+        const i = records.findIndex(b => key(b) === item.key);
+        if (i < 0) records.push(entry); else records[i] = entry;
+      }
+      const baseline = { ...s.baseline, records, revision: (s.baseline.revision || 0) + 1, aggregateFingerprintStale: true };
+      const journal = { kind: 'local-pull', version: 2, owner, beforeJson: model.json, beforeState: s.state,
+        beforeBaseline: s.baseline, nextJson: nextModel.json, nextBaseline: baseline, created_at: io.now() };
+      await verifyRemote();
+      await current(owner, generation, runEpoch);
+      // productionSyncCommit re-reads the entire persisted snapshot in its IDB transaction.
+      await commit(s, { journal, baseline, state: { json: nextModel.json, mt: nextModel.mt } }, model);
+      try {
+        io.installLocal(nextModel.json, model.json);
+        const after = await current(owner, generation, runEpoch);
+        if (!same(after.journal, journal) || !same(after.baseline, baseline) || after.state?.json !== nextModel.json ||
+            io.localJson() !== nextModel.json || !io.localPersisted(nextModel.json)) throw failure('PULL_PERSISTENCE_MISMATCH');
+        await verifyModel(io.model(owner, baseline));
+        await verifyRemote();
+        await current(owner, generation, runEpoch);
+        await commit(after, { journal: null }, nextModel);
+      } catch (error) {
+        try {
+          const after = await snapshot();
+          if (!same(after.journal, journal) || !same(after.baseline, baseline) || after.state?.json !== nextModel.json ||
+              after.outbox.length || after.conflicts.length) throw failure('ROLLBACK_CONCURRENT_CHANGE');
+          // Guard each memory/storage copy independently; an interrupted install
+          // can leave one old and one new. Never overwrite a third/concurrent value.
+          io.rollbackLocal(model.json, nextModel.json);
+          await commit(after, { baseline: s.baseline, state: s.state, journal: null }, model);
+        } catch (_) { halted = true; throw failure('LOCAL_PULL_RECOVERY_REQUIRED'); }
+        throw error;
+      }
+    }
+
     async function pull(s, items, model, generation, runEpoch) {
-      if (!io.pullModel || !io.installLocal || items.some(i => i.local?.entity !== 'notes' || !i.base || !i.cloud?.lifecycle)) throw failure('PULL_REQUIRES_REVIEW');
+      if (items.some(i => i.kind === 'transaction-pull')) {
+        if (items.length !== 1) throw failure('PULL_REQUIRES_REVIEW');
+        return financialPull(s, items[0], model, generation, runEpoch);
+      }
+      if (!io.pullModel || !io.installLocal || items.some(i => i.local?.entity !== 'notes' || !i.base || !i.cloud?.lifecycle))
+        throw failure('PULL_REQUIRES_REVIEW');
       await current(s.settings.owner, generation, runEpoch);
       const nextModel = io.pullModel(model, items);
       const records = s.baseline.records.map(b => {
@@ -322,7 +487,8 @@
           if (p.blocked.length) throw failure('PRESENCE_CHANGE_REQUIRES_REVIEW');
           const work = await groups(s, p); // Validate the entire batch before any writes.
           // Generic financial pulls are deliberately not guessed or partially applied.
-          if (p.pulls.some(i => i.local?.entity !== 'notes')) throw failure('PULL_REQUIRES_REVIEW');
+          // Allow notes pulls and transaction-pull groups (cloud transaction-create + account delta)
+          if (p.pulls.some(i => i.local?.entity !== 'notes' && i.kind !== 'transaction-pull')) throw failure('PULL_REQUIRES_REVIEW');
           if (p.pulls.length) {
             await pull(s, p.pulls, model, generation, runEpoch);
             publish({ phase: 'idle' }); return;
@@ -396,21 +562,22 @@
   // Production transport. These versioned server endpoints are deployment gates,
   // NOT fallbacks to the old raw table/test-only execution paths.
   function browserIO() {
-    const model = (owner, baseline) => {
-      const json = JSON.stringify(S), report = migrationPrepare();
+    const modelState = (json, owner, baseline) => {
+      const state = JSON.parse(json), report = migrationPrepare(state);
       if (report.blockingProblems.length) throw failure('LOCAL_MAPPING_INVALID');
-      const p = buildSupabaseMigrationPlan(report, owner);
+      const p = buildSupabaseMigrationPlan(report, owner, state);
       const records = [...p.tables.flatMap(([entity, rows]) => rows.map(row => ({ entity, row }))),
         { entity: 'profiles', row: p.profile }, { entity: 'user_preferences', row: p.preferences }];
       records.forEach(r => { r.localId = baseline.records.find(b => key(b) === key(r))?.localId ?? r.row.legacy_id ?? r.row.id ?? owner; });
-      return { json, mt: S._mt || 0, records };
+      return { json, mt: state._mt || 0, records };
     };
+    const model = (owner, baseline) => modelState(JSON.stringify(S), owner, baseline);
     const rpc = (name, body = {}) => CapSupabase.syncRequest('/rest/v1/rpc/' + name, { method: 'POST', body: JSON.stringify(body) });
     return {
       snapshot: () => CapOff.productionSyncSnapshot(), commit: (...args) => CapOff.productionSyncCommit(...args),
       localJson: () => JSON.stringify(S), localOwner: () => CapSupabase.localIdentity(),
       localPersisted: json => localStorage.getItem('pera') === json,
-      sessionGeneration: () => CapSupabase.sessionGeneration(), model,
+      sessionGeneration: () => CapSupabase.sessionGeneration(), model, modelState,
       hash: (entity, row) => CapSync.fingerprintRow(entity, row),
       uuid: () => crypto.randomUUID(), now: () => new Date().toISOString(), jitter: () => Math.floor(Math.random() * 1000),
       online: () => navigator.onLine !== false, authenticate: () => CapSupabase.currentUser(),
@@ -435,15 +602,38 @@
       pullModel: (model, items) => {
         if (document.activeElement?.matches('input,textarea,[contenteditable="true"]')) throw failure('PULL_DEFERRED_WHILE_EDITING');
         const state = JSON.parse(model.json);
-        if (!Array.isArray(state.notes)) throw failure('PULL_MAPPING_INVALID');
         for (const item of items) {
-          const notes = state.notes.filter(n => String(n.id) === String(item.base.localId));
-          const row = item.cloud.row;
-          if (notes.length !== 1 || row.legacy_id !== String(item.base.localId) ||
-              typeof row.title !== 'string' || typeof row.body !== 'string') throw failure('PULL_MAPPING_INVALID');
-          Object.assign(notes[0], { t: row.title, b: row.body, d: row.note_date || '' });
+          if (item.kind === 'transaction-pull') {
+            const tx = item.items[0], acct = item.items[1];
+            const mapper = cloudMapper(), remote = item.remote;
+            const raw = { version: SNAPSHOT_VERSION, complete: true, owner: tx.cloud.row.user_id,
+              record_count: remote.length, counts: Object.fromEntries(entities.map(e => [e, remote.filter(r => r.entity === e).length])), records: remote };
+            const restored = mapper.hydrate(raw, raw.owner);
+            const id = Number(tx.cloud.row.legacy_id), accountId = Number(acct.base.localId);
+            const incoming = restored.tx.filter(t => t.id === id);
+            const accounts = state.accts.filter(a => a.id === accountId);
+            if (tx.base || tx.local || incoming.length !== 1 || accounts.length !== 1 ||
+                [...state.tx, ...(state.pend || [])].some(t => t.id === id)) throw failure('PULL_MAPPING_INVALID');
+            state.tx.push(incoming[0]);
+            // Install the authoritative balance, never call transaction business logic.
+            accounts[0].bal = acct.cloud.row.balance;
+          } else {
+            // Handle notes pull (existing logic)
+            if (!Array.isArray(state.notes)) throw failure('PULL_MAPPING_INVALID');
+            const notes = state.notes.filter(n => String(n.id) === String(item.base.localId));
+            const row = item.cloud.row;
+            if (notes.length !== 1 || row.legacy_id !== String(item.base.localId) ||
+                typeof row.title !== 'string' || typeof row.body !== 'string') throw failure('PULL_MAPPING_INVALID');
+            Object.assign(notes[0], { t: row.title, b: row.body, d: row.note_date || '' });
+          }
         }
         return { json: JSON.stringify(state), mt: state._mt || 0 };
+      },
+      rollbackLocal: (before, next) => {
+        if (![before,next].includes(JSON.stringify(S)) || ![before,next].includes(localStorage.getItem('pera')))
+          throw failure('ROLLBACK_CONCURRENT_CHANGE');
+        localStorage.setItem('pera', before); S = JSON.parse(before);
+        CapOff.resetProductionTracking();
       },
       installLocal: (json, expected) => {
         if (JSON.stringify(S) !== expected || localStorage.getItem('pera') !== expected) throw failure('LOCAL_PULL_RECOVERY_REQUIRED');
@@ -536,7 +726,7 @@
       '</span></span></label></div>' +
       '<div class="st-note" role="status" aria-live="polite" aria-atomic="true" id="production-sync-status">' + message + '</div>';
   }
-  const api = { createEngine, plan, ready, validateSnapshot, settingsHtml, request, status: () => engine?.status() || { enabled: false },
+  const api = { createEngine, plan, ready, validateSnapshot, browserIO, settingsHtml, request, status: () => engine?.status() || { enabled: false },
     pause: reason => engine?.pause(reason), authChanged: () => engine?.authChanged(),
     toggle: async requested => {
       if (toggleBusy || !booted) { paint(); return; }
