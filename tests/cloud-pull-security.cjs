@@ -11,7 +11,8 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'supabase_phase6o_transaction_update_delete.sql','tests/sync-presence-diagnostic.cjs',
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',
-  'tests/sync-recovery-hold.cjs','tests/sync-production.cjs','docs/sync-recovery-hold.md'];
+  'tests/sync-recovery-hold.cjs','tests/sync-production.cjs','docs/sync-recovery-hold.md',
+  'tests/apple-theme.cjs','tests/apple-theme-browser.cjs','css/activity-scope.css'];
 const git=(...args)=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\r?\n/).filter(Boolean);
 const changed=[...new Set([...git('diff','--name-only','HEAD'),...git('ls-files','--others','--exclude-standard')])];
 assert.ok(changed.every(f=>allowed.includes(f)),'Unexpected files in proposed release');

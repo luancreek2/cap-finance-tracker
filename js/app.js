@@ -2174,14 +2174,24 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         [7, "1 week before"],
       ];
       /* Preferences and plan rendering */
+      function appearanceTheme() {
+        // Presentation-only override: never add Apple to synced S.theme.
+        try {
+          const t = localStorage.getItem('cap-appearance-theme');
+          if (['auto','light','dark','apple'].includes(t)) return t;
+        } catch (_) {}
+        return ['auto','light','dark'].includes(S.theme) ? S.theme : 'auto';
+      }
       function applyTheme() {
-        const t = S.theme || "auto";
+        const t = appearanceTheme();
         if (t == "auto") document.documentElement.removeAttribute("data-theme");
         else document.documentElement.setAttribute("data-theme", t);
       }
       function setTheme(t) {
-        S.theme = t;
-        render();
+        if (!['auto','light','dark','apple'].includes(t)) return;
+        try { localStorage.setItem('cap-appearance-theme', t); }
+        catch (_) { toast('Appearance could not be saved on this device.'); return; }
+        applyTheme();
         stGo('appearance');            /* stay on the page the change was made on */
       }
       function openSettings() {
@@ -3522,7 +3532,7 @@ function bvToggle(){
   const s=document.getElementById('st-bvsub');if(s)s.textContent=bvSub();
 }
 function applyHide(){try{document.documentElement.classList.toggle('bvhide',S.hide==1)}catch(e){}}
-function themeLbl(){const t=S.theme||'auto';return t=='light'?'Light':t=='dark'?'Dark':'Auto'}
+function themeLbl(){const t=appearanceTheme();return t=='apple'?'Apple Theme':t=='light'?'Light':t=='dark'?'Dark':'Auto'}
 function catCountLbl(){const n=(S.cats||[]).filter(c=>!c.a).length;return n+' categor'+(n==1?'y':'ies')}
 function notifLbl(){const n=notifCfg();if(!n.on)return 'Off';return notifState()=='granted'?'On':'Blocked'}
 function soundLbl(){return S.snd!=0?'On':'Muted'}
@@ -3569,10 +3579,10 @@ function stNoPhoto(){delete S.photo;save();stGo('profile',1)}
 /* ---- Appearance ---- */
 function stAppearance(){
   stStart();
-  const t=S.theme||'auto';
+  const t=appearanceTheme();
   const h=stHead('Appearance','openSettings()')
-    +`<div class="st-grp eyebrow">Theme</div><p style="display:flex;gap:6px;margin:4px 0 0">${[['light','Light'],['dark','Dark'],['auto','Auto']].map(x=>`<button class="pill ${t==x[0]?'on':''}" style="flex:1" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('')}</p>`
-    +`<p class="st-note">Auto follows your device's light or dark setting.</p>`
+    +`<div class="st-grp eyebrow">Theme</div><div class="appearance-themes">${[['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme']].map(x=>`<button class="pill ${t==x[0]?'on':''}" aria-pressed="${t==x[0]}" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('')}</div>`
+    +`<p class="st-note">Auto and Apple Theme follow your device's light or dark setting. Appearance stays on this device and does not change Cloud Sync preferences.</p>`
     +capLogoChoices()
     +`<div class="st-grp eyebrow">Motion</div><div class="st-box">`
       +stSw('Animations','Screen and list transitions',S.anim!==0,"stMotion('anim',this.checked)")

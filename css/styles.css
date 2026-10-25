@@ -52,9 +52,11 @@
         color: var(--tx);
         font:
           15px/1.4 -apple-system,
-          "Segoe UI",
-          Inter,
-          Roboto,
+          BlinkMacSystemFont,
+          "SF Pro Display",
+          "SF Pro Text",
+          "Helvetica Neue",
+          Arial,
           sans-serif;
         padding-bottom: 90px;
       }
@@ -2302,3 +2304,133 @@ nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:64px;width:64px;ma
 @media(max-width:600px){nav>div#tabs button.on{flex-basis:120px;width:120px}nav>div#tabs button.on .nav-label{flex-basis:68px;width:68px;max-width:68px}}
 @media(max-width:600px){nav>div#tabs button.nav-tab-home.on,nav>div#tabs button.nav-tab-activity.on,nav>div#tabs button.nav-tab-plan.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-home.on .nav-label,nav>div#tabs button.nav-tab-activity.on .nav-label,nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}
 @media(max-width:600px){nav>div#tabs button.nav-tab-home.on{flex-basis:100px;width:100px}nav>div#tabs button.nav-tab-home.on .nav-label{flex-basis:44px;width:44px;max-width:44px}nav>div#tabs button.nav-tab-plan.on{flex-basis:96px;width:96px}nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:40px;width:40px;max-width:40px}nav>div#tabs button.nav-tab-activity.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}
+
+/* Presentation only: native system typography, semantic Apple surfaces and a
+   single frosted navigation layer. No font downloads or financial state. */
+:root {
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --color-primary: var(--ac);
+  --color-success: var(--g);
+  --color-danger: var(--r);
+  --color-text-primary: var(--tx);
+  --color-text-secondary: var(--mut);
+  --color-surface: var(--card);
+  --color-surface-secondary: var(--bg);
+  --color-divider: var(--line);
+  --color-glass: rgba(255,255,255,.68);
+  --color-glass-border: rgba(255,255,255,.72);
+  --nav-fallback: #f8f8fa;
+  --nav-highlight: rgba(255,255,255,.65);
+  --nav-shadow: rgba(28,28,30,.14);
+  --nav-selected: var(--ac);
+  --nav-selected-text: var(--ac-t);
+}
+:root[data-theme="dark"] {
+  --color-glass: rgba(38,38,44,.68); --color-glass-border: rgba(255,255,255,.16);
+  --nav-fallback: #26262c; --nav-highlight: rgba(255,255,255,.1); --nav-shadow: rgba(0,0,0,.28);
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --color-glass: rgba(38,38,44,.68); --color-glass-border: rgba(255,255,255,.16);
+    --nav-fallback: #26262c; --nav-highlight: rgba(255,255,255,.1); --nav-shadow: rgba(0,0,0,.28);
+  }
+}
+body, button, input, select, textarea, svg text { font-family: var(--font-system); }
+h1, h2, h3 { font-family: var(--font-system); font-optical-sizing: auto; }
+.appearance-themes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px; }
+.appearance-themes button { min-height:44px; }
+nav { padding-inline:12px; }
+nav>div#tabs {
+  width:min(372px,calc(100vw - 24px)); height:64px; padding:6px; gap:4px;
+  border:1px solid var(--color-glass-border); border-radius:999px;
+  background:var(--nav-fallback);
+  box-shadow:inset 0 1px 0 var(--nav-highlight),0 8px 24px var(--nav-shadow);
+  -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+  nav>div#tabs { background:var(--color-glass); -webkit-backdrop-filter:blur(18px) saturate(135%); backdrop-filter:blur(18px) saturate(135%); }
+}
+nav>div#tabs button { flex:0 0 48px; width:48px; height:48px; min-height:44px; padding:8px; }
+nav>div#tabs button[class].on { flex-basis:128px; width:128px; background:var(--nav-selected); color:var(--nav-selected-text); box-shadow:0 2px 5px var(--nav-shadow); }
+nav>div#tabs button[class].on .nav-label { flex:0 1 auto; width:auto; max-width:none; font-size:14px; }
+nav>div#tabs button.nav-action { flex:0 0 48px; width:48px; }
+nav>div#tabs .nav-action-plus { width:44px; height:44px; background:transparent; border-color:var(--color-glass-border); box-shadow:inset 0 1px 0 var(--nav-highlight); }
+nav>div#tabs button, nav>div#tabs button * { -webkit-backdrop-filter:none; backdrop-filter:none; }
+nav>div#tabs::before { content:none; }
+nav>div#tabs button:focus-visible, .appearance-themes button:focus-visible { outline:3px solid var(--color-primary); outline-offset:3px; }
+body { padding-bottom:calc(112px + env(safe-area-inset-bottom,0px)); }
+html { scroll-padding-bottom:calc(112px + env(safe-area-inset-bottom,0px)); }
+@media(max-width:380px) {
+  nav>div#tabs { gap:2px; padding:4px; }
+  nav>div#tabs button, nav>div#tabs button.nav-action { flex-basis:44px; width:44px; padding:6px; }
+  nav>div#tabs button[class].on { flex-basis:96px; width:96px; gap:5px; }
+  nav>div#tabs button[class].on .nav-label { font-size:12px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  nav>div#tabs button, nav>div#tabs .nav-label, nav>div#tabs .nav-action-plus { animation:none!important; transition:none!important; transform:none!important; }
+}
+
+:root[data-theme="apple"] {
+  color-scheme:light;
+  --apple-light-gray:#E5E5EA; --apple-mid-gray:#8E8E93;
+  --apple-dark-gray-2:#3A3A3C; --apple-dark-gray:#1C1C1E;
+  --apple-blue:#007AFF; --apple-green:#34C759; --apple-orange:#FF9500; --apple-red:#FF3B30; --apple-yellow:#FFCC00;
+  --color-primary:var(--apple-blue);
+  /* Accessible text/button shades of the palette; saturated bases stay accents. */
+  --color-primary-strong:#005cc8; --color-link:#005cc8;
+  --color-success:#187c32; --color-danger:#bf2c24; --color-danger-strong:#bf2c24;
+  --color-warning:var(--apple-orange); --color-caution:var(--apple-yellow);
+  --color-text-primary:var(--apple-dark-gray); --color-text-secondary:#606064;
+  --color-surface:#fff; --color-surface-secondary:#f5f5f7; --color-divider:var(--apple-light-gray);
+  --color-glass:rgba(229,229,234,.64); --color-glass-border:rgba(255,255,255,.8);
+  --nav-fallback:var(--apple-light-gray); --nav-highlight:rgba(255,255,255,.8); --nav-shadow:rgba(28,28,30,.12);
+  --nav-selected:#fff; --nav-selected-text:var(--apple-dark-gray);
+  --bg:var(--color-surface-secondary); --card:var(--color-surface);
+  --tx:var(--color-text-primary); --mut:var(--color-text-secondary); --line:var(--color-divider);
+  --g:var(--color-success); --r:var(--color-danger); --ac:var(--color-primary-strong); --ac-t:#fff;
+  --gl:var(--color-surface); --gb:var(--color-divider); --gon:var(--color-surface-secondary);
+  --gsh:0 3px 14px rgba(28,28,30,.04); --uy:var(--color-caution); --ud:var(--color-danger);
+}
+@media(prefers-color-scheme:dark) {
+  :root[data-theme="apple"] {
+    color-scheme:dark;
+    --color-link:#63a6ff;
+    --color-success:var(--apple-green); --color-danger:var(--apple-red);
+    --color-text-primary:#f5f5f7; --color-text-secondary:var(--apple-mid-gray);
+    --color-surface:var(--apple-dark-gray); --color-surface-secondary:#101012;
+    --color-divider:var(--apple-dark-gray-2);
+    --color-glass:rgba(58,58,60,.64); --color-glass-border:rgba(229,229,234,.2);
+    --nav-fallback:var(--apple-dark-gray-2); --nav-highlight:rgba(229,229,234,.12); --nav-shadow:rgba(0,0,0,.3);
+    --nav-selected:var(--apple-dark-gray); --nav-selected-text:#fff;
+    --gsh:0 3px 14px rgba(0,0,0,.12);
+  }
+}
+:root[data-theme="apple"] body { background:var(--bg); }
+:root[data-theme="apple"] :is(.card,#sheet>div,.dr,.pill,.btn,input,select,textarea) { -webkit-backdrop-filter:none; backdrop-filter:none; }
+:root[data-theme="apple"] :is(.card,#sheet>div,.dr) { background:var(--card); border-color:var(--line); }
+:root[data-theme="apple"] :is(.btn,.pill.on) { background:var(--color-primary-strong); color:#fff; }
+:root[data-theme="apple"] .btn.s { background:var(--color-surface-secondary); color:var(--tx); }
+:root[data-theme="apple"] :is(a,.st-link) { color:var(--color-link); }
+:root[data-theme="apple"] :is(input,select,textarea):focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+:root[data-theme="apple"] input { accent-color:var(--color-primary); }
+:root[data-theme="apple"] .toggle-input:checked + .cloud-toggle-minimal { background:var(--color-primary); }
+:root[data-theme="apple"] .appearance-themes button.on { border-color:var(--color-primary); }
+:root[data-theme="apple"] .swx:has(input:checked) { background:var(--color-primary); border-color:var(--color-primary); }
+:root[data-theme="apple"] .cap-logo-choices button[aria-pressed="true"] { border-color:var(--color-primary); box-shadow:0 0 0 1px var(--color-primary); }
+:root[data-theme="apple"] :is(h1,h2,.big) { font-weight:650; letter-spacing:-.025em; }
+.big, .amt, .amount { font-variant-numeric:tabular-nums; }
+:root[data-theme="apple"] #sb .st-pill[data-s="warn"] i { background:var(--color-warning); }
+:root[data-theme="apple"] #sb .st-dz { border-color:var(--color-danger); }
+:root[data-theme="apple"] #sb .st-dz .eyebrow { color:var(--color-danger); }
+:root[data-theme="apple"] #sb :is(.btn.danger-t,.st-dz .btn) { background:var(--color-surface); color:var(--color-danger); border-color:var(--color-danger); }
+:root[data-theme="apple"] :is(.btn.dng-f,#sb .st-dz .btn.dng-f) { background:var(--color-danger-strong); color:#fff; }
+:root[data-theme="apple"] .ap.i { color:var(--color-success); background:color-mix(in srgb,var(--apple-green) 12%,var(--card)); }
+:root[data-theme="apple"] .ap.o { color:var(--color-danger); background:color-mix(in srgb,var(--apple-red) 10%,var(--card)); }
+:root[data-theme="apple"] :is(.ap.s,.ap.u) { color:var(--tx); background:color-mix(in srgb,var(--color-caution) 18%,var(--card)); }
+:root[data-theme="apple"] .acal .n.t span { background:var(--color-primary-strong); color:#fff; }
+:root[data-theme="apple"] .cal-legend-item[data-cal-kind="o"] i { background:var(--apple-red)!important; }
+:root[data-theme="apple"] .cal-legend-item[data-cal-kind="i"] i { background:var(--apple-green)!important; }
+:root[data-theme="apple"] .cal-legend-item[data-cal-kind="b"] i { background:var(--color-caution)!important; }
+:root[data-theme="apple"] .toast { background:var(--card); color:var(--tx); border:1px solid var(--line); box-shadow:0 6px 20px var(--nav-shadow); }
+:root[data-theme="apple"] .toast .tk { color:var(--color-success); }
+:root[data-theme="apple"] .toast.toast-error { color:var(--color-danger); border-color:var(--color-danger); text-shadow:none; }

@@ -17,6 +17,9 @@
 /* 1em 0 matches the paragraph it replaced, so the row keeps its spacing */
 .as-pills{position:relative;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:1em 0}
 .as-pills .account-options-button{
+  /* Accounts uses an absolute card-heading offset; Activity's filter is an
+     in-flow flex item and must never float over transaction actions below. */
+  position:static;
   margin-left:auto;margin-right:4px;color:var(--tx);
   background:color-mix(in srgb,var(--tx) 6%,transparent);
   border-color:color-mix(in srgb,var(--tx) 16%,var(--line));
