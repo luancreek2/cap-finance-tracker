@@ -15,4 +15,3 @@
   line-height: 1.5;
   box-shadow: 0 4px 20px #0002;
 }
-.cap-local-indicator{position:fixed;left:8px;top:calc(6px + env(safe-area-inset-top,0px));z-index:2147483646;pointer-events:none;font:600 9px/1.2 system-ui,sans-serif;letter-spacing:.08em;color:var(--mut,#888);opacity:.65}

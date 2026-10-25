@@ -23,11 +23,11 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
       let data='';req.on('data',b=>data+=b);req.on('end',()=>{
         const body=JSON.parse(data||'{}');
         if(body.email!=='fixture@example.invalid'||body.password!=='test')return json(res,400,{message:'Invalid credentials'});
-        return json(res,200,{access_token:'local-a',refresh_token:'local-r',user:{id:'00000000-0000-4000-8000-000000000099'}});
+        return json(res,200,{access_token:'local-a',refresh_token:'local-r',user:{id:'00000000-0000-4000-8000-000000000099',email:'fixture@example.invalid'}});
       });return;
     }
     if(u.pathname==='/auth/v1/user')return json(res,req.headers.authorization==='Bearer local-a'?200:401,
-      req.headers.authorization==='Bearer local-a'?{id:'00000000-0000-4000-8000-000000000099'}:{message:'Authentication required'});
+      req.headers.authorization==='Bearer local-a'?{id:'00000000-0000-4000-8000-000000000099',email:'fixture@example.invalid'}:{message:'Authentication required'});
     if(u.pathname.startsWith('/rest/'))return json(res,405,{message:'Fixture refuses all financial API access'});
     if(u.pathname==='/old-cap-worker.js'){
       // Register under the real Cap script name via the mode below instead.
@@ -56,9 +56,9 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     mode='invalid';await load();assert.equal(await page.evaluate(()=>CapSupabase.status().authenticated),false);
     assert.equal(await page.evaluate(()=>CapSupabase.configured()),false);
   });
-  await test('local config initializes the normal Auth client and LOCAL indicator only',async()=>{
+  await test('local config initializes the normal Auth client without a LOCAL badge',async()=>{
     mode='valid';await load();assert.equal(await page.evaluate(()=>CapSupabase.configured()),true);
-    assert.equal(await page.locator('.cap-local-indicator').textContent(),'LOCAL');assert.equal(await page.locator('#cap-auth').count(),1);
+    assert.equal(await page.locator('.cap-local-indicator').count(),0);assert.equal(await page.locator('#cap-auth').count(),1);
     assert.equal(await page.evaluate(()=>developerOptionsEnabled()),false);
   });
   await test('incorrect login is rejected by the existing Auth path',async()=>{
@@ -71,6 +71,19 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     assert.ok(requests.some(r=>r.path==='/auth/v1/token'&&r.method==='POST'));assert.ok(requests.some(r=>r.path==='/auth/v1/user'));
     assert.ok(await page.locator('#app').isVisible());assert.ok(!requests.some(r=>r.path.startsWith('/rest/')));
     assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);
+  });
+  await test('Your Profile alone shows red Sign Out and a read-only email disclosure without extra requests',async()=>{
+    await page.evaluate(()=>{localStorage.setItem('cap-appearance-theme','apple');applyTheme();openSettings();});assert.equal(await page.getByRole('button',{name:'Sign Out',exact:true}).count(),0);
+    const start=requests.length;await page.getByRole('button',{name:'Your Profile',exact:true}).click();
+    const button=page.getByRole('button',{name:'Sign Out',exact:true});assert.equal(await button.count(),1);
+    const style=await button.evaluate(e=>({color:getComputedStyle(e).color,boxed:!!e.closest('.st-box'),shadow:getComputedStyle(e).boxShadow,handler:e.getAttribute('onclick')}));
+    const rgb=style.color.match(/[\d.]+/g).map(Number);assert.ok(rgb[0]>rgb[1]&&rgb[0]>rgb[2]);assert.equal(style.boxed,false);assert.equal(style.shadow,'none');assert.equal(style.handler,'CapSupabase.signOut()');
+    assert.equal(await page.locator('.st-email-disclosure').getAttribute('open'),null);await page.locator('.st-email-disclosure summary').click();
+    assert.equal(await page.locator('.st-email-value').textContent(),'fixture@example.invalid');assert.equal(await page.locator('.st-email-value input').count(),0);
+    assert.equal(requests.length,start);
+    await button.scrollIntoViewIfNeeded();await page.waitForTimeout(250);
+    const review=path.join(process.env.LOCALAPPDATA,'Temp','opencode','settings-review');fs.mkdirSync(review,{recursive:true});await page.screenshot({path:path.join(review,'profile-account.png')});
+    await page.evaluate(()=>stPrivacy());assert.equal(await page.getByRole('button',{name:'Sign Out',exact:true}).count(),0);await page.evaluate(()=>closeS());
   });
   await test('session restoration remains real authentication, with sync and Developer Options OFF after reload',async()=>{
     await load();assert.equal(await page.evaluate(()=>CapSupabase.status().authenticated),true);
@@ -99,7 +112,15 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     await prod.evaluate(()=>navigator.serviceWorker.ready);await prod.reload();await prod.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await context.setOffline(true);await prod.reload();
     assert.equal(await prod.evaluate(()=>CapSupabase.configured()),true);assert.equal(await prod.locator('.cap-local-indicator').count(),0);
-    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v330')));
+    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v345')));
+    await prod.waitForFunction(()=>window.StShell&&window.CapOverlays&&!window.capLaunchActive);
+    const offlineSettings=await prod.evaluate(()=>{
+      if(document.querySelector('.whats-new-overlay'))closeWhatsNew();
+      document.querySelector('#cap-auth')?.remove();openSettings();
+      const before=[document.getElementById('sb').offsetWidth,document.getElementById('sb').offsetHeight];
+      stGo('profile');return {before,after:[document.getElementById('sb').offsetWidth,document.getElementById('sb').offsetHeight],title:document.getElementById('st-title').textContent};
+    });
+    assert.deepEqual(offlineSettings.before,offlineSettings.after);assert.equal(offlineSettings.title,'Your Profile');
     await context.setOffline(false);await prod.close();
   });
   await context.close();console.log(`PASS: ${passed} isolated local configuration/browser Auth checks; mocked HTTP Auth, no live Supabase`);

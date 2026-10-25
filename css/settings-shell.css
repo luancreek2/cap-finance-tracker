@@ -1,0 +1,98 @@
+/* One responsive, content-independent Settings frame. Other sheets are untouched.
+   Typography is inherited unchanged from Cap; no downloaded/system font override. */
+#sheet.st {
+  --st-group:var(--card);
+  --st-muted:color-mix(in srgb,var(--tx) 72%,var(--card));
+  --st-surface:color-mix(in srgb,var(--bg) 96%,var(--card));
+  box-sizing:border-box;align-items:center;justify-content:center;
+  padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
+}
+body:has(#sheet.st.open) {overflow:hidden;}
+body:has(#sheet.st.open) .sbtn {visibility:hidden;}
+#sheet.st.open {animation:stDimIn .22s ease both;}
+#sheet.st.open>#sb {animation:stPanelIn .28s cubic-bezier(.22,.8,.28,1) both;}
+#sheet.st.closing {animation:stDimOut .2s ease forwards;}
+#sheet.st.closing>#sb {animation:stPanelOut .2s ease forwards;}
+@keyframes stDimIn {from{opacity:0}to{opacity:1}}
+@keyframes stDimOut {to{opacity:0}}
+@keyframes stPanelIn {from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes stPanelOut {to{opacity:0;transform:translateY(8px) scale(.985)}}
+#sheet.st>#sb {
+  box-sizing:border-box;--sbp:0px;--sbh:0px;
+  width:min(560px,100%);max-width:560px;
+  /* Centered compact frame; reserve enough space below for the existing dock. */
+  height:min(620px,calc(100dvh - 184px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)))!important;
+  max-height:100%;padding:0;border-radius:28px;
+  overflow:hidden!important;scrollbar-gutter:auto;
+  background:var(--st-surface);border:1px solid var(--line);
+  box-shadow:0 24px 80px #0003;
+}
+#sheet.st>#sb>#sv {display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;}
+#sheet.st .st-hd {
+  position:relative;top:auto;display:grid;grid-template-columns:52px minmax(0,1fr) 52px;
+  flex:0 0 64px;box-sizing:border-box;align-items:center;gap:4px;
+  margin:0;padding:8px 16px;background:transparent;border-bottom:1px solid var(--line);
+}
+#sheet.st .st-hd h2 {grid-column:2;grid-row:1;text-align:center;font-size:18px;line-height:1.25;}
+#sheet.st .st-hd .st-bk {grid-column:1;grid-row:1;font-size:25px;}
+#sheet.st .st-hd button:last-child {grid-column:3;grid-row:1;}
+#sheet.st .st-hd .pill {min-width:44px;min-height:44px;padding:6px;background:none;border:0;box-shadow:none;color:var(--tx);font-weight:500;}
+#sheet.st .st-viewport {position:relative;flex:1;min-height:0;overflow:hidden;}
+#sheet.st .st-scroll {box-sizing:border-box;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:22px 20px 28px;scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
+#sheet.st .st-exit {position:absolute;inset:0;pointer-events:none;}
+#sheet.st .st-grp {margin:24px 0 7px;padding:0 14px;font-size:11px;font-weight:600;letter-spacing:.075em;}
+#sheet.st .st-g,#sheet.st .st-box {border:0;border-radius:18px;background:var(--st-group);overflow:hidden;box-shadow:0 0 0 1px color-mix(in srgb,var(--line) 40%,transparent);}
+#sheet.st .st-g {margin:0;}
+#sheet.st .st-row {box-sizing:border-box;min-height:56px;width:100%;margin:0;padding:10px 14px;gap:10px;border-radius:0;animation:none;}
+#sheet.st .st-row+.st-row::before {left:52px;right:14px;opacity:.65;}
+#sheet.st .st-i {width:28px;height:28px;background:none;color:var(--tx);}
+#sheet.st .st-i svg {width:21px;height:21px;}
+#sheet.st .st-t {white-space:normal;line-height:1.3;font-size:14px;}
+#sheet.st .st-v {flex:0 1 auto;max-width:36%;font-size:12px;text-align:right;}
+#sheet.st .st-r {min-height:52px;box-sizing:border-box;}
+#sheet.st .st-r .f {overflow-wrap:anywhere;}
+#sheet.st .st-box {margin-top:8px;}
+#sheet.st .st-note {font-size:12px;line-height:1.5;margin:12px 4px 0;}
+#sheet.st :is(.pill,.btn,.st-hit,select,input:not([type=checkbox])) {min-height:44px;}
+#sheet.st .st-hit {align-self:stretch;}
+#sheet.st .st-mv {min-width:44px;min-height:44px;}
+#sheet.st :is(button,input,select,[tabindex]):focus-visible {outline:2px solid var(--ac);outline-offset:-3px;}
+#sheet.st #st-title:focus {outline:none;}
+#sheet.st .st-profile-card {box-sizing:border-box;width:100%;min-height:100px;display:flex;align-items:center;gap:14px;padding:18px 16px;margin:0;border:0;border-radius:20px;background:var(--st-group);color:var(--tx);font:inherit;text-align:left;cursor:pointer;}
+#sheet.st .st-profile-copy {flex:1;min-width:0;}
+#sheet.st .st-profile-copy b {display:block;font-size:20px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#sheet.st .st-profile-copy small {display:block;color:var(--mut);font-size:13px;margin-top:3px;}
+#sheet.st .st-av {width:60px;height:60px;background:color-mix(in srgb,var(--mut) 10%,var(--card));border:0;}
+#sheet.st .st-person {display:grid;place-items:center;width:100%;height:100%;}
+#sheet.st .st-person svg {width:65%;height:65%;fill:none;stroke:var(--mut);stroke-width:1.5;stroke-linecap:round;}
+#sheet.st .st-profile-editor {display:flex;flex-direction:column;align-items:center;gap:14px;padding:12px 0 8px;text-align:center;}
+#sheet.st .st-profile-editor .st-av {width:96px;height:96px;}
+#sheet.st .st-profile-editor>b {font-size:20px;max-width:100%;overflow-wrap:anywhere;}
+#sheet.st .st-photo-actions {display:flex;flex-wrap:wrap;justify-content:center;gap:8px;}
+#sheet.st .st-name-box {padding:14px 16px;}
+#sheet.st .st-name-box label {font-size:12px;color:var(--mut);}
+#sheet.st .st-name-box input {width:100%;margin:3px 0 0;padding:6px 0;border:0;box-shadow:none;background:transparent;font:inherit;color:var(--tx);}
+#sheet.st .st-email-disclosure {padding:0 16px;}
+#sheet.st .st-email-disclosure summary {display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;cursor:pointer;font-size:14px;list-style:none;border-radius:12px;}
+#sheet.st .st-email-disclosure summary::-webkit-details-marker {display:none;}
+#sheet.st .st-email-action {color:var(--st-muted);font-size:12px;}
+#sheet.st .st-email-action::after {content:'View';}
+#sheet.st .st-email-disclosure[open] .st-email-action::after {content:'Hide';}
+#sheet.st .st-email-value {margin:0;padding:0 0 16px;font-size:14px;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text;}
+#sheet.st .st-signout {display:block;width:100%;min-height:48px;margin:24px 0 0;border:1px solid var(--line);border-radius:16px;background:transparent;box-shadow:none;color:var(--color-danger,var(--r));font-weight:600;}
+#sheet.st summary:focus-visible {outline:2px solid var(--ac);outline-offset:-3px;}
+#sheet.st .st-prof .f {overflow-wrap:anywhere;}
+#sheet.st :is(.st-v,.st-grp,.st-note,.st-profile-copy small,.st-r>.f small,.st-name-box label) {color:var(--st-muted);}
+/* One primary Apple material; every group and header is paint-only. */
+:root[data-theme="apple"] #sheet.st {--st-group:var(--card);}
+:root[data-theme="apple"] #sheet.st>#sb {background:var(--popup-surface);border:1px solid var(--popup-border);box-shadow:inset 0 1px 0 var(--popup-highlight),0 24px 80px var(--popup-shadow);-webkit-backdrop-filter:var(--popup-material);backdrop-filter:var(--popup-material);}
+:root[data-theme="apple"] #sheet.st :is(.st-hd,.st-g,.st-box,.st-profile-card,.st-scroll) {-webkit-backdrop-filter:none;backdrop-filter:none;}
+@media(max-width:600px){
+  #sheet.st>#sb {width:100%;border-radius:24px;}
+  #sheet.st .st-scroll {padding:18px 14px 24px;}
+  #sheet.st .st-hd {flex-basis:60px;padding-inline:10px;}
+  #sheet.st .st-row {padding-inline:12px;gap:8px;}
+  #sheet.st .st-v {max-width:30%;font-size:11px;}
+  #sheet.st .st-profile-card {padding:16px 14px;gap:12px;}
+}
+@media(prefers-reduced-motion:reduce){#sheet.st,#sheet.st>#sb {animation:none!important;transition:none!important;}}

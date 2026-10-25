@@ -12,7 +12,10 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',
   'tests/sync-recovery-hold.cjs','tests/sync-production.cjs','docs/sync-recovery-hold.md',
-  'tests/apple-theme.cjs','tests/apple-theme-browser.cjs','css/activity-scope.css'];
+  'tests/apple-theme.cjs','tests/apple-theme-browser.cjs','css/activity-scope.css','tests/hero-balance-browser.cjs',
+  'js/activity-scope.js','js/transactions.js','tests/apple-liquid-ui.cjs','tests/calendar-navigation.cjs',
+  'tests/nav-icon-motion.cjs','css/account-options.css','js/account-options.js',
+  'css/settings-shell.css','js/settings-shell.js','tests/settings-shell-browser.cjs'];
 const git=(...args)=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\r?\n/).filter(Boolean);
 const changed=[...new Set([...git('diff','--name-only','HEAD'),...git('ls-files','--others','--exclude-standard')])];
 assert.ok(changed.every(f=>allowed.includes(f)),'Unexpected files in proposed release');

@@ -61,7 +61,9 @@ const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'applicatio
     assert.equal(await page.getByRole('button',{name:'Inspect Sync Presence',exact:true}).count(),0);
     assert.equal(await page.getByRole('button',{name:'Resume Held Cloud Sync',exact:true}).count(),0);
     await page.evaluate(()=>openSettings());
-    await page.locator('[onchange="setDeveloperOptions(this)"]').check();
+    assert.equal(await page.locator('[onchange^="setDeveloperOptions(this)"]').count(),0);
+    await page.evaluate(()=>stPrivacy());
+    await page.locator('[onchange^="setDeveloperOptions(this)"]').check();
     await page.evaluate(()=>stPrivacy());await page.getByRole('button',{name:'Inspect Sync Presence',exact:true}).waitFor();
     await page.evaluate(()=>CapCloudBootstrap.refresh());
   });

@@ -64,6 +64,21 @@ function initActivityScope() {
     pm = 0,
     wy = 0;
 
+  /* Body-level singleton menu — created once, appended to document.body.
+     The button remains in #app and toggles this menu. */
+  let scopeMenu = null;
+  function ensureScopeMenu() {
+    if (scopeMenu) return scopeMenu;
+    scopeMenu = document.createElement("div");
+    scopeMenu.id = "activity-options-menu";
+    scopeMenu.className = "account-options-menu";
+    scopeMenu.setAttribute("role", "menu");
+    scopeMenu.setAttribute("aria-label", "Date range");
+    scopeMenu.hidden = true;
+    document.body.appendChild(scopeMenu);
+    return scopeMenu;
+  }
+
   /* Calendar-only visibility. This deliberately never touches S or the
      transaction list: it is just a presentation filter that lasts while the
      Activity tab remains mounted. */
@@ -188,15 +203,16 @@ function initActivityScope() {
 
   function tallyShort(l) {
     if (filt === "Upcoming") {
-      const n = upDays().reduce((a, x) => a + x.l.length, 0);
-      return n ? `${n} scheduled` : "nothing scheduled";
+      const r=range(),pending=(S.pend||[]).filter(t=>(!r||t.d>=r.from&&t.d<=r.to)&&(!q||(t.note+(t.desc||'')+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))).length;
+      const n = upDays().reduce((a, x) => a + x.l.length, 0) + pending;
+      return n ? `${n} pending / scheduled` : "nothing scheduled";
     }
-    const n = filt === "All" ? l.length + Object.values(scheduledDays()).reduce((a, x) => a + x.length, 0) : l.length;
+    const n = l.length;
     return `${n} ${n === 1 ? "entry" : "entries"}`;
   }
 
   function periodLabel() {
-    if (ASC.mode === "all") return filt === "Upcoming" ? "Next 45 days" : "All dates";
+    if (ASC.mode === "all") return filt === "Upcoming" ? "Pending & next 45 days" : "All dates";
     return fmtRange(range());
   }
 
@@ -212,14 +228,12 @@ function initActivityScope() {
     );
   }
 
-  /* The opener — the Accounts ••• button and its menu — placed on the pills
-     row, flush right, directly above the column of daily totals. */
+  /* The opener — the Accounts ••• button — placed on the pills
+     row, flush right, directly above the column of daily totals.
+     The menu is a body-level singleton created by ensureScopeMenu(). */
   function openerHTML() {
     const on = ASC.mode !== "all";
-    return (
-      `<button id="activity-options-button" class="pill account-options-button${on ? " on" : ""}" aria-label="Date range" aria-haspopup="menu" aria-expanded="false" onclick="toggleScopeMenu()">&#8943;</button>` +
-      `<div id="activity-options-menu" class="account-options-menu" role="menu" aria-label="Date range" hidden></div>`
-    );
+    return `<button id="activity-options-button" class="pill account-options-button${on ? " on" : ""}" aria-label="Date range" aria-haspopup="menu" aria-expanded="false" onclick="toggleScopeMenu()">&#8943;</button>`;
   }
 
   /* -------------------------------------------------------------- popup UI */
@@ -328,7 +342,7 @@ function initActivityScope() {
         row(ASC.mode === "day" && ASC.anchor === today, ICO.day, "Today", `scopeDay('${today}')`) +
         (ASC.mode === "day" ? clearRow() : "") +
         navbar(`${longM(new Date(py, pm, 1))} ${py}`) +
-        `<div class="ao-dow">${["S", "M", "T", "W", "T", "F", "S"].map(x => `<span>${x}</span>`).join("")}</div>` +
+         `<div class="ao-dow">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(x => `<span>${x}</span>`).join("")}</div>` +
         `<div class="ao-days">${grid}</div>`,
     );
   }
@@ -412,29 +426,61 @@ function initActivityScope() {
     return monthPage();
   }
 
+  /* The Date range menu is anchored to its ••• trigger, not to a guessed page
+     offset. Right-aligned below is the preferred placement; it flips above and
+     clamps horizontally when the viewport would clip it. Fixed positioning is
+     used only while open so scrolling or resizing can re-anchor it. */
+  function positionScopeMenu() {
+    ensureScopeMenu();
+    const m = scopeMenu,
+      b = el("activity-options-button");
+    if (!m || m.hidden || !b) return;
+    const margin = 8,
+      gap = 6,
+      vw = window.innerWidth,
+      vh = window.innerHeight,
+      tr = b.getBoundingClientRect();
+    m.style.position = "fixed";
+    m.style.right = "auto";
+    m.style.maxWidth = Math.max(0, vw - margin * 2) + "px";
+    const mw = m.offsetWidth,
+      mh = m.offsetHeight;
+    let left = tr.right - mw;
+    left = Math.max(margin, Math.min(left, vw - margin - mw));
+    let top = tr.bottom + gap;
+    if (top + mh > vh - margin) top = tr.top - mh - gap;
+    top = Math.max(margin, Math.min(top, vh - margin - mh));
+    m.style.left = Math.round(left) + "px";
+    m.style.top = Math.round(top) + "px";
+  }
+  window.positionScopeMenu = positionScopeMenu;
+
   /* Repainting the body swaps the page inside the same popup, so the swap
      gets the component's own entrance animation for free. */
   function paint(focus) {
-    const m = el("activity-options-menu"),
+    const m = ensureScopeMenu(),
       b = el("activity-options-button");
-    if (!m) return;
     m.innerHTML = menuHTML();
     m.hidden = !open;
     if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open && focus) {
-      const f = m.querySelector("button");
-      if (f) f.focus();
+    if (open) {
+      positionScopeMenu();
+      requestAnimationFrame(positionScopeMenu);
+      if (focus) {
+        const f = m.querySelector("button");
+        if (f) f.focus({ preventScroll: true });
+      }
     }
   }
 
   function closeMenu(focus) {
     open = false;
-    const m = el("activity-options-menu"),
+    const m = scopeMenu,
       b = el("activity-options-button");
     if (m) m.hidden = true;
     if (b) {
       b.setAttribute("aria-expanded", "false");
-      if (focus) b.focus();
+      if (focus) b.focus({ preventScroll: true });
     }
   }
 
@@ -487,7 +533,8 @@ function initActivityScope() {
     /* a period step animates in over ~190ms; finish it first, or the opener
        would be talking to a node that is about to be swapped out */
     settleNow();
-    if (!el("activity-options-menu")) return;
+    if (!el("activity-options-button")) return;
+    ensureScopeMenu();
     open = !open;
     if (open) {
       stage = 1;
@@ -610,7 +657,7 @@ function initActivityScope() {
           .map((e, j) => [e, j])
           .filter(
             x =>
-              (x[0].kind !== "tx" || k > today) &&
+              x[0].kind !== "tx" &&
               x[0].kind !== "xfer" &&
               !(x[0].kind === "bill" && bPaid(S.bills.find(b => b.id === x[0].id), k)),
           );
@@ -621,88 +668,16 @@ function initActivityScope() {
   window.upGroups = function () {
     if (ASC.mode === "all") return up0.apply(this, arguments);
     const d = upDays();
-    return d.length
+    const r=range(),pending=pendingActivityHTML(r?.from,r?.to);
+    return pending + (d.length
       ? d.map(x => grp(x.k, x.l.map(y => rowH(x.k, y[0], y[1])).join(""), "Planned")).join("")
-      : '<p class="m">Nothing planned in this period.</p>';
+      : pending?'':'<p class="m">Nothing planned in this period.</p>');
   };
 
-  /* ---- All: the calendar's scheduled events, not only transactions ----
-     Upcoming is the planning lens; "All" is the whole calendar, so a bill,
-     card due date or statement painted on a day must be listed there too.
-     Paid bills stay out so their payment can never appear twice. */
-  function scheduledDays() {
-    const r = range(),
-      from = r ? r.from : today,
-      to = r ? r.to : isoD(addD(D(today), 44)),
-      out = {};
-    for (let d = D(from); isoD(d) <= to; d = addD(d, 1)) {
-      const k = isoD(d),
-        l = evs(k)
-          .map((e, j) => [e, j])
-          .filter(
-            ([e]) =>
-              e.kind !== "tx" &&
-              e.kind !== "xfer" &&
-              !(e.kind === "bill" && bPaid(S.bills.find(b => b.id === e.id), k)) &&
-              (!q || tt(e.t).toLowerCase().includes(q.toLowerCase())),
-          );
-      if (l.length) out[k] = l;
-    }
-    return out;
-  }
-
+  /* The calendar keeps all obligations. Activity All is posted history only;
+     collection membership (S.tx vs S.pend), not a future date, defines status. */
   function allGroups() {
-    const g = {};
-    actList().forEach(t => (g[t.d] = g[t.d] || []).push(t));
-    /* pending rows keep the same section the standard list uses */
-    const pl = (S.pend || [])
-      .filter(t => !q || (t.note + (t.desc || "") + t.cat + Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => b.d.localeCompare(a.d));
-    const ph = pl.length
-      ? `<div style="display:flex;justify-content:space-between;margin:18px 4px 6px"><b>Pending · not posted</b><span class="m" style="font-size:13px">${pl.length} · not in balances</span></div><div class="card" style="padding:2px 14px">${pl.map(rowT).join("")}</div>`
-      : "";
-    const ev = scheduledDays();
-    const txHTML = Object.keys(g)
-      .sort()
-      .reverse()
-      .map(k => {
-        const l = g[k],
-          txs = l.filter(t => !t.transfer),
-          tot = sum(txs.map(t => t.amt));
-        return grp(k, l.map(rowT).join(""), k > today ? "Planned" : txs.length ? (tot < 0 ? "−" : "+") + php(Math.abs(tot)) : "");
-      })
-      .join("");
-    /* No date scope: actual activity stays latest-first. Scheduled bills and
-       card dates follow below instead of pushing future dates above it. */
-    if (ASC.mode === "all") {
-      const evHTML = Object.keys(ev)
-        .sort()
-        .map(k => grp(k, ev[k].map(([e, j]) => rowH(k, e, j)).join(""), "Planned"))
-        .join("");
-      return ph + (
-        txHTML +
-        (evHTML
-          ? '<div style="display:flex;justify-content:space-between;margin:18px 4px 6px"><b>Scheduled</b><span class="m" style="font-size:13px">Next 45 days</span></div>' + evHTML
-          : "") || (ph ? "" : '<p class="m">Nothing here yet.</p>')
-      );
-    }
-    return (
-      ph +
-      (Object.keys({ ...g, ...ev })
-        .sort()
-        .reverse()
-        .map(k => {
-          const l = g[k] || [],
-            txs = l.filter(t => !t.transfer),
-            tot = sum(txs.map(t => t.amt));
-          return grp(
-            k,
-            l.map(rowT).join("") + (ev[k] || []).map(([e, j]) => rowH(k, e, j)).join(""),
-            k > today ? "Planned" : txs.length ? (tot < 0 ? "−" : "+") + php(Math.abs(tot)) : "",
-          );
-        })
-        .join("") || (ph ? "" : '<p class="m">Nothing here yet.</p>'))
-    );
+    return actGroups();
   }
 
   /* The Activity view itself. This replaces the old one so the "selected day"
@@ -946,6 +921,291 @@ function initActivityScope() {
     });
   }
 
+  /* ------------------------------------------------- vertical month swipe */
+
+  /* The calendar moves like a vertical strip: the current month and the
+     adjacent month share one clipped stage, so the outgoing grid slides out
+     while the next one physically enters. The threshold is per gesture and the
+     settle lock prevents one flick from skipping months. */
+  const G_AXIS = 10,
+    G_COMMIT = 56,
+    G_LOCK = 420;
+  let g = null,
+    vBusy = false,
+    vLock = 0;
+
+  /* Build the adjacent month without mutating the canonical scope state. */
+  function shiftedCal(dir) {
+    const anchor = ASC.anchor,
+      savedCm = cm,
+      savedSel = sel;
+    if (ASC.mode === "all") cm += dir;
+    else {
+      shift(dir);
+      alignCal();
+    }
+    let node = null;
+    try {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = Activity();
+      node = tmp.querySelector("#calwrap");
+    } finally {
+      ASC.anchor = anchor;
+      cm = savedCm;
+      sel = savedSel;
+    }
+    return node;
+  }
+
+  function applyCalShift(dir) {
+    if (ASC.mode === "all") cm += dir;
+    else {
+      shift(dir);
+      selSync();
+      alignCal();
+    }
+  }
+
+  function makeStage(dir) {
+    const w = el("calwrap");
+    if (!w) return null;
+    const h = w.offsetHeight,
+      n = shiftedCal(dir);
+    if (!h || !n) return null;
+    const stage = document.createElement("div");
+    stage.className = "cal-vstage";
+    stage.style.height = h + "px";
+    w.parentNode.insertBefore(stage, w);
+    w.removeAttribute("id");
+    w.classList.add("cal-vpage", "cal-vpage-old");
+    stage.appendChild(w);
+    n.removeAttribute("id");
+    n.classList.add("cal-vpage", "cal-vpage-new");
+    n.style.top = (dir > 0 ? h : -h) + "px";
+    stage.appendChild(n);
+    return { stage, w, n, h, dir };
+  }
+
+  function dropStage(s, commit) {
+    if (!s) return;
+    if (commit) {
+      /* The prebuilt page was a preview; the canonical page is rebuilt from the
+         committed state so the list, legend and scope marks all agree. */
+      applyCalShift(s.dir);
+      const tmp = document.createElement("div");
+      tmp.innerHTML = Activity();
+      const fresh = tmp.querySelector("#calwrap");
+      if (!fresh) {
+        s.stage.replaceWith(s.w);
+        return;
+      }
+      const tail = [];
+      for (let n = fresh.nextSibling; n; ) {
+        const x = n.nextSibling;
+        tail.push(n);
+        n = x;
+      }
+      s.stage.replaceWith(fresh);
+      for (let n = fresh.nextSibling; n; ) {
+        const x = n.nextSibling;
+        n.remove();
+        n = x;
+      }
+      tail.forEach(n => el("app").appendChild(n));
+      rise();
+    } else {
+      s.w.id = "calwrap";
+      s.w.classList.remove("cal-vpage", "cal-vpage-old");
+      s.w.style.transform = "";
+      s.w.style.transition = "";
+      s.stage.replaceWith(s.w);
+      s.n.remove();
+    }
+    vBusy = false;
+  }
+
+  /* A click is the tail of a drag, not a date/marker pick. */
+  function swallowClick(w) {
+    if (!w) return;
+    const stop = ev => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    w.addEventListener("click", stop, { capture: true, once: true });
+    setTimeout(() => w.removeEventListener("click", stop, true), 90);
+  }
+
+  function gestureStart(x, y, kind, target) {
+    if (vBusy || Date.now() - vLock < G_LOCK) return;
+    if (!el("calwrap") || (target && target.closest && target.closest("button,a"))) return;
+    g = { x, y, kind, axis: 0, dx: 0, dy: 0, s: null };
+  }
+
+  function gestureMove(x, y, ev) {
+    if (!g) return;
+    const dx = x - g.x,
+      dy = y - g.y;
+    if (!g.axis) {
+      if (Math.abs(dy) > G_AXIS && Math.abs(dy) > Math.abs(dx) * 1.1) g.axis = "y";
+      else if (Math.abs(dx) > G_AXIS && Math.abs(dx) > Math.abs(dy) * 1.5) g.axis = "x";
+      else return;
+    }
+    g.dx = dx;
+    g.dy = dy;
+    if (g.axis === "y") {
+      if (ev && ev.cancelable) ev.preventDefault();
+      if (RMA()) return;
+      if (!g.s) g.s = makeStage(dy < 0 ? 1 : -1);
+      if (g.s) {
+        const limit = g.s.h * 0.72;
+        g.s.stage.style.transition = "none";
+        g.s.stage.style.transform = `translateY(${Math.max(-limit, Math.min(limit, dy * 0.62))}px)`;
+      }
+    } else {
+      const w = el("calwrap");
+      if (w && !g.s) {
+        w.style.transition = "none";
+        w.style.transform = `translateX(${dx * 0.45}px)`;
+      }
+    }
+  }
+
+  function gestureEnd() {
+    if (!g) return;
+    const it = g;
+    g = null;
+    if (!it.axis) return;
+    const w = el("calwrap") || (it.s && it.s.w);
+    if (it.axis === "x") {
+      if (Math.abs(it.dx) > 60) {
+        swallowClick(w);
+        calGo(it.dx < 0 ? 1 : -1);
+      } else if (w) {
+        w.style.transition = "transform .2s ease";
+        w.style.transform = "";
+      }
+      return;
+    }
+    const commit = Math.abs(it.dy) >= G_COMMIT;
+    if (!it.s) {
+      /* Reduced motion: no strip, but the same threshold and canonical state. */
+      if (commit) {
+        swallowClick(w);
+        applyCalShift(it.dy < 0 ? 1 : -1);
+        vBusy = true;
+        refresh(0);
+        vLock = Date.now();
+        setTimeout(() => (vBusy = false), G_LOCK);
+      }
+      return;
+    }
+    const s = it.s;
+    vBusy = true;
+    swallowClick(s.w);
+    if (commit) {
+      s.stage.style.transition = "transform .28s cubic-bezier(.22,.8,.28,1)";
+      s.stage.style.transform = `translateY(${-s.dir * s.h}px)`;
+      vLock = Date.now();
+      setTimeout(() => dropStage(s, true), 290);
+    } else {
+      s.stage.style.transition = "transform .22s cubic-bezier(.2,.8,.2,1)";
+      s.stage.style.transform = "translateY(0)";
+      setTimeout(() => dropStage(s, false), 230);
+    }
+  }
+
+  window.calDown = function (e) {
+    if (e.pointerType === "touch") return;
+    if (e.pointerType === "mouse" && e.button) return;
+    gestureStart(e.clientX, e.clientY, "pointer", e.target);
+    if (g && e.pointerId != null) {
+      try {
+        e.target.setPointerCapture(e.pointerId);
+      } catch (_) {
+        /* pointer capture is an optimisation, not a requirement */
+      }
+    }
+  };
+  window.calMove = function (e) {
+    if (!g || g.kind !== "pointer") return;
+    gestureMove(e.clientX, e.clientY, e);
+  };
+  window.calUp = function (e) {
+    if (!g || g.kind !== "pointer") return;
+    gestureEnd();
+  };
+  /* The month page is re-parented mid-gesture, so pointer tracking cannot rely
+     on the original inline target staying under the cursor. */
+  document.addEventListener("pointermove", e => {
+    if (g && g.kind === "pointer") gestureMove(e.clientX, e.clientY, e);
+  });
+  document.addEventListener("pointerup", e => {
+    if (g && g.kind === "pointer") gestureEnd();
+  });
+  document.addEventListener("pointercancel", e => {
+    if (g && g.kind === "pointer") gestureEnd();
+  });
+
+  /* Touch needs a non-passive listener so a committed vertical gesture can
+     stop the page from scrolling underneath the month strip. Scrolling that
+     starts anywhere else on the page is untouched. */
+  document.addEventListener(
+    "touchstart",
+    e => {
+      if (e.touches.length !== 1) return;
+      const t = e.target;
+      if (!t.closest || !t.closest("#calwrap")) return;
+      gestureStart(e.touches[0].clientX, e.touches[0].clientY, "touch", t);
+    },
+    { passive: true },
+  );
+  document.addEventListener(
+    "touchmove",
+    e => {
+      if (!g || g.kind !== "touch" || e.touches.length !== 1) return;
+      gestureMove(e.touches[0].clientX, e.touches[0].clientY, e);
+    },
+    { passive: false },
+  );
+  document.addEventListener("touchend", e => {
+    if (g && g.kind === "touch") gestureEnd();
+  });
+  document.addEventListener("touchcancel", e => {
+    if (g && g.kind === "touch") gestureEnd();
+  });
+
+  /* Trackpad / mouse wheel: vertical movement over the calendar steps one
+     month after a threshold; horizontal keeps the existing behaviour. */
+  window.calWheel = function (e) {
+    if (!el("calwrap")) return;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.2 && Math.abs(e.deltaX) >= 3) {
+      e.preventDefault();
+      if (vBusy || Date.now() - vLock < G_LOCK) return;
+      calAcc += e.deltaX;
+      if (Math.abs(calAcc) > 70) {
+        calGo(calAcc > 0 ? 1 : -1);
+        calAcc = 0;
+        vLock = Date.now();
+      }
+      clearTimeout(calWt);
+      calWt = setTimeout(() => (calAcc = 0), 200);
+      return;
+    }
+    e.preventDefault();
+    if (vBusy || Date.now() - vLock < G_LOCK) return;
+    calAcc += e.deltaY;
+    if (Math.abs(calAcc) >= 60) {
+      applyCalShift(calAcc < 0 ? 1 : -1);
+      vBusy = true;
+      refresh(0);
+      calAcc = 0;
+      vLock = Date.now();
+      setTimeout(() => (vBusy = false), G_LOCK);
+    }
+    clearTimeout(calWt);
+    calWt = setTimeout(() => (calAcc = 0), 180);
+  };
+
   /* ------------------------------------------------------------ keyboard */
 
   /* Left / right step the period, as long as the user is not typing. */
@@ -999,6 +1259,33 @@ function initActivityScope() {
     if (e.target.closest && e.target.closest("#activity-options-menu, .as-pills")) return;
     closeMenu(false);
   });
+  /* Fixed anchoring must follow the trigger through page scroll, resize,
+     and animation frames while the menu is open. */
+  const reanchor = () => {
+    if (open) positionScopeMenu();
+  };
+  window.addEventListener("resize", reanchor);
+  window.addEventListener("scroll", reanchor, true);
+  /* Animation frame loop for smooth re-anchoring during transitions/scroll. */
+  let rafId = 0;
+  function rafLoop() {
+    if (open) {
+      positionScopeMenu();
+      rafId = requestAnimationFrame(rafLoop);
+    } else {
+      rafId = 0;
+    }
+  }
+  const origPaint = paint;
+  paint = function (focus) {
+    origPaint(focus);
+    if (open && !rafId) rafId = requestAnimationFrame(rafLoop);
+  };
+  const origClose = closeMenu;
+  closeMenu = function (focus) {
+    origClose(focus);
+    if (rafId) cancelAnimationFrame(rafId), (rafId = 0);
+  };
 
   selSync();
 }

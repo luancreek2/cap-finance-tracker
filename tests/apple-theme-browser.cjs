@@ -67,14 +67,14 @@ async function ready(page){
       for(const b of a.targets)assert.ok(b.w>=44&&b.h>=44&&b.l>=a.l&&b.r<=a.r,JSON.stringify(b));
       assert.ok(a.padding>=112&&a.vh-a.t<a.padding);
     });
-    await test(tag+': one translucent blur layer, opaque content and system type',async()=>{
+    await test(tag+': one translucent blur layer, opaque content and original Cap type',async()=>{
       const a=await page.evaluate(()=>{
         const n=document.querySelector('#tabs'),c=getComputedStyle(n),card=document.querySelector('.card');
         return {bg:c.backgroundColor,blur:c.backdropFilter||c.webkitBackdropFilter,children:[...n.querySelectorAll('*')].every(e=>{const s=getComputedStyle(e);return (!s.backdropFilter||s.backdropFilter==='none')&&(!s.webkitBackdropFilter||s.webkitBackdropFilter==='none');}),
           font:getComputedStyle(document.body).fontFamily,card:card?getComputedStyle(card).backgroundColor:null};
       });
-      assert.match(a.bg,/rgba\(/);assert.match(a.blur,/blur\(18px\)/);assert.equal(a.children,true);
-      assert.match(a.font,/-apple-system/);assert.match(a.font,/BlinkMacSystemFont/);assert.match(a.font,/SF Pro Display/);
+      assert.match(a.bg,/rgba\(/);assert.match(a.blur,/blur\(14px\)/);assert.equal(a.children,true);
+      assert.match(a.font,/-apple-system/);assert.match(a.font,/"Segoe UI"/);assert.match(a.font,/Inter/);assert.match(a.font,/Roboto/);assert.doesNotMatch(a.font,/SF Pro|BlinkMacSystemFont/);
       if(a.card)assert.ok(!a.card.startsWith('rgba('),a.card);
     });
     await test(tag+': text and semantic financial colors retain AA contrast',async()=>{
@@ -112,7 +112,9 @@ async function ready(page){
     await page.evaluate(()=>closeS());await settle(page);
     const dots=page.locator('.row[data-tx="500"] .dots').first();
     await dots.evaluate(e=>e.scrollIntoView({block:'center',inline:'nearest'}));await settle(page);
-    await dots.click();await settle(page);assert.equal(await page.locator('#am').inputValue(),'12.5');
+    await dots.click();await settle(page);
+    await page.getByRole('button',{name:'Edit transaction',exact:true}).click();await settle(page);
+    assert.equal(await page.locator('#am').inputValue(),'12.5');
     await page.evaluate(()=>closeS());await settle(page);
   });
   await test('calendar event popup opens/closes and legend remains labelled',async()=>{
@@ -147,8 +149,8 @@ async function ready(page){
     await page.evaluate(()=>setTheme('auto'));assert.equal(await page.evaluate(()=>document.documentElement.hasAttribute('data-theme')),false);
   });
   await test('Developer Options/Privacy & Sync remain present and sync stays OFF',async()=>{
-    await page.evaluate(()=>{openSettings();});await settle(page);assert.ok(await page.locator('[onchange="setDeveloperOptions(this)"]').count());
-    await page.evaluate(()=>stPrivacy());await settle(page);assert.ok(await page.locator('#production-sync-toggle').count());
+    await page.evaluate(()=>{openSettings();});await settle(page);assert.equal(await page.locator('[onchange^="setDeveloperOptions(this)"]').count(),0);
+    await page.evaluate(()=>stPrivacy());await settle(page);assert.equal(await page.locator('[onchange^="setDeveloperOptions(this)"]').count(),1);assert.ok(await page.locator('#production-sync-toggle').count());
     assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);assert.equal(financialRequests,0);
   });
   await context.close();console.log('Screenshots: '+shots);console.log(`PASS: ${passed} Apple theme responsive/browser checks`);

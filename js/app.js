@@ -1347,7 +1347,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         S = JSON.parse(localStorage.getItem("pera") || "null");
       } catch (e) {}
       const hadSavedCapState = !!S;
-      S = S || {accts:[],tx:[],pend:[],xfer:[],bills:[],budgets:{},notes:[],goals:[],debts:[],cur:'PHP'};
+      S = S || {accts:[],tx:[],pend:[],xfer:[],bills:[],budgets:{},notes:[],goals:[],debts:[],cur:'PHP', dec: 1};
       S.goals = S.goals || (hadSavedCapState ? [
         { id: 1, name: "Emergency Fund", icon: "🛟", target: 100000, saved: 42000 },
         { id: 2, name: "Japan Trip", icon: "✈️", target: 80000, saved: 15000 },
@@ -1567,23 +1567,32 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         const front = `<div class="cc${det ? " detail" : ""}" style="background:linear-gradient(135deg,${a.g[0]},${a.g[1]})" ${oc}><div style="display:flex;justify-content:space-between">${logoH(a)}<small>${cr ? "CREDIT" : a.type == "ewallet" ? "E-WALLET" : "DEBIT"}${full && a.l4 ? " •• " + a.l4 : ""}</small></div><div class="chip"></div>${full ? `<div class="at"><small>${label}</small><div class="v bv">${amt}</div>${bar}</div>` : ""}<div class="bt" style="justify-content:flex-end">${n}</div></div>`;
         return full && !det ? accountCardMarkup(a, art, front) : front;
       }
+      /* Replay only the requested icon, including a second click on the active tab.
+         No delayed callbacks: rapid tab changes cannot animate a stale button. */
+      function playNavIcon(name) {
+        const button = document.querySelector(name === '+' ? '#tabs .nav-action' : '#tabs .nav-tab-' + name.toLowerCase());
+        if (!button) return;
+        button.classList.remove('nav-icon-play');
+        void button.offsetWidth;
+        button.classList.add('nav-icon-play');
+      }
       function render() {
         applyTheme();
         applyMotion();
         applyHide();
         ensureCats();
         const navIcons={
-          Home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.5 10.8 8.5-7 8.5 7v8.1a1.6 1.6 0 0 1-1.6 1.6H5.1a1.6 1.6 0 0 1-1.6-1.6z"/><path d="M9.2 20.5v-5.8h5.6v5.8"/></svg>',
-          Activity:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12h4l2.1-6.2 4.2 12.4 2.2-6.2h4.5"/></svg>',
-          Plan:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>',
-          Accounts:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9h17M7 14h3"/><circle cx="16.5" cy="14" r="1.5"/></svg>'
+          Home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path class="nav-house" d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path class="nav-icon-detail" d="M9 22V12M15 22V12M9 12h6"/></svg>',
+          Activity:'<svg viewBox="0 0 24 24" aria-hidden="true"><path class="nav-heartbeat" pathLength="1" d="M3.5 12h4l2.1-6.2 4.2 12.4 2.2-6.2h4.5"/></svg>',
+          Plan:'<svg viewBox="0 0 24 24" aria-hidden="true"><g class="nav-paper"><rect class="nav-paper-body" x="4" y="3.5" width="16" height="17" rx="2.2"/><path class="nav-paper-lines nav-icon-detail" d="M8 8h8M8 12h8M8 16h4"/></g></svg>',
+          Accounts:'<svg viewBox="0 0 24 24" aria-hidden="true"><path class="nav-wallet-card" d="M6.5 8V5.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1V8"/><rect class="nav-wallet-body" x="3.5" y="8" width="17" height="12" rx="2.5"/><g class="nav-icon-detail"><path d="M3.5 11h17M7 15h3"/><circle cx="16.5" cy="15" r="1.5"/></g></svg>'
         };
         $("#tabs").innerHTML = ["Home", "Activity", "+", "Plan", "Accounts"]
           .map((t) => {
-            if(t==='+')return `<button type="button" class="nav-action" aria-label="Add transaction" onclick="openTx()"><span class="nav-action-plus" aria-hidden="true">＋</span></button>`;
+            if(t==='+')return `<button type="button" class="nav-action" aria-label="Add transaction" onclick="playNavIcon('+');openTx()"><span class="nav-action-plus" aria-hidden="true"><span class="nav-plus-glyph">＋</span></span></button>`;
             const on = t == tab,
               pop = on && navTab && navTab !== tab;
-            return `<button aria-label="${t}" class="nav-tab-${t.toLowerCase()} ${on ? "on" : ""}${pop ? " pop" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render()"><span class="nav-icon">${navIcons[t]}</span><span class="nav-label">${t}</span></button>`;
+            return `<button aria-label="${t}" class="nav-tab-${t.toLowerCase()} ${on ? "on" : ""}${pop ? " nav-icon-play" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render();playNavIcon('${t}')"><span class="nav-icon">${navIcons[t]}</span><span class="nav-label">${t}</span></button>`;
           })
           .join("");
         navTab = tab;
@@ -1680,7 +1689,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
           due = [...S.bills.filter(live), ...cb].filter((b) => days(b) <= Math.max(0, ...(b.al || [1, 7, -1]))),
           over = Object.keys(S.budgets).filter((c) => spent(c) > S.budgets[c]);
         const up = [...S.bills.filter(live), ...cb].sort((a, b) => days(a) - days(b));
-        return `<div class="eyebrow">${T.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}</div><div class="m">${greet()},</div><h1>${esc(S.name || "Your money")}</h1>
+        return `<div class="home-date">${T.toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}</div><div class="m">${greet()},</div><h1>${esc(S.name || "Your money")}</h1>
 <p class="m">You spent <b class="bv" style="color:var(--tx)">${php(td)}</b> today.${due.length ? ` <b style="color:var(--tx)">${due.length} bill${due.length > 1 ? "s" : ""}</b> coming up soon.` : ""}</p>
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
 <div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g bv home-balance-stat" data-home-stat="${inc}" data-stat-prefix="+">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r bv home-balance-stat" data-home-stat="${out}">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"} bv home-balance-stat" data-home-stat="${inc-out}">${php(inc - out)}</b></div></div>
@@ -2243,7 +2252,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
               "",
             )}${e.length > mx ? `<div class="m" style="font-size:11px;padding:2px 4px">${e.length - mx} more</div>` : ""}</div>`;
         }
-        return `<div id="calwrap" style="padding:6px 0 0;touch-action:pan-y" onpointerdown="calDown(event)" onpointermove="calMove(event)" onpointerup="calUp(event)" onpointercancel="calUp(event)" onwheel="calWheel(event)"><div style="display:flex;justify-content:space-between;align-items:center;padding:0 4px 10px;gap:8px;flex-wrap:wrap"><div style="font-size:28px;font-weight:700">${f.toLocaleDateString("en-PH", { month: "long" })} ${Y}<div style="font-size:14px;font-weight:500;margin-top:2px">${calStats(Y, M)}</div></div><span><button class="pill" style="border:0" onclick="cm=0;sel='';render()">Today</button> <button class="pill" onclick="calGo(-1)">‹</button> <button class="pill" onclick="calGo(1)">›</button></span></div><div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;color:var(--mut);font-size:13px;padding:0 6px 6px">${["S", "M", "T", "W", "T", "F", "S"].map((x) => `<span>${x}</span>`).join("")}</div><div class="acal">${g}</div><p class="m" style="margin:0;padding:10px 4px;font-size:12px">${[
+        return `<div id="calwrap" style="padding:6px 0 0;touch-action:pan-y" onpointerdown="calDown(event)" onpointermove="calMove(event)" onpointerup="calUp(event)" onpointercancel="calUp(event)" onwheel="calWheel(event)"><div style="display:flex;justify-content:space-between;align-items:center;padding:0 4px 10px;gap:8px;flex-wrap:wrap"><div style="font-size:28px;font-weight:700">${f.toLocaleDateString("en-PH", { month: "long" })} ${Y}<div style="font-size:14px;font-weight:500;margin-top:2px">${calStats(Y, M)}</div></div><span><button class="pill" style="border:0" onclick="cm=0;sel='';render()">Today</button> <button class="pill" onclick="calGo(-1)">‹</button> <button class="pill" onclick="calGo(1)">›</button></span></div><div class="cal-weekdays" style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;color:var(--mut);font-size:13px;padding:0 6px 6px">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((x) => `<span>${x}</span>`).join("")}</div><div class="acal">${g}</div><p class="m" style="margin:0;padding:10px 4px;font-size:12px">${[
           ["#ff453a", "Spending"],
           ["#30d158", "Income"],
           ["#ffd60a", "Bills & card dates"],
@@ -3390,7 +3399,7 @@ function calWheel(e){if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.2||Math.abs(e.d
    Every page renders through stSheet() -> navS(), so the modal, its backdrop
    and its scroll position stay stable while pages slide/fade in and out.
    ========================================================================== */
-const APP_VERSION='1.0.4',APP_VER=APP_VERSION;
+const APP_VERSION='1.0.5',APP_VER=APP_VERSION;
 const LOCK_KEY='cap_lock',BIO_KEY='cap_bio',NOTIF_SEEN='cap_notif_seen',BK_KEY='cap_lastbackup';
 const ST_IC={
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.4"/><path d="M4.9 20c.7-3.5 3.6-5.6 7.1-5.6s6.4 2.1 7.1 5.6"/></svg>',
@@ -3413,7 +3422,15 @@ const APP_REPOSITORY_URL='https://github.com/luancreek2/cap-finance-tracker',WHA
 /* Auto-present the release note once per version, after the launch animation. */
 const WHATS_NEW_AUTO=true;
 let WHATS_NEW_MEMORY_SEEN='';
-const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-22',title:'What’s New in Cap',summary:'Cap 1.0.4 brings smarter account transfers, a bottom navigation bar, steadier balance animations, and a stronger production-sync foundation.',changes:[
+const APP_UPDATES=[{version:APP_VERSION,releaseDate:'2026-10-26',title:'What’s New in Cap',summary:'Cap 1.0.5 refines Settings, personal profiles, Apple Theme, animated navigation, and the Activity calendar while keeping your existing data and sync controls intact.',changes:[
+  {category:'Design',icon:'⚙️',title:'One polished Settings panel',description:'A compact, wider floating panel keeps the same size across every Settings page. Grouped rows, a fixed header, internal scrolling, restored scroll positions, and smooth forward/back navigation make settings easier to explore.'},
+  {category:'New',icon:'👤',title:'A more personal profile',description:'Add, change, or remove a circular profile photo stored only on this device. Your Profile now includes a read-only email disclosure and a single red Sign Out button.'},
+  {category:'Improved',icon:'🎨',title:'Refined Apple Theme and Appearance',description:'Compact visual theme previews, refined glass surfaces, restored original Cap typography, and improved balance layout preserve clarity in Light, Dark, Auto, and Apple Theme.'},
+  {category:'Design',icon:'🧭',title:'Animated navigation icons',description:'Home, Activity, Plan, Accounts, and Add animate once when activated. Home, Plan, and Accounts fill when selected and return to outlines when inactive, with contrasting interior details and visible active labels.'},
+  {category:'Improved',icon:'🗓️',title:'A smoother Activity calendar',description:'Swipe up for the next month or down for the previous month. Weekend shading, three-letter weekday headings, gesture locking, and an anchored Date range menu make browsing dates more natural.'},
+  {category:'Improved',icon:'☷',title:'Clearer Activity filters and menus',description:'All shows posted activity, while Upcoming keeps scheduled and pending entries separate. Consistent entry actions and three-dot menus stay close to their controls.'},
+  {category:'Improved',icon:'🔢',title:'Thoughtful defaults and accessibility',description:'First-time visitors see decimal amounts by default. Existing number choices are preserved, Developer Options stays inside Privacy & Sync, and keyboard, reduced-motion, touch-target, and offline behavior receive additional regression coverage.'}
+]},{version:'1.0.4',releaseDate:'2026-10-22',title:'What’s New in Cap',summary:'Cap 1.0.4 brings smarter account transfers, a bottom navigation bar, steadier balance animations, and a stronger production-sync foundation.',changes:[
   {category:'New',icon:'💸',title:'Smarter deposits and transfers',description:'Choose another debit card, e-wallet, or cash account as the source of a deposit, or record money arriving from outside Cap. Internal transfers now show a card-to-card animation and update both balances.'},
   {category:'New',icon:'🧾',title:'Opening balances in history',description:'Accounts created with a starting balance now get an opening transaction, keeping balance history and reconciliation consistent from day one.'},
   {category:'Improved',icon:'🧭',title:'Bottom navigation',description:'The main tabs now sit in a fixed bottom bar. The active tab expands with its label, while Add stays within easy reach.'},
@@ -3472,14 +3489,14 @@ function scheduleWhatsNew(){
 }
 let stCur='home',stKeep=0,stIx=0;
 function stStart(){stIx=0}
-function stSheet(html,key,keep){const sh=$('#sheet'),opts={dir:key==='set-home'?'back':'forward'};if(keep)opts.keep=1;navS(html,key,opts);if(sh)sh.classList.add('st')}
-function stHead(t,back,done){return `<div class="st-hd">${back?`<button class="pill st-bk" aria-label="Back" onclick="${back}">‹</button>`:''}<h2>${t}</h2>${done===false?'':`<button class="pill" onclick="closeS()">Done</button>`}</div>`}
+function stSheet(html,key,keep){if(window.StShell)return StShell.mount(html,key,keep);const sh=$('#sheet'),opts={dir:key==='set-home'?'back':'forward'};if(keep)opts.keep=1;navS(html,key,opts);if(sh)sh.classList.add('st')}
+function stHead(t,back,done){return `<div class="st-hd">${back?`<button type="button" class="pill st-bk" aria-label="Back" onclick="${back}">‹</button>`:''}<h2>${t}</h2>${done===false?'':`<button type="button" class="pill" onclick="closeS()">Done</button>`}</div>`}
 function stGrp(name,rows){return `<div class="st-grp eyebrow">${name}</div><div class="st-g">${rows.join('')}</div>`}
 function stRow(icon,title,val,go){
   const body=`<span class="st-i">${icon}</span><span class="st-t">${title}</span>${val?`<span class="st-v">${esc(val)}</span>`:''}${go?`<span class="st-c">${ST_IC.chev}</span>`:''}`,i=stIx++;
-  return go?`<button class="st-row" style="--i:${i}" onclick="${go}">${body}</button>`:`<div class="st-row st-ro" style="--i:${i}">${body}</div>`;
+  return go?`<button type="button" class="st-row" style="--i:${i}" onclick="${go}">${body}</button>`:`<div class="st-row st-ro" style="--i:${i}">${body}</div>`;
 }
-function stSw(label,sub,on,fn){return `<label class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><span class="swx"><input type="checkbox" ${on?'checked':''} onchange="${fn}"><i></i></span></label>`}
+function stSw(label,sub,on,fn){return `<label class="st-r"><span class="f"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</span><span class="swx"><input type="checkbox" aria-label="${esc(label)}" ${on?'checked':''} onchange="${fn}"><i></i></span></label>`}
 // Device-only presentation preference. Never enters S, backups, sync, or backend gates.
 function developerOptionsEnabled(){try{return localStorage.getItem('cap_developer_options')==='1'}catch(_){return false}}
 function setDeveloperOptions(input){
@@ -3542,7 +3559,7 @@ function stHome(){
   stStart();
   const nm=(S.name||'').trim();
   const h=stHead('Settings')
-    +stGrp('Profile',[stRow(ST_IC.user,'Your Profile',nm||'Add your name',"stGo('profile')")])
+    +`<button type="button" class="st-profile-card" aria-label="Your Profile" onclick="stGo('profile')">${stAvatar()}<span class="st-profile-copy"><b>${esc(nm||'Your Name')}</b><small>${nm?'Profile / Account':'Add your name'}</small></span><span class="st-c" aria-hidden="true">${ST_IC.chev}</span></button>`
     +stGrp('Preferences',[
       stRow(ST_IC.theme,'Appearance',themeLbl(),"stGo('appearance')"),
       stRow(ST_IC.cash,'Currency &amp; Numbers',(S.cur||'PHP')+' '+CS(),"stGo('numbers')"),
@@ -3558,30 +3575,41 @@ function stHome(){
       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")])
     +stGrp('About',[
       stRow(ST_IC.info,'About Cap',null,"stGo('about')"),
-      stRow(ST_IC.ver,'App Version',APP_VER,null)])
-    +`<div class="st-grp eyebrow">Advanced</div><div class="st-box">${stSw('Developer Options','Show advanced diagnostic and development controls on this device only.',developerOptionsEnabled(),'setDeveloperOptions(this)')}</div>`;
+       stRow(ST_IC.ver,'App Version',APP_VER,null)]);
   stSheet(h,'set-home',1);
 }
 /* ---- Profile ---- */
 function stProfile(){
   stStart();
-  const nm=(S.name||'').trim(),ini=nm.charAt(0).toUpperCase()||'?';
+  const nm=(S.name||'').trim(),photo=stProfilePhoto(),email=stAccountEmail();
   const h=stHead('Your Profile','openSettings()')
-    +`<div class="st-prof"><span class="st-av">${S.photo?`<img src="${S.photo}" alt="">`:esc(ini)}</span><span class="f"><b>${esc(nm||'Your name')}</b><small>Shown in greetings across Cap</small></span></div>`
-    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px"><label class="pill" style="cursor:pointer">${S.photo?'Change photo':'Add photo'}<input type="file" accept="image/*" hidden onchange="stPhoto(this)"></label>${S.photo?'<button class="pill" onclick="stNoPhoto()">Remove photo</button>':''}</div>`
-    +`<label class="m">Your Name</label><input id="st-name" maxlength="40" placeholder="Enter your name" value="${esc(S.name||'')}" oninput="stName(this.value)">`
-    +`<p class="st-note">Used for greetings only. Nothing here is uploaded anywhere — it stays with your data on this device.</p>`;
+    +`<div class="st-profile-editor">${stAvatar()}<b id="st-profile-name">${esc(nm||'Your Name')}</b><div class="st-photo-actions"><button type="button" class="pill" onclick="document.getElementById('st-photo-file').click()">${photo?'Change Photo':'Add Photo'}</button><input id="st-photo-file" type="file" accept="image/*" aria-label="Choose profile photo" hidden onchange="stPhoto(this)">${photo?'<button type="button" class="pill" onclick="stNoPhoto()">Remove Photo</button>':''}</div></div>`
+    +`<div class="st-grp eyebrow">Profile</div><div class="st-box st-name-box"><label for="st-name">Name</label><input id="st-name" maxlength="40" autocomplete="nickname" placeholder="Enter your name" value="${esc(S.name||'')}" oninput="stName(this.value)"></div>`
+    +`<details class="st-box st-email-disclosure"><summary>Email address<span class="st-email-action" aria-hidden="true"></span></summary><p class="st-email-value">${esc(email||'Email address is not available in the saved sign-in on this device.')}</p></details>`
+    +`<p class="st-note">Your name is used in Cap's greetings and keeps its existing save and sync preferences. Photos added here stay on this device and are not uploaded.</p>`
+    +(window.CapSupabase?.status().authenticated?'<button type="button" class="btn s st-signout" onclick="CapSupabase.signOut()">Sign Out</button>':'');
   stSheet(h,'set-profile',stKeep);
 }
-function stName(v){S.name=v;save()}
-function stPhoto(inp){imgPick(inp,128,'png',u=>{S.photo=u;save();stGo('profile',1);toast('Photo updated',true)})}
-function stNoPhoto(){delete S.photo;save();stGo('profile',1)}
+function stName(v){S.name=v;save();const name=document.getElementById('st-profile-name');if(name)name.textContent=v.trim()||'Your Name'}
+/* Display-only cached account detail. Never treats the cache as authentication,
+   exposes token fields, invokes a network request, or changes session state. */
+function stAccountEmail(){const api=window.CapSupabase;if(!api)return'';const owner=api.status().userId||api.localIdentity?.();if(!owner)return'';try{const user=JSON.parse(localStorage.getItem('cap_supabase_session')||'null')?.user;return user?.id===owner&&typeof user.email==='string'?user.email:''}catch(_){return''}}
+/* New photos are device-only, separate from S and its backup/cloud mappings.
+   Existing profile photos remain readable without migrating or changing them. */
+function stProfilePhoto(){try{const p=localStorage.getItem('cap_profile_photo');if(p!==null)return p}catch(_){}return S.photo||''}
+function stAvatar(){const photo=stProfilePhoto();return `<span class="st-av">${photo?`<img src="${esc(photo)}" alt="Your profile photo">`:`<span class="st-person" aria-hidden="true">${ST_IC.user}</span>`}</span>`}
+function stPhoto(inp){const file=inp.files&&inp.files[0];if(!file)return;if(!file.type.startsWith('image/'))return toast('Choose an image file');if(file.size>15*1024*1024)return toast('Choose a photo smaller than 15 MB');imgPick(inp,256,'png',u=>{try{localStorage.setItem('cap_profile_photo',u)}catch(_){return toast('Could not save the photo on this device')}stGo('profile',1);toast('Photo updated',true)})}
+function stNoPhoto(){try{localStorage.setItem('cap_profile_photo','')}catch(_){return toast('Could not remove the photo on this device')}stGo('profile',1)}
 /* ---- Appearance ---- */
+function appearancePreview(t,label,selected){
+  const description=t==='auto'?'Follows device':t==='apple'?'Frosted Apple surfaces':t==='dark'?'Quiet dark surfaces':'Clean light surfaces';
+  return `<button type="button" class="theme-choice${selected?' on':''}" data-theme-choice="${t}" aria-label="${label}" aria-pressed="${selected}" onclick="setTheme('${t}')"><span class="theme-preview preview-${t}" aria-hidden="true"><i class="preview-heading"></i><i class="preview-balance"></i><i class="preview-card"></i><i class="preview-row"></i><i class="preview-nav"><b></b></i></span><span class="theme-choice-name">${label}<span class="theme-choice-check" aria-hidden="true">✓</span></span><small>${description}</small></button>`;
+}
 function stAppearance(){
   stStart();
   const t=appearanceTheme();
   const h=stHead('Appearance','openSettings()')
-    +`<div class="st-grp eyebrow">Theme</div><div class="appearance-themes">${[['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme']].map(x=>`<button class="pill ${t==x[0]?'on':''}" aria-pressed="${t==x[0]}" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('')}</div>`
+    +`<div class="st-grp eyebrow">Theme</div><div class="appearance-themes">${[['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme']].map(x=>appearancePreview(x[0],x[1],t==x[0])).join('')}</div>`
     +`<p class="st-note">Auto and Apple Theme follow your device's light or dark setting. Appearance stays on this device and does not change Cloud Sync preferences.</p>`
     +capLogoChoices()
     +`<div class="st-grp eyebrow">Motion</div><div class="st-box">`
@@ -3884,7 +3912,6 @@ function stPrivacy(){ stStart();
     +`<div class="st-grp eyebrow">Data storage</div><div class="st-box"><div class="st-r"><span class="f"><b>${cloud?'Synced with your account':'Saved on this device'}</b><small>${cloud?'Cloud sync is connected for this device.':'Your financial data is stored locally on this device.'}</small></span><span class="st-pill" data-s="${st}"><i></i>${cloud?(navigator.onLine?'Online':'Offline'):'Local only'}</span></div></div>`
     +`<p class="st-note">Cap works fully offline. Nothing is uploaded unless you connect cloud sync.</p>`
      +(developerOptionsEnabled()?`<div class="st-grp eyebrow">Supabase connection test</div><div class="st-box st-col"><p class="st-note" style="margin:0">Advanced connection diagnostics. No Cap data is uploaded.</p><button class="btn" style="margin:0" onclick="testSupabaseConnection()">Test Supabase Connection</button><small id="sb-test-result" class="st-note"></small><button class="btn s" style="margin:0" onclick="testSupabaseCloudDatabase()">Test Cloud Database</button><small id="sb-crud-result" class="st-note"></small></div>`:'')
-      +(window.CapSupabase?.status().authenticated?'<div class="st-box"><button class="btn s" style="margin:0" onclick="CapSupabase.signOut()">Sign Out</button></div>':'')
       +`<div class="st-grp eyebrow">Cloud Sync</div>${developerSyncSettingsHtml()}`
       +(window.CapCloudBootstrap?CapCloudBootstrap.settingsHtml():'')
       +(developerOptionsEnabled()?`<div class="st-grp eyebrow">Migration preparation</div><div class="st-box st-col"><p class="st-note" style="margin:0">Creates a downloadable local backup and validation/mapping preview only. No financial data is uploaded or changed.</p><button class="btn" style="margin:0" onclick="prepareCloudMigration()">Prepare Cloud Migration</button><button class="btn s" style="margin:0" onclick="migrateCapData()">Migrate Data to Supabase</button><small id="migration-result" class="st-note"></small></div>`:'')
@@ -3892,7 +3919,8 @@ function stPrivacy(){ stStart();
      +stGrp('On this device',[
       stRow(ST_IC.box,'Backup &amp; Restore',lastBk()?'Last backup '+stWhen(lastBk()):'Never backed up',"stGo('backup')"),
       stRow(ST_IC.swap,'Import &amp; Export',null,"stGo('files')"),
-      stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")]);
+       stRow(ST_IC.lock,'Security',secLbl(),"stGo('security')")])
+     +`<div class="st-box">${stSw('Developer Options','Show advanced diagnostics on this device',developerOptionsEnabled(),'setDeveloperOptions(this);stGo(\'privacy\',1)')}</div>`;
   stSheet(h,'set-privacy',stKeep);
   requestAnimationFrame(()=>window.CapCloudBootstrap?.refresh());
 }

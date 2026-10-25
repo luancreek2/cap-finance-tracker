@@ -81,7 +81,7 @@
               .map((e, j) => [e, j])
               .filter(
                 (x) =>
-                  (x[0].kind != "tx" || k > today) &&
+                   x[0].kind != "tx" &&
                   x[0].kind != "xfer" &&
                   !(
                     x[0].kind == "bill" &&
@@ -170,7 +170,7 @@
         );
       }
       function upGroups() {
-        let h = typeof annualRenewalRows=='function'&&annualRenewalRows().length?`<div class="eyebrow" style="margin:10px 0 2px">Scheduled card fees</div>${annualRenewalRows().map(annualRenewalNoticeRow).join("")}`:"";
+        let h = pendingActivityHTML() + (typeof annualRenewalRows=='function'&&annualRenewalRows().length?`<div class="eyebrow" style="margin:10px 0 2px">Scheduled card fees</div>${annualRenewalRows().map(annualRenewalNoticeRow).join("")}`:"");
         const p = (x) => String(x).padStart(2, "0");
         for (let i = 0; i < 45; i++) {
           const dt = new Date(T.getFullYear(), T.getMonth(), T.getDate() + i),
@@ -179,7 +179,7 @@
               .map((e, j) => [e, j])
               .filter(
                 (x) =>
-                  (x[0].kind != "tx" || k > today) &&
+                  x[0].kind != "tx" &&
                   x[0].kind != "xfer" &&
                   !(
                     x[0].kind == "bill" &&
@@ -574,9 +574,23 @@ function xfItem(x,accountId) {
 }
 function xRow(x,accountId) {
   const c = acct(x.to), f = acct(x.from);
-  if(x.kind=='goal-transfer'){const g=S.goals.find(z=>z.id==x.goalId),desc=x.from==x.to?'Allocation within account':`${xName(f,'Account')} → ${xName(c,'Account')}`;return`<div class="row" style="cursor:pointer" onclick="goalTransferDetail(${x.id})"><div class="ico">🎯</div><div class="f">${esc(x.direction=='out'?'Goal withdrawal':'Goal contribution')} · ${esc(g?g.name:'Goal')}<span class="tag">Transfer</span><small>${esc(desc)}${x.note?' · '+esc(x.note):''}</small></div><b class="m">${php(x.amt)}</b></div>`}
-  if(x.kind=='account-transfer'){const received=accountId!=null&&accountId==x.to,other=received?f:c,label=accountId==null?'Account transfer':received?'Transfer in':'Transfer out',amount=accountId==null?php(x.amt):(received?'+':'−')+php(x.amt),tone=accountId==null?'m':received?'g':'r',desc=accountId==null?`${xName(f,'Account')} → ${xName(c,'Account')}`:received?'From '+xName(other,'Account'):'To '+xName(other,'Account');return`<div class="row" style="cursor:pointer" onclick="accountTransferDetail(${x.id})"><div class="ico">⇄</div><div class="f">${label}<span class="tag">Transfer</span><small>${esc(desc)}${x.note?' · '+esc(x.note):''}</small></div><b class="${tone}">${amount}</b></div>`}
-  return `<div class="row" style="cursor:pointer" onclick="cardPayDetail(${x.id},${x.to})"><div class="ico">${cardLogo(c) || "💳"}</div><div class="f">${esc(xName(c, "Card") + " Payment")}<span class="tag">Transfer</span><small>Transfer · from ${esc(xName(f, "Outside this app"))}</small></div><b class="m">${php(x.amt)}</b></div>`;
+  if(x.kind=='goal-transfer'){const g=S.goals.find(z=>z.id==x.goalId),desc=x.from==x.to?'Allocation within account':`${xName(f,'Account')} → ${xName(c,'Account')}`;return`<div class="row" data-xfer="${x.id}" style="cursor:pointer" onclick="goalTransferDetail(${x.id})"><div class="ico">🎯</div><div class="f">${esc(x.direction=='out'?'Goal withdrawal':'Goal contribution')} · ${esc(g?g.name:'Goal')}<span class="tag">Transfer</span><small>${esc(desc)}${x.note?' · '+esc(x.note):''}</small></div><b class="m">${php(x.amt)}</b>${activityActionButton('xfer',x.id)}</div>`}
+  if(x.kind=='account-transfer'){const received=accountId!=null&&accountId==x.to,other=received?f:c,label=accountId==null?'Account transfer':received?'Transfer in':'Transfer out',amount=accountId==null?php(x.amt):(received?'+':'−')+php(x.amt),tone=accountId==null?'m':received?'g':'r',desc=accountId==null?`${xName(f,'Account')} → ${xName(c,'Account')}`:received?'From '+xName(other,'Account'):'To '+xName(other,'Account');return`<div class="row" data-xfer="${x.id}" style="cursor:pointer" onclick="accountTransferDetail(${x.id})"><div class="ico">⇄</div><div class="f">${label}<span class="tag">Transfer</span><small>${esc(desc)}${x.note?' · '+esc(x.note):''}</small></div><b class="${tone}">${amount}</b>${activityActionButton('xfer',x.id)}</div>`}
+  return `<div class="row" data-xfer="${x.id}" style="cursor:pointer" onclick="cardPayDetail(${x.id},${x.to})"><div class="ico">${cardLogo(c) || "💳"}</div><div class="f">${esc(xName(c, "Card") + " Payment")}<span class="tag">Transfer</span><small>Transfer · from ${esc(xName(f, "Outside this app"))}</small></div><b class="m">${php(x.amt)}</b>${activityActionButton('xfer',x.id)}</div>`;
+}
+/* One existing sheet/action host for every persisted activity type. Transfers
+   never enter generic transaction edit/delete; their detail paths own invariants. */
+function activityActionButton(kind,id){return `<button type="button" class="pill dots activity-actions" aria-label="Transaction actions" aria-haspopup="dialog" onclick="event.stopPropagation();activityRecordActions('${kind}',${+id})">${DOTS}</button>`}
+function activityRecordActions(kind,id){
+  if(!Number.isSafeInteger(+id))return;
+  const t=kind==='tx'?S.tx.find(t=>t.id==id):null,x=kind==='xfer'?S.xfer.find(x=>x.id==id):null;
+  if(!t&&!x)return;
+  const detail=t?`txDetail(${+id})`:x.kind==='account-transfer'?`accountTransferDetail(${+id})`:x.kind==='goal-transfer'?`goalTransferDetail(${+id})`:`cardPayDetail(${+id},${+x.to})`;
+  openS(`<div class="sh-h"><h2>Transaction actions</h2><button class="pill" aria-label="Close actions" onclick="closeS()">×</button></div><div class="activity-action-menu" role="group" aria-label="Transaction actions"><button class="btn s" onclick="${detail}">View details</button>${t?`<button class="btn s" onclick="editTx(${+id})">Edit transaction</button><button class="btn s danger-t" onclick="askDel(${+id})">Delete entry</button>`:'<p class="m">Linked account operations are managed through their existing details screen.</p>'}</div>`);
+}
+function pendingActivityHTML(from,to){
+  const rows=(S.pend||[]).filter(t=>(!from||t.d>=from)&&(!to||t.d<=to)&&(!q||(t.note+(t.desc||'')+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase())));
+  return rows.length?`<div class="eyebrow">Pending / scheduled · not posted</div><div class="card">${rows.slice().sort((a,b)=>a.d.localeCompare(b.d)).map(rowT).join('')}</div>`:'';
 }
 function accountTransferDetail(id){
   const x=S.xfer.find(z=>z.id==id&&z.kind=='account-transfer');if(!x)return;
@@ -589,7 +603,7 @@ function accountTransferDetail(id){
   openS(`<div class="sh-h"><button class="pill" aria-label="Close transfer details" onclick="closeS()">×</button><h2>Transfer details</h2></div><div class="pd-hero transfer-detail-hero"><div class="pd-h"><span class="ico">${cardLogo(from)}</span><div class="pd-tt"><b>Account transfer</b><small>${esc(from.name||from.nickname)} <span aria-hidden="true">→</span> ${esc(to.name||to.nickname)}</small></div></div><div class="pd-amt"><span class="pd-v">${php(x.amt)}</span><span class="chip ok paid-chip transfer-chip"><svg class="transfer-arrow-mark" viewBox="0 0 20 20" aria-hidden="true"><path class="transfer-arrow-right" d="M2 6h13m-3-3 3 3-3 3"/><path class="transfer-arrow-left" d="M18 14H5m3-3-3 3 3 3"/></svg>Transfer</span></div></div><div class="card transfer-detail-rows" style="margin:0 0 12px">${row('Transferred on',transferredAt)}${row('From',accountLine(from))}${row('To',accountLine(to))}${x.note?row('Note',esc(x.note)):''}</div><button class="btn s" style="width:100%" onclick="closeS()">Close</button>`)
 }
 function goalTransferDetail(id){const x=S.xfer.find(z=>z.id==id&&z.kind=='goal-transfer');if(!x)return;const g=S.goals.find(z=>z.id==x.goalId),from=acct(x.from),to=acct(x.to);openS(`<h2>${x.direction=='out'?'Goal withdrawal':'Goal contribution'}</h2><p>${g?esc(g.icon+' '+g.name):'Goal'}</p><div class="card"><div class="cc-sum-row"><span>Amount</span><b>${php(x.amt)}</b></div><div class="cc-sum-row"><span>From</span><b>${esc(from?.name||'Account')}</b></div><div class="cc-sum-row"><span>To</span><b>${esc(to?.name||'Account')}</b></div><div class="cc-sum-row"><span>Date</span><b>${noteD(x.d)}</b></div>${x.note?`<p class="m">${esc(x.note)}</p>`:''}</div><button class="btn s" onclick="closeS()">Close</button>`)}
-function rowT(t){if(t.transfer)return xRow(t.x,t.accountId);const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${t.cardFee?'<span class="tag fee-tag">Fee</span>':''}${k>today?'<span class="tag">Planned</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button>`:''}<button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button></div>`}
+function rowT(t){if(t.transfer)return xRow(t.x,t.accountId);const k=t.d,p=S.pend.includes(t),j=evs(k).findIndex(e=>e.kind=='tx'&&e.id==t.id);return`<div class="row" data-tx="${t.id}" style="cursor:pointer" onclick="${p?`editTx(${t.id})`:`evDetail('${k}',${j})`}"><div class="ico">${ti(t)}</div><div class="f">${esc(t.note||t.cat)}${t.cardFee?'<span class="tag fee-tag">Fee</span>':''}${p?'<span class="tag">Pending</span>':''}<small>${t.cat} · ${esc(acct(t.acct).name)}${t.pd&&t.pd!=t.d?' · Posted '+noteD(t.pd):''}</small>${t.desc?`<small class="dsc">${esc(t.desc)}</small>`:''}</div><b class="${t.amt>0?'g':'r'}">${t.amt>0?'+':''}${php(t.amt)}</b>${p?`<button class="pill" onclick="event.stopPropagation();postTx(${t.id})">Post</button><button class="pill dots" aria-label="Edit transaction" onclick="event.stopPropagation();editTx(${t.id})">${DOTS}</button>`:activityActionButton('tx',t.id)}</div>`}
 
 /* ---- logged time ----
    Entries saved from now on carry an explicit ts. Entries saved before that field existed can
@@ -636,9 +650,7 @@ function txDetail(id){
   const sb=document.getElementById('sb');if(sb)sb.classList.add('nosel');
 }
 function actGroups(){const l=actList(),g={};l.forEach(t=>(g[t.d]=g[t.d]||[]).push(t));
-const pl=S.pend.filter(t=>(filt=='All'||(filt=='Expenses'?t.amt<0:filt=='Income'?t.amt>0:false))&&(!q||(t.note+(t.desc||"")+t.cat+Math.abs(t.amt)).toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>b.d.localeCompare(a.d)),
-ph=pl.length?`<div style="display:flex;justify-content:space-between;margin:18px 4px 6px"><b>Pending · not posted</b><span class="m" style="font-size:13px">${pl.length} · not in balances</span></div><div class="card" style="padding:2px 14px">${pl.map(rowT).join('')}</div>`:'';
-return ph+(Object.keys(g).sort().reverse().map(k=>{const txs=g[k].filter(t=>!t.transfer),tot=sum(txs.map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),k>today?'Planned':txs.length?(tot<0?'−':'+')+php(Math.abs(tot)):'')}).join('')||(ph?'':'<p class="m">Nothing here yet.</p>'))}
+return Object.keys(g).sort().reverse().map(k=>{const txs=g[k].filter(t=>!t.transfer),tot=sum(txs.map(t=>t.amt));return grp(k,g[k].map(rowT).join(''),txs.length?(tot<0?'−':'+')+php(Math.abs(tot)):'')}).join('')||'<p class="m">Nothing here yet.</p>'}
 
 
 function initTransactionV2() {

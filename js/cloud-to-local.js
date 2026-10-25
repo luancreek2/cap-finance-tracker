@@ -60,7 +60,7 @@
     if (new Set((state.cats || []).map(c => c.n)).size !== (state.cats || []).length) throw Error('Duplicate local categories');
     for (const c of state.cats || []) if (!(defaults || []).some(d => stable(c) === stable(d))) throw Error('Customized local categories');
     const allowed = new Set(['accts', 'tx', 'pend', 'xfer', 'bills', 'goals', 'debts', 'notes', 'budgets', 'cats', '_mt']);
-    const settings = { cur: 'PHP', name: '', photo: null, nf: 'us', neg: 'sign', dec: 0, theme: 'auto', anim: 1, rm: 0, snd: 1, hap: 1,
+    const settings = { cur: 'PHP', name: '', photo: null, nf: 'us', neg: 'sign', dec: 1, theme: 'auto', anim: 1, rm: 0, snd: 1, hap: 1,
       hide: 0, logoChoice: 'default', accountView: 'all', accountSort: 'manual', accountOrder: [] };
     for (const [k, v] of Object.entries(state)) {
       if (allowed.has(k)) continue;

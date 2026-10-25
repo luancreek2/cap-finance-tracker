@@ -24,7 +24,7 @@ function fixture(host='localhost',options={}){
   for(const host of ['localhost','127.0.0.1','[::1]'])await test(host+' selects only cache-busted local configuration',async()=>{
     const f=fixture(host);await f.c.CapEnvironment.ready;
     assert.equal(f.c.CapEnvironment.local,true);assert.match(f.scripts[0],/supabase-config\.local\.js\?local=\d+/);
-    assert.equal(f.badges[0].textContent,'LOCAL');assert.equal(f.c.CapEnvironment.databaseName,'cap-finance-local-preview');
+    assert.equal(f.badges.length,0);assert.equal(f.c.CapEnvironment.databaseName,'cap-finance-local-preview');
     assert.equal(JSON.stringify(f.c.CapEnvironment.browserConfig()),'{}');
   });
   for(const host of ['cap.example','localhost.example','127.0.0.1.example'])await test(host+' retains generated production path without local indicator',async()=>{

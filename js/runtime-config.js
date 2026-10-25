@@ -44,14 +44,12 @@
     databaseName:local?'cap-finance-local-preview':'cap-finance',
     ready:local?prepareLocalWorker():Promise.resolve(true)});
   if(local){
-    const badge=document.createElement('span');badge.className='cap-local-indicator';
-    badge.textContent='LOCAL';badge.setAttribute('aria-label','Local development preview');document.body.appendChild(badge);
     // On the first visit after an older PWA, stop the old controlled document
     // before it can start cached app/sync scripts. Cleanup then reloads from the
     // network; no config/auth or financial state is loaded in that document.
     if(navigator.serviceWorker?.controller?.scriptURL===new URL('service-worker.js',location.href).href){
       window.stop();
-      CapEnvironment.ready.then(ok=>{if(!ok)badge.textContent='LOCAL — unregister the Cap service worker in DevTools, then reload'});
+      CapEnvironment.ready.then(ok=>{});
       return;
     }
   }

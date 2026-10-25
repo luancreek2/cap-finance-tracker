@@ -48,7 +48,9 @@
 .as-cur.on b{color:var(--g)}
 
 /* ---- the popup body ---- */
-#activity-options-menu{right:4px}
+/* JS anchors this popover to the ••• trigger; fixed lets it re-anchor on
+   scroll/resize without being clipped by the Activity page container. */
+#activity-options-menu{right:4px;z-index:var(--layer-popover,1100)}
 #activity-options-menu .ao-body{animation:accountMenuIn .18s ease-out}
 #activity-options-menu .ao-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #activity-options-menu .ao-go{margin-left:auto;color:var(--mut);font-size:15px;line-height:1}
@@ -207,6 +209,28 @@
 .as-ym small{color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
 .as-ym-n{position:absolute;top:8px;right:9px;font-size:10px;color:var(--mut);opacity:.75}
 
+/* ---- vertical month stage ------------------------------------------------
+   Two live month pages share one clipped viewport. The outgoing page and the
+   prepared adjacent month move together, so a swipe reads as a vertical
+   calendar strip rather than a page being swapped out. */
+.cal-vstage{position:relative;overflow:hidden;touch-action:pan-y;contain:layout paint}
+.cal-vpage{position:absolute;left:0;right:0;top:0;width:100%;will-change:transform}
+.cal-vpage-new{z-index:1}
+
+/* ---- weekend columns ----------------------------------------------------
+   A background tint only: today, selection, entries and markers stay above
+   it because they own their own surfaces. */
+:root{--cal-weekend:rgba(0,0,0,.032)}
+:root[data-theme="dark"]{--cal-weekend:rgba(255,255,255,.035)}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not([data-theme="apple"]){--cal-weekend:rgba(255,255,255,.035)}
+}
+:root[data-theme="apple"]{
+  --cal-weekend:color-mix(in srgb,var(--color-text-primary) 4%,transparent);
+}
+.acal>div:nth-child(7n),
+.acal>div:nth-child(7n+1){background-color:var(--cal-weekend)!important}
+
 /* ---- motion when the period changes ---- */
 .as-in{animation:asRise .34s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 26ms)}
 @keyframes asRise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
@@ -218,6 +242,7 @@
   #activity-options-menu .ao-arrow,
   .as-ym{animation:none;transition:none}
   .as-in{animation:none}
+  .cal-vstage,.cal-vpage{transition:none!important;animation:none!important}
   .acal .dc,.day-card.day-enter,.day-card.day-enter>.row{
     animation:none!important;transition:none!important}
 }

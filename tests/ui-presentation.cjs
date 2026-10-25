@@ -30,6 +30,17 @@ test('storage failure is fail-closed and restores the checkbox',()=>{
 test('preference handlers do not touch financial state, sync gates or auth',()=>{
   assert.doesNotMatch(preference,/\bS\b|\bsave\(|CAP_DEV_TOOLS|CapSupabase|CapSync|fetch\(|setEnabled/);
   assert.match(app,/stSw\('Developer Options'/);
+  assert.doesNotMatch(app,/stRow\(ST_IC\.code,'Developer Options'/);
+  assert.match(app,/setDeveloperOptions\(this\);stGo\(/);
+});
+test('profile email is display-only, owner-matched, and safe when unavailable/offline',()=>{
+  const source=app.slice(app.indexOf('function stAccountEmail()'),app.indexOf('/* New photos are device-only'));
+  let userId='fixture-owner',localOwner=null,cache=JSON.stringify({user:{id:'fixture-owner',email:'fixture@example.invalid'}});
+  const c=vm.createContext({window:{CapSupabase:{status:()=>({userId}),localIdentity:()=>localOwner}},localStorage:{getItem:()=>cache}});
+  vm.runInContext(source,c);assert.equal(c.stAccountEmail(),'fixture@example.invalid');
+  userId=null;localOwner='fixture-owner';assert.equal(c.stAccountEmail(),'fixture@example.invalid');
+  localOwner='different-owner';assert.equal(c.stAccountEmail(),'');cache='{bad json';assert.equal(c.stAccountEmail(),'');
+  assert.doesNotMatch(source,/fetch\(|currentUser\(|syncRequest\(|setItem\(|save\(|access_token|refresh_token/);
 });
 test('existing Cloud Sync diagnostics are reused, not duplicated',()=>{
   const display=app.slice(app.indexOf('function developerSyncSettingsHtml()'),app.indexOf('function stSel('));
@@ -62,8 +73,21 @@ test('portal follows the visual viewport and uses body host, not a clipped sheet
   assert.match(overlay,/cancelAnimationFrame\(raf\)/);assert.match(overlay,/!anchor\.isConnected/);
   assert.match(app,/detach=CapOverlays\.attach\(p,b/);assert.match(cards,/CapOverlays\.attach\(m,button\)/);
 });
+test('account options open below the button without expanding the heading or scrolling on focus',()=>{
+  const options=read('css/account-options.css'),script=read('js/account-options.js');
+  assert.match(options,/\.account-options-menu\{position:absolute;right:-2px;top:230px/);
+  assert.match(options,/\.account-options-button\{[^}]*position:absolute;right:-2px;top:190px/);
+  assert.match(script,/menu\.querySelector\('button'\)\.focus\(\{preventScroll:true\}\)/);
+});
+test('v1.0.5 release notes describe the current features and retain earlier releases',()=>{
+  assert.match(app,/const APP_VERSION='1\.0\.5'/);
+  const c=vm.createContext({APP_VERSION:'1.0.5'});
+  vm.runInContext(app.slice(app.indexOf('const APP_UPDATES='),app.indexOf('const GITHUB_MARK='))+';globalThis.updates=APP_UPDATES;',c);
+  assert.equal(c.updates[0].version,'1.0.5');assert.equal(c.updates[0].releaseDate,'2026-10-26');
+  assert.ok(c.updates[0].changes.length>=7);assert.equal(c.updates[1].version,'1.0.4');assert.equal(c.updates[2].version,'1.0.3');
+});
 test('release shell version bumped and changed UI files are in offline CORE',()=>{
-  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v330/);
+  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v345/);
   for(const file of ['js/app.js','js/cards.js','js/animations.js','css/styles.css','css/animations.css'])assert.ok(worker.includes('./'+file),file);
 });
 console.log(`PASS: ${passed} UI presentation regression checks; local preferences, hand-off guards and layer contract`);

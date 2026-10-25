@@ -20,6 +20,13 @@ test('invalid presentation preference cannot become a theme',()=>{c.setTheme('in
 test('storage read failure falls back to existing preference',()=>{const get=c.localStorage.getItem;c.localStorage.getItem=()=>{throw Error('Unavailable');};assert.equal(c.appearanceTheme(),'dark');c.localStorage.getItem=get;});
 test('storage write failure does not mutate financial state',()=>{const set=c.localStorage.setItem;c.localStorage.setItem=()=>{throw Error('Unavailable');};c.setTheme('apple');assert.equal(JSON.stringify(S),before);c.localStorage.setItem=set;});
 test('all Apple palette and semantic tokens are declared',()=>{for(const token of ['apple-light-gray','apple-mid-gray','apple-dark-gray-2','apple-dark-gray','apple-blue','apple-green','apple-orange','apple-red','apple-yellow','color-primary','color-success','color-danger','color-warning','color-caution','color-text-primary','color-text-secondary','color-surface','color-surface-secondary','color-divider','color-glass','color-glass-border'])assert.ok(css.includes('--'+token+':')||css.includes('--'+token+': '),token);});
-test('native font stack without downloaded font files',()=>{assert.match(css,/-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif/);assert.doesNotMatch(css,/@font-face|url\([^)]*\.(woff2?|ttf|otf)/i);assert.match(css,/font-variant-numeric:tabular-nums/);});
+test('original Cap font stack restored without downloaded font files',()=>{
+  assert.match(css,/15px\/1\.4 -apple-system,\s*"Segoe UI",\s*Inter,\s*Roboto,\s*sans-serif/);
+  assert.doesNotMatch(css,/SF Pro Display|SF Pro Text|BlinkMacSystemFont|--font-system/);
+  assert.doesNotMatch(css,/@font-face|url\([^)]*\.(woff2?|ttf|otf)/i);
+  assert.match(css,/#chv\.ch-balance \{ white-space:nowrap; \}/);
+  assert.doesNotMatch(css,/#chv\.ch-balance[^}]*proportional-nums/);
+  assert.doesNotMatch(css,/\.big, \.amt, \.amount \{ font-variant-numeric:tabular-nums/);
+});
 test('glass enhancement has an opaque fallback, safe area and reduced motion',()=>{assert.match(css,/@supports \(\(backdrop-filter/);assert.match(css,/background:var\(--nav-fallback\)/);assert.match(css,/112px \+ env\(safe-area-inset-bottom/);assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);});
 console.log(`PASS: ${passed} Apple appearance contract checks`);

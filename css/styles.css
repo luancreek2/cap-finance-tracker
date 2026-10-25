@@ -52,11 +52,9 @@
         color: var(--tx);
         font:
           15px/1.4 -apple-system,
-          BlinkMacSystemFont,
-          "SF Pro Display",
-          "SF Pro Text",
-          "Helvetica Neue",
-          Arial,
+          "Segoe UI",
+          Inter,
+          Roboto,
           sans-serif;
         padding-bottom: 90px;
       }
@@ -132,6 +130,12 @@
         text-transform: uppercase;
         color: var(--mut);
         font-weight: 600;
+      }
+      .home-date {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--tx);
+        margin-bottom: 2px;
       }
       h1 {
         font-size: 30px;
@@ -2280,9 +2284,9 @@ nav>div#tabs button.nav-action:active{transform:scale(.88)}
 nav>div#tabs .nav-action-plus{display:grid;width:40px;height:40px;place-items:center;border:1px solid var(--gb);border-radius:50%;background:var(--gl);box-shadow:inset 0 1px 0 #fff8,0 2px 7px #0002;font-size:26px;font-weight:500;line-height:1;transition:transform .3s cubic-bezier(.2,.9,.25,1.2),background-color .2s ease}
 nav>div#tabs button.nav-action:active .nav-action-plus{transform:scale(.86);background:var(--gon)}
 nav>div#tabs button.on{flex-basis:124px;width:124px}
-.sbtn{top:calc(12px + env(safe-area-inset-top,0px))!important;bottom:auto!important}
+.sbtn{top:calc(16px + env(safe-area-inset-top,0px))!important;bottom:auto!important}
 body{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
-#app{padding-top:calc(18px + env(safe-area-inset-top,0px))}
+#app{padding-top:calc(56px + env(safe-area-inset-top,0px))}
 @media(prefers-reduced-motion:reduce){nav>div#tabs button.nav-action,.nav-action-plus{transition:none!important}.nav-action-plus{transform:none!important}}
 html.noanim nav>div#tabs button.nav-action,html.rm nav>div#tabs button.nav-action,html.noanim .nav-action-plus,html.rm .nav-action-plus{transition:none!important;animation:none!important}
 @media(max-width:380px){nav>div#tabs{width:calc(100vw - 6px)}nav>div#tabs button.on{flex-basis:112px;width:112px}nav>div#tabs .nav-label{max-width:76px;font-size:13px}}
@@ -2305,10 +2309,9 @@ nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:64px;width:64px;ma
 @media(max-width:600px){nav>div#tabs button.nav-tab-home.on,nav>div#tabs button.nav-tab-activity.on,nav>div#tabs button.nav-tab-plan.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-home.on .nav-label,nav>div#tabs button.nav-tab-activity.on .nav-label,nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}
 @media(max-width:600px){nav>div#tabs button.nav-tab-home.on{flex-basis:100px;width:100px}nav>div#tabs button.nav-tab-home.on .nav-label{flex-basis:44px;width:44px;max-width:44px}nav>div#tabs button.nav-tab-plan.on{flex-basis:96px;width:96px}nav>div#tabs button.nav-tab-plan.on .nav-label{flex-basis:40px;width:40px;max-width:40px}nav>div#tabs button.nav-tab-activity.on{flex-basis:108px;width:108px}nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:60px;width:60px;max-width:60px}}
 
-/* Presentation only: native system typography, semantic Apple surfaces and a
-   single frosted navigation layer. No font downloads or financial state. */
+/* Presentation only: semantic Apple surfaces and a single frosted navigation
+   layer. Cap keeps its original typography in every theme. */
 :root {
-  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   --color-primary: var(--ac);
   --color-success: var(--g);
   --color-danger: var(--r);
@@ -2335,8 +2338,6 @@ nav>div#tabs button.nav-tab-activity.on .nav-label{flex-basis:64px;width:64px;ma
     --nav-fallback: #26262c; --nav-highlight: rgba(255,255,255,.1); --nav-shadow: rgba(0,0,0,.28);
   }
 }
-body, button, input, select, textarea, svg text { font-family: var(--font-system); }
-h1, h2, h3 { font-family: var(--font-system); font-optical-sizing: auto; }
 .appearance-themes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:6px; }
 .appearance-themes button { min-height:44px; }
 nav { padding-inline:12px; }
@@ -2417,8 +2418,10 @@ html { scroll-padding-bottom:calc(112px + env(safe-area-inset-bottom,0px)); }
 :root[data-theme="apple"] .appearance-themes button.on { border-color:var(--color-primary); }
 :root[data-theme="apple"] .swx:has(input:checked) { background:var(--color-primary); border-color:var(--color-primary); }
 :root[data-theme="apple"] .cap-logo-choices button[aria-pressed="true"] { border-color:var(--color-primary); box-shadow:0 0 0 1px var(--color-primary); }
-:root[data-theme="apple"] :is(h1,h2,.big) { font-weight:650; letter-spacing:-.025em; }
-.big, .amt, .amount { font-variant-numeric:tabular-nums; }
+/* Home's Net Balance keeps Cap's original display typography. nowrap only
+   prevents a long amount from breaking mid-number on narrow screens. */
+#chv.ch-balance { white-space:nowrap; }
+.ch-balance-row { flex-wrap:wrap; }
 :root[data-theme="apple"] #sb .st-pill[data-s="warn"] i { background:var(--color-warning); }
 :root[data-theme="apple"] #sb .st-dz { border-color:var(--color-danger); }
 :root[data-theme="apple"] #sb .st-dz .eyebrow { color:var(--color-danger); }
@@ -2434,3 +2437,119 @@ html { scroll-padding-bottom:calc(112px + env(safe-area-inset-bottom,0px)); }
 :root[data-theme="apple"] .toast { background:var(--card); color:var(--tx); border:1px solid var(--line); box-shadow:0 6px 20px var(--nav-shadow); }
 :root[data-theme="apple"] .toast .tk { color:var(--color-success); }
 :root[data-theme="apple"] .toast.toast-error { color:var(--color-danger); border-color:var(--color-danger); text-shadow:none; }
+
+/* Liquid interface material: low-opacity tint, one backdrop layer, and a
+   static reflection. Opacity, not a larger blur, lets content influence it. */
+:root {
+  --color-glass:rgba(255,255,255,.22);
+  --color-glass-border:rgba(255,255,255,.6);
+  --nav-material:blur(14px) saturate(180%);
+  --nav-reflection:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,.02) 35%,transparent 70%);
+}
+:root[data-theme="dark"] { --color-glass:rgba(28,28,30,.28); --color-glass-border:rgba(255,255,255,.18); }
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) { --color-glass:rgba(28,28,30,.28); --color-glass-border:rgba(255,255,255,.18); }
+}
+:root[data-theme="apple"] {
+  --nav-selected:rgba(28,28,30,.94); --nav-selected-text:#fff;
+  --color-glass:rgba(255,255,255,.22); --color-glass-border:rgba(255,255,255,.6);
+  --popup-surface:var(--card); --popup-border:rgba(142,142,147,.26);
+  --popup-scrim:rgba(20,20,28,.18); --popup-shadow:rgba(28,28,30,.18);
+  --popup-highlight:rgba(255,255,255,.65); --popup-material:none;
+  --popup-text-secondary:#49494d; --popup-success:#105921; --popup-danger:#921a15;
+}
+@media(prefers-color-scheme:dark) {
+  :root[data-theme="apple"] {
+    --nav-selected:rgba(229,229,234,.94); --nav-selected-text:#1c1c1e;
+    --color-glass:rgba(28,28,30,.28); --color-glass-border:rgba(255,255,255,.18);
+    --popup-border:rgba(229,229,234,.2); --popup-scrim:rgba(0,0,0,.3);
+    --popup-shadow:rgba(0,0,0,.35); --popup-highlight:rgba(255,255,255,.12);
+    --popup-text-secondary:#c7c7cc; --popup-success:#7bdf93; --popup-danger:#ffaaa4;
+  }
+}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+  nav>div#tabs { -webkit-backdrop-filter:var(--nav-material); backdrop-filter:var(--nav-material); }
+  :root[data-theme="apple"] { --popup-surface:rgba(255,255,255,.76); --popup-material:blur(18px) saturate(155%); }
+  @media(prefers-color-scheme:dark) { :root[data-theme="apple"] { --popup-surface:rgba(28,28,30,.78); } }
+}
+nav>div#tabs::before {
+  content:""; position:absolute; inset:0; border-radius:inherit; padding:0;
+  background:var(--nav-reflection); -webkit-mask:none; mask:none;
+  pointer-events:none; z-index:0; -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+/* Apple-only scrims never blur the full screen; the actual panel owns glass. */
+:root[data-theme="apple"] :is(#sheet,#pop,#cfm,.whats-new-overlay,.acct-setup-overlay) {
+  /* Also override the legacy scrim keyframe's blur(0) backdrop root. */
+  background:var(--popup-scrim); -webkit-backdrop-filter:none!important; backdrop-filter:none!important;
+}
+:root[data-theme="apple"] .cep-frost { -webkit-backdrop-filter:none!important; backdrop-filter:none!important; }
+:root[data-theme="apple"] .cep-dim { background:var(--popup-scrim); }
+:root[data-theme="apple"] :is(#sheet>#sb,#pp,.cfm-box,.ps-pop,.account-options-menu,#km,.cep-panel,.acct-setup-form,.whats-new-panel) {
+  background:var(--popup-surface); color:var(--tx); border:1px solid var(--popup-border);
+  box-shadow:inset 0 1px 0 var(--popup-highlight),0 16px 42px var(--popup-shadow);
+  -webkit-backdrop-filter:var(--popup-material); backdrop-filter:var(--popup-material);
+  --mut:var(--popup-text-secondary); --g:var(--popup-success); --r:var(--popup-danger);
+}
+:root[data-theme="apple"] #sheet>#sb::before { content:none; }
+:root[data-theme="apple"] :is(#sb,#pp,.cfm-box) :is(input,select,textarea,.st-box) {
+  background:var(--card); -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+:root[data-theme="apple"] #sb :is(.ps-pop,.menu,.account-options-menu) { -webkit-backdrop-filter:none; backdrop-filter:none; }
+/* The previews illustrate materials with paint only: no extra backdrop filters. */
+.appearance-themes { gap:8px; padding:4px; }
+.theme-choice { display:flex; flex-direction:column; gap:7px; min-width:0; padding:6px; border:1px solid var(--line); border-radius:18px; background:var(--card); color:var(--tx); font:inherit; cursor:pointer; text-align:left; }
+.theme-choice.on { outline:2px solid #007aff; outline-offset:2px; }
+.theme-choice:focus-visible { outline:3px solid #007aff; outline-offset:3px; }
+.theme-choice-name { display:flex; align-items:center; justify-content:space-between; width:100%; gap:4px; font-weight:600; font-size:13px; }
+.theme-choice small { color:var(--mut); font-size:11px; }
+.theme-choice-check { display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#007aff; color:#fff; font-size:13px; visibility:hidden; }
+.theme-choice.on .theme-choice-check { visibility:visible; }
+.theme-preview { position:relative; display:block; width:100%; height:64px; overflow:hidden; border-radius:12px; background:#f4f4f7; --preview-card:#fff; --preview-ink:#1c1c1e; }
+.preview-dark { background:#101012; --preview-card:#29292c; --preview-ink:#f5f5f7; }
+.preview-auto { background:linear-gradient(90deg,#f4f4f7 50%,#101012 50%); --preview-card:linear-gradient(90deg,#fff 50%,#29292c 50%); --preview-ink:#8e8e93; }
+.preview-apple { background:radial-gradient(ellipse at 15% 75%,#34c75966,transparent 60%),radial-gradient(ellipse at 85% 25%,#007aff88,transparent 65%),linear-gradient(110deg,#e5e5ea 50%,#1c1c1e 50%); --preview-card:linear-gradient(100deg,#fff9,#3a3a3c99); --preview-ink:#8e8e93; }
+.theme-preview>i { display:block; position:absolute; border-radius:5px; }
+.preview-heading { left:8px; top:7px; width:35%; height:3px; background:var(--preview-ink); opacity:.5; }
+.preview-balance { left:8px; top:15px; width:50%; height:7px; background:var(--preview-ink); }
+.preview-card { left:8px; right:8px; top:28px; height:13px; background:var(--preview-card); border:1px solid #8e8e9322; }
+.preview-row { left:12px; width:26%; top:33px; height:3px; background:#34c759; }
+.theme-preview>.preview-nav { left:12px; right:12px; bottom:5px; height:13px; border-radius:99px; background:var(--preview-card); border:1px solid #8e8e9344; }
+.preview-nav b { display:block; width:30%; height:7px; margin:2px 4px; border-radius:99px; background:var(--preview-ink); }
+.preview-apple .preview-nav { background:linear-gradient(90deg,#ffffff70,#ffffff22); border-color:#ffffff80; box-shadow:inset 0 1px 0 #fff7; }
+.preview-apple .preview-nav b { background:#007aff; }
+.activity-action-menu { display:grid; gap:9px; }
+.activity-action-menu button { margin:0; min-height:44px; text-align:left; }
+.row[data-tx]>.activity-actions,.row[data-xfer]>.activity-actions { width:44px; height:44px; min-width:44px; min-height:44px; margin-left:4px; }
+.row[data-tx],.row[data-xfer] { gap:8px; }
+.row[data-tx]>.f,.row[data-xfer]>.f { min-width:0; overflow-wrap:anywhere; }
+.row[data-tx]>b,.row[data-xfer]>b { flex:none; white-space:nowrap; }
+@media(prefers-reduced-motion:reduce) { .theme-choice,.theme-preview { transition:none; animation:none; } }
+
+/* Active silhouettes fill with the tab foreground; interior strokes reverse
+   to the selected pill color. Inactive icons return to their original outline. */
+#tabs :is(.nav-house,.nav-paper-body,.nav-wallet-body,.nav-wallet-card) { fill:none; transition:fill .2s ease; }
+#tabs .nav-icon-detail { stroke:currentColor; transition:stroke .2s ease; }
+#tabs button.on :is(.nav-house,.nav-paper-body,.nav-wallet-body,.nav-wallet-card) { fill:currentColor; }
+#tabs button.on .nav-icon-detail { stroke:var(--nav-selected); }
+
+/* One-shot navigation icon motion only. The glass, pill geometry and labels
+   retain their existing styles. All icons settle into a fully visible rest pose. */
+#tabs .nav-paper { transform-box:fill-box; transform-origin:25% 50%; }
+#tabs .nav-plus-glyph { display:block; }
+#tabs .nav-tab-home.on.nav-icon-play .nav-icon { animation:navHomeLift .55s cubic-bezier(.22,.8,.28,1); }
+#tabs .nav-tab-activity.on.nav-icon-play .nav-heartbeat { animation:navHeartbeatDraw .7s cubic-bezier(.22,.65,.3,1); }
+#tabs .nav-tab-plan.on.nav-icon-play .nav-paper { animation:navPaperTurn .65s cubic-bezier(.22,.8,.28,1); }
+#tabs .nav-tab-plan.on.nav-icon-play .nav-paper-lines { animation:navPaperInk .65s ease; }
+#tabs .nav-tab-accounts.on.nav-icon-play .nav-wallet-card { animation:navCardPeek .7s cubic-bezier(.22,.8,.28,1); }
+#tabs .nav-action.nav-icon-play .nav-plus-glyph { animation:navAddPop .45s cubic-bezier(.22,.8,.28,1); }
+@keyframes navHomeLift { 0%,100%{transform:none} 38%{transform:translateY(-3px) scale(1.06)} 70%{transform:translateY(.5px) scale(.99)} }
+@keyframes navHeartbeatDraw { 0%{stroke-dasharray:1;stroke-dashoffset:0;opacity:1} 22%{stroke-dasharray:1;stroke-dashoffset:1;opacity:.55} 85%,100%{stroke-dasharray:1;stroke-dashoffset:0;opacity:1} }
+@keyframes navPaperTurn { 0%,100%{transform:none} 42%{transform:perspective(180px) rotateY(-18deg) rotate(-2deg)} }
+@keyframes navPaperInk { 0%,100%{opacity:1} 40%{opacity:.6} }
+@keyframes navCardPeek { 0%,100%{transform:none} 42%{transform:translateY(-2.5px)} 72%{transform:translateY(.3px)} }
+@keyframes navAddPop { 0%,100%{transform:none} 38%{transform:scale(1.17)} 68%{transform:scale(.96)} }
+@media(prefers-reduced-motion:reduce) {
+  #tabs .nav-icon,#tabs .nav-icon *,#tabs .nav-plus-glyph { animation:none!important;transition:none!important;transform:none!important; }
+}
+html.noanim #tabs .nav-icon,html.noanim #tabs .nav-icon *,html.noanim #tabs .nav-plus-glyph,
+html.rm #tabs .nav-icon,html.rm #tabs .nav-icon *,html.rm #tabs .nav-plus-glyph { animation:none!important;transition:none!important;transform:none!important; }

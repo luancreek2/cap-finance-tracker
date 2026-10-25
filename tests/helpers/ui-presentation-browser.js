@@ -30,8 +30,8 @@ window.runCapUiBrowserChecks=async function(theme){
   });
   await test('existing toggle reveals existing controls once, without enabling backend test capabilities',async()=>{
     const capability=window.CAP_DEV_TOOLS;
-    openSettings();await wait(550);
-    const input=document.querySelector('[onchange="setDeveloperOptions(this)"]');assert(input,'toggle missing');input.click();
+    stPrivacy();await wait(550);
+    const input=document.querySelector('#sb [onchange^="setDeveloperOptions(this)"]');assert(input,'toggle missing in Privacy & Sync');input.click();
     assert(developerOptionsEnabled(),'toggle did not persist');assert(window.CAP_DEV_TOOLS===capability,'changed capability gate');
     stPrivacy();await wait(550);
     diagnostics.forEach(t=>assert([...document.querySelectorAll('#sb button')].filter(b=>b.textContent.trim()===t).length===1,'missing/duplicate diagnostic: '+t));
