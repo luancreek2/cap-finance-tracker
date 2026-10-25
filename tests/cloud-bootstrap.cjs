@@ -30,6 +30,8 @@ function productionState(){
 }
 async function fixture(options={}){
   const storage=new Map(),elements=new Map();
+  // Existing sync suites explicitly model a device whose recovery was approved.
+  storage.set('cap-sync-recovery-phase6o-v1',JSON.stringify({version:1,owner:OWNER,state:'released'}));
   const c={crypto:webcrypto,TextEncoder,URLSearchParams,indexedDB:new fake.IDBFactory(),structuredClone,
     S:clone(options.state||empty()),CAT0:clone(DEFAULTS),location:{search:''},navigator:{onLine:true,locks:{request:async(n,o,fn)=>fn()}},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)},

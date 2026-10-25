@@ -59,10 +59,26 @@ const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'applicatio
     assert.deepEqual(api,{diagnostic:'function',snapshot:'function',fakeSnapshot:'undefined',fakeModel:'undefined',fakeValidator:'undefined',store:'function',plan:'function',remote:'function'});
     await page.evaluate(()=>stPrivacy());await page.locator('#cloud-bootstrap-button').waitFor();
     assert.equal(await page.getByRole('button',{name:'Inspect Sync Presence',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:'Resume Held Cloud Sync',exact:true}).count(),0);
     await page.evaluate(()=>openSettings());
     await page.locator('[onchange="setDeveloperOptions(this)"]').check();
     await page.evaluate(()=>stPrivacy());await page.getByRole('button',{name:'Inspect Sync Presence',exact:true}).waitFor();
     await page.evaluate(()=>CapCloudBootstrap.refresh());
+  });
+  await test('recovery resume control is developer-only and cancellation preserves the hold',async()=>{
+    assert.equal(await page.evaluate(()=>CapProductionSync.recoveryHeld()),true);
+    page.once('dialog',async d=>{assert.match(d.message(),/Queued cloud operations/);await d.dismiss();});
+    await page.getByRole('button',{name:'Resume Held Cloud Sync',exact:true}).click();
+    assert.equal(await page.evaluate(()=>localStorage.getItem(CapProductionSync.recoveryKey)),null);
+    assert.equal(await page.evaluate(()=>CapProductionSync.recoveryHeld()),true);
+  });
+  await test('confirmed browser resume persists release without enabling Cloud Sync or changing queue/baseline',async()=>{
+    const before=await page.evaluate(async()=>JSON.stringify(await CapOff.productionSyncSnapshot()));
+    page.once('dialog',d=>d.accept());
+    await page.getByRole('button',{name:'Resume Held Cloud Sync',exact:true}).click();
+    await page.waitForFunction(()=>!CapProductionSync.recoveryHeld());
+    assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);
+    assert.equal(await page.evaluate(async()=>JSON.stringify(await CapOff.productionSyncSnapshot())),before);
   });
   await page.evaluate(async()=>{
     const before=await CapOff.productionSyncSnapshot();
@@ -109,5 +125,5 @@ const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'applicatio
     assert.ok((await page.locator('#sync-presence-result').textContent()).includes('REMOTE_SNAPSHOT_INCOMPLETE'));
     assert.equal(await page.evaluate(()=>__presenceAudit.mutations),0);
   });
-  await context.close();console.log(`PASS: ${passed} production-style diagnostic browser execution checks; no write APIs or storage mutations`);
+  await context.close();console.log(`PASS: ${passed} production-style diagnostic/recovery UI browser checks; diagnostic operations remain read-only`);
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{if(browser)await browser.close();if(server)await new Promise(r=>server.close(r))});

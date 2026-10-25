@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v327";
+const VERSION = "cap-shell-v329";
 const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",

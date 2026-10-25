@@ -10,6 +10,16 @@
   const key = r => r.entity + ':' + (r.supabase_id || r.row?.id || r.row?.user_id);
   const failure = code => Object.assign(Error(code), { code });
   const hex = x => /^[a-f0-9]{64}$/i.test(x || '');
+  // Temporary recovery deployment gate. Missing/corrupt/unreadable is HELD.
+  // This key is separate from financial state and never migrates the queue.
+  const RECOVERY_KEY = 'cap-sync-recovery-phase6o-v1';
+  function recoveryAllowed(owner) {
+    try {
+      const r = JSON.parse(localStorage.getItem(RECOVERY_KEY));
+      return !!(owner && r && r.version === 1 && r.owner === owner && r.state === 'released' &&
+        Object.keys(r).sort().join(',') === 'owner,state,version');
+    } catch (_) { return false; }
+  }
   // Phase 6O financial-update/delete helpers. Cap's canonical semantics are the
   // same ones the create RPC already proved: a signed amount moves a debit or
   // e-wallet balance directly, and a credit balance in the opposite direction.
@@ -40,7 +50,7 @@
           r.localId === undefined || r.localId === null || String(r.localId) === '' ||
           r.user_id !== owner || !supported.has(r.entity) || !r.supabase_id || !hex(r.contentFingerprint))) throw failure('BASELINE_INVALID');
     if (s.recovery.some(Boolean)) throw failure('RECOVERY_REQUIRED');
-    if (s.outbox.some(e => e.user_id !== owner || e.source !== SOURCE)) throw failure('OTHER_OUTBOX_REQUIRES_REVIEW');
+    if (s.outbox.some(e => !e || e.user_id !== owner || e.source !== SOURCE)) throw failure('OTHER_OUTBOX_REQUIRES_REVIEW');
     if (!allowConflicts && s.conflicts.length) throw failure('CONFLICT_REVIEW_REQUIRED');
   }
 
@@ -200,7 +210,7 @@
   // engine pauses instead of guessing an aggregate balance delta.
   async function classifyFinancial(s, base, local, cloud, remote, hash, result) {
     if (result.financial.length) return;
-    const anomalies = txAnomalies(result);
+    const anomalies = txAnomalies(result).filter(t => t.base || !t.local || t.cloud);
     if (anomalies.length !== 1) return;
     const t = anomalies[0];
     if (!t.base) return; // Phase 6N create is handled separately.
@@ -214,6 +224,7 @@
     } else if (l && !c) {
       op = t.localHash === b.contentFingerprint ? 'delete-pull' : 'conflict';
     } else if (!l && c) {
+      if (!validDeleteIntent(s, t)) return;
       op = t.cloudHash === b.contentFingerprint ? 'delete-push' : 'conflict';
     } else {
       op = 'conflict';
@@ -328,7 +339,11 @@
     const members = new Set([t, ...group]);
     const others = [...result.pushes, ...result.pulls, ...result.blocked, ...result.conflicts, ...result.converged]
       .filter(i => !members.has(i));
-    if (others.length) return;
+    if (others.length) {
+      // Only a proved DELETE may precede later, independent CREATE groups.
+      // Never infer an intermediate balance for shared-account aggregate work.
+      if (op !== 'delete-push' || !await independentCreates(s, t, group, others, hash)) return;
+    }
     if (pull && (s.outbox.length || s.conflicts.length)) return;
     if (!pull && s.conflicts.length) return;
 
@@ -341,6 +356,58 @@
     } else {
       result.financial.push({ kind: 'transaction-' + (del ? 'delete' : 'update'), items });
     }
+  }
+
+  function latestEntry(s, recordKey) {
+    const versions = s.outbox.filter(e => e.record_key === recordKey);
+    if (versions.some(e => !Number.isSafeInteger(e.sequence) || e.sequence < 1) ||
+        new Set(versions.map(e => e.sequence)).size !== versions.length) return null;
+    return versions.sort((a,b) => b.sequence - a.sequence)[0] || null;
+  }
+
+  function validDeleteIntent(s, t) {
+    const b = t.base, c = t.cloud?.row, e = latestEntry(s, t.key);
+    const owner = s.baseline.user_id;
+    return !!(b && c && !t.local && e && s.settings.owner === owner &&
+      b.entity === 'transactions' && b.user_id === owner && c.user_id === owner &&
+      b.supabase_id === c.id && String(b.localId) === String(c.legacy_id) &&
+      c.id === cloudMapper().migrationStableUuid('transactions:' + String(b.localId)) &&
+      e.source === SOURCE && e.user_id === owner && e.entity === 'transactions' &&
+      typeof e.id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(e.id) &&
+      s.outbox.filter(x => x.id === e.id).length === 1 &&
+      e.record_key === t.key && e.supabase_id === b.supabase_id &&
+      e.local_id === String(b.localId) && e.operation === 'delete' &&
+      e.kind === 'transaction-delete' && e.payload === null && e.fingerprint === null &&
+      hex(e.expectedFingerprint) && e.expectedFingerprint === b.contentFingerprint &&
+      t.cloudHash === b.contentFingerprint);
+  }
+
+  async function independentCreates(s, deletion, accounts, others, hash) {
+    const del = latestEntry(s, deletion.key);
+    const used = new Set(), accountKeys = new Set(accounts.map(i => i.key));
+    const txs = others.filter(i => !i.base && i.local?.entity === 'transactions' && !i.cloud);
+    if (!txs.length) return false;
+    for (const t of txs) {
+      const row = t.local.row, ak = 'accounts:' + row.account_id;
+      if (!txShapeOk(row, s.settings.owner) || accountKeys.has(ak)) return false;
+      const a = others.find(i => i.key === ak);
+      if (!a?.base || !a.local || !a.cloud || used.has(a) ||
+          a.cloudHash !== a.base.contentFingerprint || !accountShapeOk(a.local.row) ||
+          a.local.row.id !== a.cloud.row.id || a.local.row.legacy_id !== a.cloud.row.legacy_id ||
+          String(a.base.localId) !== String(a.cloud.row.legacy_id) ||
+          money(a.local.row.balance) !== money(Number(a.cloud.row.balance) + effect(a.cloud.row.account_type,row.amount)) ||
+          await hash('accounts',{...a.local.row,balance:a.cloud.row.balance}) !== a.cloudHash) return false;
+      for (const [item,kind] of [[t,'transaction-create'],[a,'account-balance']]) {
+        const e = latestEntry(s,item.key);
+        if (!e || e.source !== SOURCE || e.user_id !== s.settings.owner || e.kind !== kind ||
+            e.operation !== 'upsert' || e.entity !== item.local.entity ||
+            e.supabase_id !== item.local.row.id || e.local_id !== String(item.local.localId) ||
+            e.sequence <= del.sequence || e.fingerprint !== item.localHash ||
+            !same(e.payload,item.local.row)) return false;
+      }
+      used.add(t);used.add(a);
+    }
+    return others.every(i => used.has(i));
   }
 
   // Pure, three-way planning. Absence never authorizes physical deletion.
@@ -356,13 +423,16 @@
     const cloud = new Map(remote.map(r => [key(r), r]));
     const base = new Map(s.baseline.records.map(r => [key(r), r]));
     const result = { pushes: [], pulls: [], converged: [], conflicts: [], blocked: [], financial: [] };
+
     for (const k of new Set([...base.keys(), ...local.keys(), ...cloud.keys()])) {
       const b = base.get(k), l = local.get(k), c = cloud.get(k);
       const lf = l ? await hash(l.entity, l.row) : null, cf = c ? await hash(c.entity, c.row) : null;
       const item = { key: k, base: b || null, local: l || null, cloud: c || null, localHash: lf, cloudHash: cf };
       if (!l || !c) {
         if (!b && l && !c) result.pushes.push(item);
-        else result.blocked.push({ ...item, reason: 'PRESENCE_CHANGE_REQUIRES_REVIEW' });
+        else {
+          result.blocked.push({ ...item, reason: 'PRESENCE_CHANGE_REQUIRES_REVIEW' });
+        }
       } else if (lf === cf) {
         if (!b || lf !== b.contentFingerprint || s.outbox.some(e => e.record_key === k)) result.converged.push(item);
       } else if (!b || lf !== b.contentFingerprint && cf !== b.contentFingerprint) result.conflicts.push(item);
@@ -416,10 +486,14 @@
     const publish = patch => { view = { ...view, ...patch }; io.changed?.(copy(view)); };
     const status = () => copy(view);
     const snapshot = () => io.snapshot();
+    const allowed = () => { try { return io.recoveryAllowed?.() === true; } catch (_) { return false; } };
+    const requireReleased = () => { if (!allowed()) throw failure('RECOVERY_HOLD'); };
     const commit = (s, patch, model) => io.commit(s, patch, () =>
+      (Object.keys(patch).every(k => k === 'settings') || allowed()) &&
       (!model || io.localJson() === model.json && (!io.localPersisted || io.localPersisted(model.json))) && io.localOwner() === s.baseline?.user_id);
     const current = async (owner, generation, runEpoch) => {
       const s = await snapshot();
+      requireReleased();
       if (stopped || epoch !== runEpoch || !io.online() || !s.settings?.enabled || s.settings.owner !== owner ||
           io.localOwner() !== owner || io.sessionGeneration() !== generation) throw failure('RUN_CANCELLED');
       return s;
@@ -548,7 +622,7 @@
         const matches = s.baseline.records.filter(b => key(b) === item.key);
         if (item.base ? matches.length !== 1 || !same(matches[0], item.base) : matches.length !== 0) throw failure('JOURNAL_BASELINE_CHANGED');
         if (item.action === 'delete') {
-          if (item.local !== null || !item.cloud ||
+          if (!validDeleteIntent(s, item) || item.local !== null || !item.cloud ||
               !group.entries.some(e => e.record_key === item.key && e.operation === 'delete' && e.fingerprint === null))
             throw failure('JOURNAL_INVALID');
           continue;
@@ -563,6 +637,7 @@
         s = await snapshot();
       }
       await current(s.settings.owner, generation, runEpoch);
+      requireReleased(); // No await between the durable check and dispatch.
       const response = await io.write(group);
       if (response?.status === 'CONFLICT') {
         try {
@@ -703,6 +778,7 @@
         await io.lock(async () => {
           let s = await snapshot();
           if (stopped || !s.settings?.enabled) { publish({ enabled: false, phase: 'off' }); return; }
+          requireReleased(); // Before capture, journals, acknowledgements or writes.
           activeOwner = s.settings.owner;
           publish({ enabled: true, phase: 'capturing', reason: null });
           if (io.localOwner() !== activeOwner) throw failure('ACCOUNT_CHANGED');
@@ -803,7 +879,8 @@
     }
     async function boot() {
       const s = await snapshot();
-      publish({ enabled: s.settings?.enabled === true, phase: s.settings?.enabled ? 'waiting' : 'off',
+      publish({ enabled: s.settings?.enabled === true, phase: s.settings?.enabled ? (allowed() ? 'waiting' : 'held') : 'off',
+        reason: s.settings?.enabled && !allowed() ? 'RECOVERY_HOLD' : null,
         pending: s.outbox?.length || 0, conflicts: s.conflicts?.length || 0 });
       return status();
     }
@@ -830,6 +907,7 @@
     return {
       snapshot: () => CapOff.productionSyncSnapshot(), commit: (...args) => CapOff.productionSyncCommit(...args),
       localJson: () => JSON.stringify(S), localOwner: () => CapSupabase.localIdentity(),
+      recoveryAllowed: () => recoveryAllowed(CapSupabase.localIdentity()),
       localPersisted: json => localStorage.getItem('pera') === json,
       sessionGeneration: () => CapSupabase.sessionGeneration(), model, modelState,
       hash: (entity, row) => CapSync.fingerprintRow(entity, row),
@@ -848,6 +926,7 @@
       },
       remote: async owner => validateSnapshot(await rpc('cap_sync_snapshot_v1'), owner),
       write: group => {
+        if (!recoveryAllowed(CapSupabase.localIdentity())) throw failure('RECOVERY_HOLD');
         if (group.kind === 'transaction-create') {
           // The production promotion must retain the verified atomic INSERT +
           // account delta algorithm and add expected-account CAS + receipts.
@@ -997,9 +1076,12 @@
   function request() {
     if (!engine || !booted || !engine.status().enabled) return;
     clearTimeout(timer);
-    timer = setTimeout(() => { engine.cycle().catch(() => {}); }, 600);
+    if (!recoveryAllowed(CapSupabase.localIdentity())) { paint(); return; }
+    timer = setTimeout(() => engine.cycle().catch(() => {}), 600);
   }
   function statusText(s) {
+    if (s.enabled && !recoveryAllowed(CapSupabase.localIdentity()))
+      return 'Cloud Sync: ON — RECOVERY HOLD. No queued operations will execute. Resume only through Developer Options.';
     return toggleBusy ? 'Checking the requested Cloud Sync setting…' : toggleNotice ||
       'Cloud Sync: ' + (s.enabled ? 'ON' : 'OFF') + ' · ' + s.phase +
       ' · queued ' + s.pending + ' · conflicts ' + s.conflicts + (s.reason ? ' · ' + s.reason : '');
@@ -1032,6 +1114,20 @@
       '<div class="st-note" role="status" aria-live="polite" aria-atomic="true" id="production-sync-status">' + message + '</div>';
   }
   const api = { createEngine, plan, ready, validateSnapshot, browserIO, settingsHtml, request, status: () => engine?.status() || { enabled: false },
+    recoveryKey: RECOVERY_KEY,
+    recoveryHeld: () => !recoveryAllowed(CapSupabase.localIdentity()),
+    resumeHeldSync: async () => {
+      if (typeof developerOptionsEnabled !== 'function' || !developerOptionsEnabled()) return false;
+      const owner = CapSupabase.localIdentity();
+      if (!owner || !CapSupabase.status().authenticated) return false;
+      if (!window.confirm('Resume Held Cloud Sync?\n\nQueued cloud operations, including transaction CREATE, UPDATE, DELETE and account-balance changes, may execute automatically. Existing planner, conflict and CAS checks still apply.')) return false;
+      // Authentication is read-only; keep the hold in place throughout it.
+      const user = await CapSupabase.currentUser();
+      if (user?.id !== owner || CapSupabase.localIdentity() !== owner) throw failure('ACCOUNT_CHANGED');
+      localStorage.setItem(RECOVERY_KEY, JSON.stringify({version:1,owner,state:'released'}));
+      if (!recoveryAllowed(owner)) throw failure('RECOVERY_HOLD');
+      paint();request();return true;
+    },
     pause: reason => engine?.pause(reason), authChanged: () => engine?.authChanged(),
     inspectSyncPresence: async () => { /* placeholder, will be replaced below */ },
     toggle: async requested => {

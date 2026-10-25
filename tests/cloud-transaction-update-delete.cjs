@@ -98,14 +98,27 @@ async function setup(flags={},mutate=null){
     if(f.failAfterApply>0){f.failAfterApply--;throw Error('Network dropped after commit');}
     return result;
   };
-  f.plan=async()=>{const s=await f.io.snapshot();return f.c.CapProductionSync.plan(s,f.io.model(OWNER,s.baseline),f.raw.records,f.io.hash);};
+  f.plan=async()=>{
+    const s=await f.io.snapshot(),model=f.io.model(OWNER,s.baseline);
+    // Planner-only fixtures previously omitted capture. Local DELETE planning
+    // now requires the exact intent that cycle() captures before planning.
+    for(const b of s.baseline.records.filter(b=>b.entity==='transactions')){
+      const k=keyOf(b.supabase_id);
+      if(!model.records.some(r=>r.entity==='transactions'&&r.row.id===b.supabase_id)&&!s.outbox.some(e=>e.record_key===k))
+        s.outbox.push({id:f.io.uuid(),source:'production-sync-v1',user_id:OWNER,sequence:s.outbox.length+1,
+          entity:'transactions',record_key:k,supabase_id:b.supabase_id,local_id:String(b.localId),
+          operation:'delete',kind:'transaction-delete',payload:null,fingerprint:null,expectedFingerprint:b.contentFingerprint});
+    }
+    return f.c.CapProductionSync.plan(s,model,f.raw.records,f.io.hash);
+  };
   f.persist=()=>f.storage.set('pera',JSON.stringify(f.c.S));
   f.advance=()=>{f.io.now=()=>new Date(Date.now()+3600000).toISOString();};
   f.snapshot=()=>f.io.snapshot();
   return f;
 }
 
-(async()=>{
+module.exports={setup};
+if(require.main===module)(async()=>{
   await test('update push amount down applies one atomic account delta',async()=>{
     const f=await setup();editLocalTx(f,2,{amount:-10});localAcct(f,1).bal=28441;f.persist();
     const p=await f.plan();assert.equal(p.financial.length,1);assert.equal(p.financial[0].kind,'transaction-update');

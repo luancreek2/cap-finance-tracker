@@ -44,6 +44,7 @@ async function fixture(records = [note]) {
     state: { json: json(), mt: 0 }, outbox: [], conflicts: [] };
   const applied = new Map();
   f.io = {
+    recoveryAllowed: () => true,
     snapshot: async () => clone(f.s), localJson: json, localOwner: () => f.owner,
     sessionGeneration: () => f.generation, hash,
     model: () => ({ json: json(), mt: 0, records: clone(f.records) }),
