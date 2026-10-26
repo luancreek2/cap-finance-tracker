@@ -1438,17 +1438,25 @@ function initActivityScope() {
     let previous = started, travelled = 0;
     t.coasting = true;
     const tick = time => {
-      if (gen !== t.coastGen || !t.w.isConnected || RMA()) { stopCoast(t);return; }
-      const dt = Math.min(32, Math.max(0, time - previous));
-      previous = time;
+      // An invalidated frame no longer owns this scroller. In particular, it
+      // must not cancel the newer loop that replaced it.
+      if (gen !== t.coastGen) return;
+      t.raf = 0;
+      if (!t.w.isConnected || RMA()) { stopCoast(t);return; }
       const room = budget - travelled;
       if (room < 0.5 || time - started > COAST_MAX_MS) { stopCoast(t);settleTimeline(t);return; }
+      // RAF's timestamp is the start of its rendering frame, not callback time.
+      // A pointerup later in that same frame can record a newer performance.now().
+      // Wait for time to advance instead of mistaking a zero-dt step for an edge.
+      if (time <= previous) { t.raf = requestAnimationFrame(tick);return; }
+      const dt = Math.min(32, time - previous);
+      previous = time;
       const step = Math.max(-room, Math.min(room, velocity * dt));
       const before = t.view.scrollTop;
       t.view.scrollTop = before + step;
       const moved = t.view.scrollTop - before;
       if (!moved) { stopCoast(t);settleTimeline(t);return; }
-      travelled += moved;
+      travelled += Math.abs(moved);
       velocity *= Math.exp(-dt / COAST_TAU);
       timelineScrolled(t);
       if (Math.abs(velocity) < COAST_STOP) { stopCoast(t);settleTimeline(t);return; }

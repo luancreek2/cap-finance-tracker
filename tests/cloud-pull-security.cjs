@@ -10,6 +10,8 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'tests/client-rpc-only.cjs','tests/cloud-transaction-update-delete.cjs','tests/phase6o-sql.cjs','docs/phase6n.md','docs/phase6o.md',
   'assets/branding/chatgpt.svg','assets/branding/minecraft.svg','tests/upcoming-presentation.cjs',
   'js/supabase.js','tests/offline-auth.cjs',
+  'js/command-bar.js','css/command-bar.css','tests/command-bar.cjs',
+  'tests/calendar-inertia.cjs',
   'supabase_phase6o_transaction_update_delete.sql','tests/sync-presence-diagnostic.cjs',
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',

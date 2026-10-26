@@ -170,7 +170,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             paid = paidNow(b),
             due = subDue(b),
             label = trialLabel(b);
-          return `<div class="row trial" ${billAttr(b)} ${upBillAria(b, label, php(b.amt) + " after trial")} onclick="upBillSheet(${b.id})"><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${label}</small><small>${php(b.amt)}${subFreqTail(b)} after trial · Renews ${en}</small><small class="up-sub">${upMethodHtml(b)}</small></div>${due ? (paid ? '<span class="chip ok">✓ Paid</span>' : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`) : ""}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+          return `<div class="row trial urg-${urgOf(trialLeft(b))}" data-due="${subFirstBill(b)}" data-trial="1" data-trial-urgency="1" ${billAttr(b)} ${upBillAria(b, label, php(b.amt) + " after trial")} onclick="upBillSheet(${b.id})"><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b du">${label}</small><small>${php(b.amt)}${subFreqTail(b)} after trial · Renews ${en}</small><small class="up-sub">${upMethodHtml(b)}</small></div>${due ? (paid ? '<span class="chip ok">✓ Paid</span>' : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`) : ""}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
         }
         if (subGone(b)) {
           const why = b.subscriptionStatus == "Cancelled" ? "Cancelled during free trial" : "Subscription ended";

@@ -97,12 +97,14 @@ async function ready(page){
     await page.evaluate(()=>{tab='Home';render();});await settle(page);
     await page.screenshot({path:path.join(shots,name+'-'+colorScheme+'.png'),fullPage:false});
   }
-  await test('center + still opens transaction entry with correctly layered dropdown',async()=>{
+  await test('center + command bar delegates manual entry with correctly layered dropdown',async()=>{
     await page.locator('#tabs .nav-action').click();await settle(page);
+    await page.getByRole('button',{name:'Open Manual New Entry',exact:true}).click();await settle(page);
     assert.ok(await page.locator('#sb #am').count());
     await page.locator('#sb .ps-btn').first().click();await page.waitForTimeout(220);
     assert.equal(await page.locator('#cap-overlays .ps-pop:not(.out)').count(),1);
     await page.keyboard.press('Escape');await page.evaluate(()=>closeS());await settle(page);
+    await page.evaluate(()=>CapCommandBar.close());await settle(page);
   });
   await test('transaction edit modal, menu and long press still open',async()=>{
     await page.evaluate(()=>{tab='Activity';render();});await settle(page);

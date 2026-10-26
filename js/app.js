@@ -1589,7 +1589,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         };
         $("#tabs").innerHTML = ["Home", "Activity", "+", "Plan", "Accounts"]
           .map((t) => {
-            if(t==='+')return `<button type="button" class="nav-action" aria-label="Add transaction" onclick="playNavIcon('+');openTx()"><span class="nav-action-plus" aria-hidden="true"><span class="nav-plus-glyph">＋</span></span></button>`;
+            if(t==='+')return `<button type="button" class="nav-action" aria-label="Add transaction" aria-haspopup="dialog" aria-expanded="false" aria-controls="cap-command-bar" onclick="playNavIcon('+');CapCommandBar.toggle()"><span class="nav-action-plus" aria-hidden="true"><span class="nav-plus-glyph">＋</span></span></button>`;
             const on = t == tab,
               pop = on && navTab && navTab !== tab;
             return `<button aria-label="${t}" class="nav-tab-${t.toLowerCase()} ${on ? "on" : ""}${pop ? " nav-icon-play" : ""}" onclick="tab='${t}';spendReset();${t == "Plan" ? "pt='Upcoming';" : ""}render();playNavIcon('${t}')"><span class="nav-icon">${navIcons[t]}</span><span class="nav-label">${t}</span></button>`;
@@ -2547,7 +2547,7 @@ function refreshUrgency(){
   const t0=bDt(today);
   document.querySelectorAll('#app .row[data-due]').forEach(function(row){
     const n=Math.round((bDt(row.getAttribute('data-due'))-t0)/864e5),u=urgOf(n),trial=row.hasAttribute('data-trial');
-    ['o','r','y','n','t'].forEach(function(x){row.classList.toggle('urg-'+x,trial?x==='t':x===u)});
+    ['o','r','y','n','t'].forEach(function(x){row.classList.toggle('urg-'+x,trial&&!row.hasAttribute('data-trial-urgency')?x==='t':x===u)});
     const sm=row.querySelector('.du-status')||row.querySelector('small.du'),h=trial?trialTxt(n):urgTxt(n);
     if(sm&&sm.innerHTML!==h)sm.innerHTML=h;
   });
@@ -2878,7 +2878,7 @@ function upBillSheet(id){
     if(tm!=null)payment.push(R('Payment Timing',upPaymentTiming(tm)));
   }else payment.push('<p class="up-empty m">No payments yet</p>');
   const canPay=!gone&&!inTrial(b)&&!paidNow(b);
-  const badge=activeTrial?`<span class="chip tr">${n===0?'Trial ends today':n===1?'Trial ends tomorrow':`Trial ends in ${n} days`}</span>`:sub&&!gone&&n>=0?`<span class="chip ${n<=3?'warn':'due'}">${n===0?'Renews today':n===1?'Renews tomorrow':`Renews in ${n} days`}</span>`:state.chip;
+  const badge=activeTrial?`<span class="chip tr up-trial-${urgOf(n)}">${n===0?'Trial ends today':n===1?'Trial ends tomorrow':`Trial ends in ${n} days`}</span>`:sub&&!gone&&n>=0?`<span class="chip ${n<=3?'warn':'due'}">${n===0?'Renews today':n===1?'Renews tomorrow':`Renews in ${n} days`}</span>`:state.chip;
   const hero=`<div class="pd-hero up-hero"><div class="pd-h"><span class="ico">${bIc(b)}</span><div class="pd-tt"><b>${esc(b.name)}</b><small>${sub?'Subscription':'Bill'}${trial?' · Started Free':''}</small></div></div><div class="pd-amt"><span class="pd-v">${activeTrial?php(0):php(b.amt)}${sub&&!activeTrial?`<span class="up-interval">${subFreqTail(b)}</span>`:''}</span>${badge}</div>${activeTrial?`<div class="up-after">Free Trial · ${php(b.amt)}${subFreqTail(b)} after trial${renewing?'':' · No charge scheduled'}</div>`:''}</div>`;
   navS(`<div class="sh-h"><h2>${sub?'Subscription Details':'Bill Details'}</h2><button class="pill" aria-label="Close Details" onclick="closeS()">✕</button></div>`
     +hero

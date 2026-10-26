@@ -112,7 +112,7 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     await prod.evaluate(()=>navigator.serviceWorker.ready);await prod.reload();await prod.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await context.setOffline(true);await prod.reload();
     assert.equal(await prod.evaluate(()=>CapSupabase.configured()),true);assert.equal(await prod.locator('.cap-local-indicator').count(),0);
-    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v352')));
+    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v355')));
     await prod.waitForFunction(()=>window.StShell&&window.CapOverlays&&!window.capLaunchActive);
     const offlineSettings=await prod.evaluate(()=>{
       if(document.querySelector('.whats-new-overlay'))closeWhatsNew();

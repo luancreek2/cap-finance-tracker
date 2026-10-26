@@ -16,7 +16,7 @@ const method=app.slice(app.indexOf('function upMethodHtml'),app.indexOf('/* urge
 
 test('every Upcoming bill, trial and statement row opens a summary on one tap',()=>{
   assert.equal((rows.match(/onclick="upBillSheet\(\$\{b\.id\}\)"/g)||[]).length,3);
-  assert.match(rows,/class="row trial"[\s\S]*onclick="upBillSheet/);
+  assert.match(rows,/class="row trial urg-\$\{urgOf\(trialLeft\(b\)\)\}"[\s\S]*onclick="upBillSheet/);
   assert.match(rows,/class="row urg-\$\{urgency\}"[\s\S]*onclick="upBillSheet/);
   assert.match(cardRow,/data-bcard="\$\{a\.id\}"/);
   assert.match(cardRow,/onclick="upCardSheet\(\$\{a\.id\}\)"/);
@@ -72,7 +72,7 @@ test('ChatGPT and Minecraft use local, offline-cached artwork with no remote URL
   assert.match(app,/\{r:'chatgpt\|openai',s:'<img class="ci lg oai-mark" alt="" src="assets\/branding\/chatgpt\.svg">'\}/);
   assert.match(app,/\{r:'minecraft',s:'<img class="ci lg" alt="" src="assets\/branding\/minecraft\.svg">'\}/);
   assert.doesNotMatch(app,/cdn\.simpleicons|api\.iconify|simple-icons\.org/);
-  assert.match(sw,/cap-shell-v352/);
+  assert.match(sw,/cap-shell-v355/);
   assert.match(sw,/\.\/assets\/branding\/chatgpt\.svg/);
   assert.match(sw,/\.\/assets\/branding\/minecraft\.svg/);
 });
@@ -155,6 +155,7 @@ const c=vm.createContext({S:{bills:[],accts:[{id:7,name:'Default Card'},{id:8,na
   paySrcHtml:(id,fallback)=>'<span class="psrc"><svg></svg><span>'+({7:'Default Card',8:'Actual Payment Account'}[id]||fallback||'External payment source')+'</span></span>',
   payDiff:(due,d)=>due&&d?Math.round((new Date(due)-new Date(d))/864e5):null,
   payTimingClass:n=>n<0?'tm-late':'tm-ok',trialLabel:()=>'',paymentHistoryCount:()=>2,
+  urgOf:n=>n<0?'o':n<=3?'r':n<=7?'y':'n',
   cardPayInfo:()=>{},navS:html=>{c.html=html}});
 c.days=b=>Math.round((new Date(b.dueDate)-new Date(c.today))/864e5);
 c.subGone=b=>['cancelled','expired'].includes(c.subStatus(b));c.inTrial=b=>c.subStatus(b)==='trial';
@@ -190,6 +191,24 @@ test('cancelled and non-renewing trials never imply a scheduled charge',()=>{
     assert.match(c.html,/Not Scheduled/);assert.match(c.html,/Auto-Renewal<\/span><b><span class="m">Off/);
     assert.doesNotMatch(c.html,/First Charge Date/);
   }
+});
+test('free-trial countdowns and sheet badges reuse urgency tiers without changing trial status',()=>{
+  assert.match(rows,/data-due="\$\{subFirstBill\(b\)\}" data-trial="1" data-trial-urgency="1"/);
+  assert.match(rows,/class="tr-b du"/);
+  for(const [days,tier] of [[0,'r'],[1,'r'],[3,'r'],[4,'y'],[7,'y'],[8,'n'],[22,'n']]){
+    const d=new Date('2026-10-26T00:00:00Z');d.setUTCDate(d.getUTCDate()+days);
+    showBill({kind:'subscription',isFreeTrial:1,firstBillingDate:d.toISOString().slice(0,10)});
+    assert.ok(c.html.includes('up-trial-'+tier));assert.match(c.html,/>Free Trial<\/b>/);
+  }
+  for(const [tier,color] of [['r','r'],['y','uy'],['o','ud']])
+    assert.ok(css.includes(`.chip.up-trial-${tier} { color:var(--${color}); }`));
+});
+test('live urgency refresh preserves free-trial copy and leaves Home trial treatment unchanged',()=>{
+  const makeRow=urgent=>{const classes=new Set(['urg-n']);return{classes,hasAttribute:k=>k==='data-trial'||urgent&&k==='data-trial-urgency',getAttribute:()=> '2026-10-29',classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k)},querySelector:()=>null}};
+  const upcoming=makeRow(true),home=makeRow(false),ctx=vm.createContext({today:'2026-10-26',bDt:s=>new Date(s),urgOf:c.urgOf,trialTxt:n=>'Free Trial · '+n+' days left',document:{querySelectorAll:()=>[upcoming,home]}});
+  vm.runInContext(app.slice(app.indexOf('function refreshUrgency()'),app.indexOf('/* the calendar day can change')),ctx);
+  ctx.refreshUrgency();assert.ok(upcoming.classes.has('urg-r'));assert.ok(home.classes.has('urg-t'));
+  assert.equal(upcoming.classes.has('urg-t'),false);
 });
 test('paid and overdue bills retain their statuses and correctly dated timing',()=>{
   showBill({paid:true,payments:[{d:'2026-10-26',due:'2026-10-26',amt:119,acct:8}]});

@@ -55,7 +55,7 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
     assert.equal(await page.locator('.nav-plus-glyph').evaluate(e=>getComputedStyle(e).animationName),'navAddPop');
     assert.equal(await page.locator('#tabs .on .nav-label').innerText(),'Accounts');
     assert.equal(await page.locator('.nav-action-plus').evaluate(e=>getComputedStyle(e).animationName),'none');
-    await page.evaluate(()=>closeS());await page.waitForTimeout(800);
+    await page.evaluate(()=>CapCommandBar.close());await page.waitForTimeout(800);
   });
   await test('OS reduced motion and both in-app motion flags suppress every icon',async()=>{
     for(const mode of ['os','rm','noanim']){

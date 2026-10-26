@@ -2593,4 +2593,7 @@ html.rm #tabs .nav-icon,html.rm #tabs .nav-icon *,html.rm #tabs .nav-plus-glyph 
 #sb .up-hero .up-interval { font-size:15px; font-weight:500; color:var(--mut); }
 #sb .up-hero .up-amount-label { margin-top:15px; color:var(--mut); font-size:12px; font-weight:600; }
 #sb .up-hero .pd-amt { flex-wrap:wrap; }
+#sb .up-hero .chip.up-trial-r { color:var(--r); }
+#sb .up-hero .chip.up-trial-y { color:var(--uy); }
+#sb .up-hero .chip.up-trial-o { color:var(--ud); }
 @media(max-width:390px) { #sb .up-sheet .pd-r>b { max-width:62%; } }
