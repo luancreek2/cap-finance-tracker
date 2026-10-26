@@ -128,14 +128,14 @@ async function boot(context, origin) {
       );
     const before = await snapshot();
     const calendarBox = async () => {
-      await page.evaluate(() => document.getElementById("calwrap").scrollIntoView({ block: "center" }));
+      await page.evaluate(() => document.querySelector('.cal-timeline').scrollIntoView({ block: "center" }));
       await page.waitForTimeout(80);
-      return page.locator("#calwrap").boundingBox();
+      return page.locator('.cal-timeline').boundingBox();
     };
     const quickDrag = async (dy, hold) => {
-      const b = await page.locator("#calwrap, .cal-vstage").first().boundingBox(),
+      const b = await page.locator('.cal-timeline').boundingBox(),
         x = Math.floor(b.x + b.width / 2),
-        y = Math.floor(b.y + b.height / 2);
+        y = Math.floor(dy<0 ? b.y+b.height-35 : b.y+35);
       await page.mouse.move(x, y);
       await page.mouse.down();
       for (let i = 1; i <= 6; i++) await page.mouse.move(x, y + (dy * i) / 6, { steps: 1 });
@@ -147,82 +147,66 @@ async function boot(context, origin) {
       await quickDrag(dy, hold);
     };
 
-    await test("swipe up prepares the adjacent month and advances exactly one", async () => {
-      const start = await page.evaluate(() => cm);
-      let stage = null;
-      await drag(-140, async () => {
-        stage = await page.evaluate(() => {
-          const s = document.querySelector(".cal-vstage");
-          if (!s) return null;
-          const pages = [...s.querySelectorAll(".cal-vpage")].map(p => {
-            const r = p.getBoundingClientRect();
-            return { top: r.top, text: p.innerText.slice(0, 24) };
-          });
-          return { pages, transform: getComputedStyle(s).transform };
-        });
+    const resetTimeline=async(offset=0)=>{await page.evaluate(offset=>{ASC.mode='all';cm=offset;render();window.__grid=document.querySelector('.cal-month-current .acal');window.__calendar=document.getElementById('calwrap');},offset);await calendarBox();};
+    await test('slow drag is 1:1, exposes both months, and preserves the actual grid nodes',async()=>{
+      await resetTimeline();const start=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await drag(-280,async()=>{
+        const a=await page.evaluate(()=>{const v=document.querySelector('.cal-timeline'),r=v.getBoundingClientRect();return {top:v.scrollTop,visible:[...v.querySelectorAll('.cal-month')].filter(n=>{const b=n.getBoundingClientRect();return b.bottom>r.top+15&&b.top<r.bottom-15;}).length,grid:window.__grid.isConnected,calendar:window.__calendar===document.getElementById('calwrap'),opacity:[...v.querySelectorAll('.acal')].map(e=>getComputedStyle(e).opacity),transform:getComputedStyle(v).transform};});
+        assert.ok(Math.abs(a.top-start-280)<2,'not finger-linked: '+JSON.stringify({start,top:a.top,delta:a.top-start}));assert.ok(a.visible>=2);assert.equal(a.grid,true);assert.equal(a.calendar,true);assert.ok(a.opacity.every(o=>o==='1'));assert.equal(a.transform,'none');
+        await page.screenshot({path:path.join(shots,'halfway-between-months.png')});await page.waitForTimeout(150);
       });
-      assert.ok(stage && stage.pages.length === 2, "adjacent month was not prepared");
-      assert.notEqual(stage.pages[0].top, stage.pages[1].top);
-      await page.waitForTimeout(360);
-      assert.equal(await page.evaluate(() => document.querySelectorAll(".cal-vstage").length), 0);
-      assert.equal(await page.evaluate(() => cm), start + 1);
-      assert.equal(await page.locator("#calwrap").count(), 1);
-      await page.screenshot({ path: path.join(shots, "swipe-next.png") });
+      const released=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(400);assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),released);
+      assert.equal(await page.locator('.cal-vstage').count(),0);
     });
-
-    await test("gesture lock blocks an immediate second month change", async () => {
-      const start = await page.evaluate(() => cm);
-      await quickDrag(-140);
-      await page.waitForTimeout(330);
-      const first = await page.evaluate(() => cm);
-      assert.equal(first, start + 1);
-      await quickDrag(-140); /* starts inside the settle lock */
-      await page.waitForTimeout(360);
-      assert.equal(await page.evaluate(() => cm), first, "lock did not hold the month");
-      assert.equal(await page.evaluate(() => document.querySelectorAll(".cal-vstage").length), 0);
-      await page.waitForTimeout(500);
-      await quickDrag(-140);
-      await page.waitForTimeout(360);
-      assert.equal(await page.evaluate(() => cm), first + 1);
+    await test('partial drags stay fractional without a commit threshold or month snap',async()=>{
+      await resetTimeline();const before=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await drag(-45,()=>page.waitForTimeout(150));await page.waitForTimeout(300);
+      assert.ok(Math.abs(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop)-before-45)<2);
     });
-
-    await test("swipe down goes to the previous month", async () => {
-      const start = await page.evaluate(() => cm);
-      await page.waitForTimeout(460);
-      await drag(140);
-      await page.waitForTimeout(360);
-      assert.equal(await page.evaluate(() => cm), start - 1);
+    await test('a short flick continues with decelerating inertia and can be interrupted immediately',async()=>{
+      await resetTimeline();await drag(-90);const released=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await page.waitForTimeout(100);const moving=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);assert.ok(moving>released+5);
+      const b=await calendarBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();
+      const stopped=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(150);assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),stopped);await page.mouse.up();
     });
-
-    await test("rapid flicks cannot leave a stage, duplicate calendar or corrupt the list", async () => {
-      await page.waitForTimeout(460);
-      await drag(-120);
-      await quickDrag(-120);
-      await quickDrag(-120);
-      await page.waitForTimeout(420);
-      const a = await page.evaluate(() => ({
-        stages: document.querySelectorAll(".cal-vstage").length,
-        cals: document.querySelectorAll("#calwrap").length,
-        id: document.getElementById("calwrap")?.id,
-        rows: document.querySelectorAll("#app .row").length,
-      }));
-      assert.equal(a.stages, 0);
-      assert.equal(a.cals, 1);
-      assert.equal(a.id, "calwrap");
-      assert.ok(a.rows >= 2);
+    await test('drag down reveals the previous month without replacing the moving grid',async()=>{
+      await resetTimeline();const before=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+      await drag(240,()=>page.waitForTimeout(150));assert.ok(Math.abs(await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-before-240)<2);
+      assert.equal(await page.evaluate(()=>window.__grid.isConnected),true);
+    });
+    await test('a held pointer can reverse direction with no snap, replacement or page drift',async()=>{
+      await resetTimeline();const b=await calendarBox(),x=b.x+b.width*.52,y=b.y+b.height*.7;
+      const before=await page.evaluate(()=>({top:window.__grid.getBoundingClientRect().top,page:scrollY}));
+      await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y-180,{steps:8});await page.mouse.move(x,y-65,{steps:8});
+      assert.ok(Math.abs(await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-before.top+65)<2);
+      assert.equal(await page.evaluate(()=>scrollY),before.page);assert.equal(await page.evaluate(()=>window.__grid.isConnected),true);
+      await page.waitForTimeout(150);await page.mouse.up();
+    });
+    await test('pointer flick velocity decays smoothly without overshooting or bouncing',async()=>{
+      await resetTimeline();await drag(-100);const first=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+      await page.waitForTimeout(90);const second=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+      await page.waitForTimeout(90);const third=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+      assert.ok(first>second&&second>third);assert.ok(first-second>second-third);
+      await page.waitForTimeout(1300);const stopped=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(180);assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),stopped);
+    });
+    await test('rapid flicks do not duplicate calendars, drop input, or corrupt the list',async()=>{
+      await resetTimeline();await drag(-120);await quickDrag(-120);await quickDrag(-120);await page.waitForTimeout(1500);
+      assert.equal(await page.locator('.cal-vstage').count(),0);assert.equal(await page.locator('#calwrap').count(),1);assert.equal(await page.locator('.cal-timeline').count(),1);
+      assert.ok(await page.locator('.cal-month').count()<=9);assert.ok(await page.locator('#app .row').count()>=2);
     });
 
     await test("previous, next and Today controls share the canonical month state", async () => {
+      await resetTimeline();
       const start = await page.evaluate(() => cm);
       await page.locator('#calwrap button[onclick="calGo(1)"]').click();
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(650);
       assert.equal(await page.evaluate(() => cm), start + 1);
       await page.locator('#calwrap button[onclick="calGo(-1)"]').click();
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(650);
       assert.equal(await page.evaluate(() => cm), start);
       await page.evaluate(() => (cm = 3, render()));
       await page.locator('#calwrap button[onclick="calToday()"]').click();
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(650);
       assert.equal(await page.evaluate(() => cm), 0);
     });
 
@@ -232,16 +216,16 @@ async function boot(context, origin) {
         render();
       });
       await page.waitForTimeout(120);
-      await drag(-140);
-      await page.waitForTimeout(360);
+      const b=await calendarBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,600);
+      await page.waitForTimeout(500);
       const jan = await page.evaluate(() => ({
         cm,
         month: document.querySelector("#calwrap > div:first-child > div:first-child").firstChild.textContent.trim(),
       }));
       assert.equal(jan.month, "January 2027");
       await page.waitForTimeout(460);
-      await drag(140);
-      await page.waitForTimeout(360);
+      await page.mouse.wheel(0,-600);
+      await page.waitForTimeout(500);
       const dec = await page.evaluate(() => ({
         cm,
         month: document.querySelector("#calwrap > div:first-child > div:first-child").firstChild.textContent.trim(),
@@ -249,17 +233,57 @@ async function boot(context, origin) {
       assert.equal(dec.month, "December 2026");
     });
 
-    await test("wheel/trackpad vertical scrolling advances one month after a threshold", async () => {
-      await page.evaluate(() => (cm = 0, render()));
+    await test("wheel/trackpad scrolling is continuous in the native direction", async () => {
+      await resetTimeline();
       const b = await calendarBox();
       await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-      await page.mouse.wheel(0, -90);
+      const before=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+      await page.mouse.wheel(0, 600);
       await page.waitForTimeout(420);
-      assert.equal(await page.evaluate(() => cm), 1);
+      const after=await page.evaluate(()=>({grid:window.__grid.getBoundingClientRect().top,scroll:document.querySelector('.cal-timeline').scrollTop,page:scrollY,month:cm}));
+      assert.ok(Math.abs(after.grid-before+600)<2,JSON.stringify({before,...after}));
+      assert.ok(await page.evaluate(() => cm)>0);
       await page.waitForTimeout(460);
-      await page.mouse.wheel(0, 90);
+      await page.mouse.wheel(0, -600);
       await page.waitForTimeout(420);
       assert.equal(await page.evaluate(() => cm), 0);
+    });
+
+    for (const [width,height] of [[390,844],[768,1024],[1024,768]]) for(const direction of [-1,1]) {
+      await test(`${width}x${height}: real ${direction<0?'up':'down'} touch drag tracks the grid and shows both months`,async()=>{
+        await page.setViewportSize({width,height});await resetTimeline();
+        const b=await calendarBox(),x=b.x+b.width*.52,y=direction<0?b.y+b.height-35:b.y+35,cdp=await context.newCDPSession(page);
+        const before=await page.evaluate(()=>window.__grid.getBoundingClientRect().top),pageTop=await page.evaluate(()=>scrollY);
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+        for(let i=1;i<=10;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+direction*280*i/10}]});await page.waitForTimeout(25);}
+        await page.waitForTimeout(180);
+        const during=await page.locator('.cal-timeline').evaluate(e=>{const r=e.getBoundingClientRect();return {top:e.scrollTop,visible:[...e.querySelectorAll('.cal-month')].filter(n=>{const b=n.getBoundingClientRect();return b.bottom>r.top+12&&b.top<r.bottom-12;}).length,opacity:[...e.querySelectorAll('.acal')].every(n=>getComputedStyle(n).opacity==='1')};});
+        const displacement=await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-before;
+        assert.ok(Math.abs(displacement-direction*280)<22,'native touch tracking '+displacement);assert.ok(during.visible>=2);assert.equal(during.opacity,true);
+        assert.equal(await page.evaluate(()=>scrollY),pageTop);assert.equal(await page.evaluate(()=>window.__grid.isConnected),true);
+        await page.screenshot({path:path.join(shots,`continuous-touch-${width}-${direction<0?'next':'previous'}.png`)});
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(300);
+        assert.ok(Math.abs(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop)-during.top)<3,'slow release snapped');assert.equal(await page.evaluate(()=>ASC.mode),'all');
+        await cdp.detach();
+      });
+      await test(`${width}x${height}: real short ${direction<0?'up':'down'} touch flick retains native momentum`,async()=>{
+        await resetTimeline();const b=await calendarBox(),x=b.x+b.width*.52,y=b.y+b.height*(direction<0?.7:.3),cdp=await context.newCDPSession(page);
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+        for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+direction*110*i/5}]});await page.waitForTimeout(12);}
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        const released=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);await page.waitForTimeout(160);
+        assert.ok((await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-released)*direction>8,'native inertia missing');
+        await page.waitForTimeout(1400);const stopped=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(150);assert.ok(Math.abs(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop)-stopped)<2);
+        assert.equal(await page.locator('.cal-vstage').count(),0);await cdp.detach();
+      });
+    }
+    await test('scrolling outside the calendar continues to scroll the page normally',async()=>{
+      await page.setViewportSize({width:390,height:844});await resetTimeline();
+      await page.evaluate(()=>{const e=document.createElement('div');e.id='scroll-fixture';e.style.height='700px';document.body.append(e);window.scrollTo(0,0);});
+      const before=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await page.mouse.move(3,12);await page.mouse.wheel(0,150);await page.waitForTimeout(200);
+      assert.ok(await page.evaluate(()=>scrollY)>0);assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),before);
+      await page.evaluate(()=>document.getElementById('scroll-fixture').remove());
     });
 
     for (const scheme of ["light", "dark"]) {
@@ -487,13 +511,13 @@ async function boot(context, origin) {
       assert.equal(external, 0);
     });
 
-    await test("reduced motion still changes months without a sliding stage", async () => {
+    await test("reduced motion retains direct dragging without application inertia or a page stage", async () => {
       const reduced = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
       await reduced.route("**/*", r => (new URL(r.request().url()).origin === origin ? r.continue() : r.abort()));
       const rp = await boot(reduced, origin);
-      const start = await rp.evaluate(() => cm);
-      await rp.evaluate(() => document.getElementById("calwrap").scrollIntoView({ block: "center" }));
-      const b = await rp.locator("#calwrap").boundingBox(),
+      const start = await rp.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await rp.evaluate(() => document.querySelector('.cal-timeline').scrollIntoView({ block: "center" }));
+      const b = await rp.locator('.cal-timeline').boundingBox(),
         x = Math.floor(b.x + b.width / 2),
         y = Math.floor(b.y + b.height / 2);
       await rp.mouse.move(x, y);
@@ -503,7 +527,7 @@ async function boot(context, origin) {
       await rp.mouse.up();
       await rp.waitForTimeout(120);
       assert.equal(during, 0);
-      assert.equal(await rp.evaluate(() => cm), start + 1);
+      assert.ok(Math.abs(await rp.locator('.cal-timeline').evaluate(e=>e.scrollTop)-start-140)<2);
       assert.equal(await rp.evaluate(() => document.querySelectorAll(".cal-vstage").length), 0);
       await reduced.close();
     });

@@ -217,6 +217,20 @@
 .cal-vpage{position:absolute;left:0;right:0;top:0;width:100%;will-change:transform}
 .cal-vpage-new{z-index:1}
 
+/* Month view is a single native scroller, not a sliding/fading card stage.
+   The browser owns touch/trackpad momentum. No scroll snap or opacity effects. */
+.cal-timeline{position:relative;height:min(620px,62dvh);min-height:280px;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch;overflow-anchor:none;scroll-behavior:auto;scroll-snap-type:none;scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
+.cal-month-strip{position:relative;overflow-anchor:none;}
+.cal-month{position:relative;margin:0;padding:0;overflow-anchor:none;opacity:1;}
+.cal-month-title{margin:0;padding:12px 4px 10px;font:inherit;font-size:18px;font-weight:650;line-height:1.3;}
+.cal-timeline .acal{margin:0;}
+.cal-timeline:focus-visible{outline:2px solid var(--ac);outline-offset:-2px;}
+.cal-timeline-header{display:grid!important;grid-template-columns:minmax(0,1fr) auto;min-height:70px;}
+.cal-timeline-header>div{overflow:hidden;white-space:nowrap;line-height:1.25;}
+.cal-timeline-header>div>div{height:20px;line-height:20px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.cal-timeline-header>span{white-space:nowrap;}
+@media(max-width:640px){.cal-timeline-header{grid-template-columns:minmax(0,1fr);}.cal-timeline-header>span{justify-self:end;}}
+
 /* ---- weekend columns ----------------------------------------------------
    A background tint only: today, selection, entries and markers stay above
    it because they own their own surfaces. */
