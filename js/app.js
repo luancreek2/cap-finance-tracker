@@ -2298,7 +2298,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       }
       function Plan() {
         const o = planOld(),
-          i = o.indexOf('<div class="card"><h2>Bills');
+          i = o.indexOf('<div class="card up-list"><h2>Bills');
         const body =
           pt == "Budgets"
             ? o.slice(o.indexOf('<div class="card"><h2>Monthly'), i)
@@ -2472,7 +2472,8 @@ const XBR=[
  {r:'mercury ?drug',s:_bd('#D71920',_em('💊'))},
  {r:'disney',s:_bd('#113CCF',_tx('D+',9.5,'#fff',15.5))},
  {r:'canva',s:_bd('#7D2AE8',_tx('C',14,'#fff',17.5))},
- {r:'chatgpt|openai',s:_bd('#10A37F','<circle cx="12" cy="12" r="5" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="1.6" fill="#fff"/>')},
+ {r:'chatgpt|openai',s:'<img class="ci lg oai-mark" alt="" src="assets/branding/chatgpt.svg">'},
+ {r:'minecraft',s:'<img class="ci lg" alt="" src="assets/branding/minecraft.svg">'},
  {r:'claude|anthropic',s:_bd('#D97757',_tx('✻',14,'#fff',17))},
  {r:'amazon',s:_bd('#232F3E',_tx('a',15,'#FF9900',16.5))},
  {r:'\\blrt\\b|\\bmrt\\b|beep',s:_bd('#1565C0',_em('🚆'))},
@@ -2521,6 +2522,14 @@ const bIc=(b,fb)=>{if(b&&b.logo)return `<img class="ci lg" src="${b.logo}" alt="
 /* ===== Home: bill rows (red urgency) + long-press / right-click editing ===== */
 const billAttr=b=>b.cardId?`data-bcard="${b.cardId}"`:`data-bill="${b.id}"`;
 const billAria=(b,t,amt)=>`tabindex="0" role="button" aria-label="${esc(b.name)}, ${t}, ${amt||php(b.amt)}. Press and hold, right-click or press Enter to edit."`;
+/* Plan › Upcoming opens a read-only summary on a single tap; Pay and ⋮ remain
+   their own controls and stop the row's click before it reaches this layer. */
+const upBillAria=(b,t,amt)=>`tabindex="0" role="button" aria-label="${esc(b.name)}, ${esc(t)}, ${esc(amt||php(b.amt))}. Tap for details."`;
+function upMethodHtml(b){
+  const a=b&&b.acct?S.accts.find(x=>x.id==b.acct):null;
+  if(!a)return '<span class="up-method none">＋ Choose payment account</span>';
+  return `<span class="up-method">${cardLogo(a)}<span>${esc(a.name)}</span></span>`;
+}
 /* urgency tiers by whole days left: overdue (<0) deep red · 0-3 red · 4-7 yellow · later neutral */
 const urgOf=n=>n<0?'o':n<=3?'r':n<=7?'y':'n';
 const urgTxt=n=>n<0?'<span class="odb">Overdue</span>'+Math.abs(n)+'d':n==0?'Due today':'Due in '+n+'d';
@@ -2800,6 +2809,125 @@ function cardPayInfo(cid){
   const a=S.accts.find(x=>x.id==cid);if(!a)return;
    const open=outstandingCardStatements().find(x=>x.a.id==cid),latest=a.stmt?cSum(a,1):null,calc=latest?estimateStatement(a,latest):null,nd=open?bDt(open.due):nextCardDue(a),amount=latest&&latest.due>0?latest.due:dueAmt(a),R=(l,v,k)=>`<div class="cc-sum-row"><span class="m">${l}</span><b class="${k||''}" style="text-align:right">${v}</b></div>`,pays=S.xfer.filter(x=>x.to==cid).sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.id-x.id),last=pays[0];
      navS(`<div class="sh-h"><h2>${esc(a.nickname||a.name)} · Credit Card</h2></div><p class="m" style="font-size:13px">Review your latest bill, payment status, and card payment history.</p><div class="card cc-latest-summary" style="margin:0 0 12px"><div class="eyebrow">Your Latest Bill</div>${R('Card balance',bv(php(a.bal)))}${latest?R('Statement period',noteD(latest.c.st)+' – '+noteD(latest.c.en)):''}${latest?R('Statement balance',bv(php(latest.close))):''}${R('Bill due amount',bv(php(amount)))}${R('Minimum due',bv(php(latest?latest.minimum:cardMinimum(a,amount))))}${R('Paid to date',bv(php(latest?latest.paid:0)))}${R('Remaining due',bv(php(calc?calc.remaining:amount)),calc&&calc.remaining?'r':'g')}${R('Due date',nd?nd.toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}):'—')}${R('Payment status',calc?calc.status:'Unpaid')}${calc&&calc.interest?R('Estimated Interest · not booked',bv(php(calc.interest))):''}${calc&&calc.fees?R('Estimated Fees · not booked',bv(php(calc.fees))):''}</div>${amount>0?`<button class="btn" onclick="payCard(${a.id},1)">Record Payment</button> `:''}<div class="eyebrow" style="margin:18px 0 8px">Latest Payment</div>${last?payCardHtml({d:last.d,amt:last.amt,acct:last.from,due:last.due||'',logoHtml:cardLogo(a),onclick:`cardPayDetail(${last.id},${a.id},'cardPayInfo(${a.id})')`}):`<div class="empty"><div class="e-ic">💳</div><p class="m">No payments recorded yet.</p></div>`}<button class="ph-row" onclick="cardPaymentHistory(${cid})"><span>Payment history</span><span class="ph-n">${pays.length} ›</span></button><button class="btn s" style="width:100%;margin-top:8px" onclick="closeS()">Close</button>`,'card'+cid,{keep:1});
+}
+/* ===== Plan › Upcoming detail sheets =====
+   Read-only summaries over the same records the rows already use. Every action
+   (Pay, edit, history, mark unpaid) calls the existing flow, so no financial
+   record is duplicated or recalculated here. */
+function upWhenTxt(n){
+  if(n==null)return '—';
+  if(n<0){const m=Math.abs(n);return `${m} day${m===1?'':'s'} overdue`}
+  if(n===0)return 'Today';
+  if(n===1)return 'Tomorrow';
+  return `In ${n} days`;
+}
+function upState(b){
+  const s=subStatus(b);
+  if(s==='trial')return{label:'Free trial',chip:`<span class="chip tr">${trialLabel(b)}</span>`};
+  if(s==='cancelled')return{label:'Cancelled',chip:'<span class="chip">Cancelled</span>'};
+  if(s==='expired')return{label:'Ended',chip:'<span class="chip">Ended</span>'};
+  const n=days(b),sub=billKind(b)==='subscription';
+  if(sub){
+    const chip=paidNow(b)?'<span class="chip ok">✓ Paid</span>':n<0?`<span class="chip warn">${Math.abs(n)} day${n<-1?'s':''} overdue</span>`:n===0?'<span class="chip warn">Due today</span>':`<span class="chip due">${n===1?'Due tomorrow':'Due in '+n+' days'}</span>`;
+    return{label:'Active',chip};
+  }
+  if(paidNow(b))return{label:'Paid',chip:'<span class="chip ok">✓ Paid</span>'};
+  if(n<0)return{label:'Overdue',chip:`<span class="chip warn">${Math.abs(n)} day${n<-1?'s':''} overdue</span>`};
+  return{label:'Unpaid',chip:n===0?'<span class="chip warn">Due today</span>':`<span class="chip due">${n===1?'Due tomorrow':'Due in '+n+' days'}</span>`};
+}
+function upInfoCard(title,rows){
+  return `<section class="card up-sheet"><h3 class="up-section-title">${esc(title)}</h3>${rows.join('')}</section>`;
+}
+function upPaymentTiming(n){
+  const label=n===0?'On Time':`${Math.abs(n)} ${Math.abs(n)===1?'Day':'Days'} ${n>0?'Early':'Late'}`;
+  return `<span class="${payTimingClass(n)}">${label}</span>`;
+}
+function upBillSheet(id){
+  const b=S.bills.find(x=>x.id==id);if(!b)return;
+  const kind=billKind(b),trial=isTrial(b),st=subStatus(b),gone=subGone(b),
+    activeTrial=trial&&st==='trial',sub=kind==='subscription',
+    pays=billPayments(b),last=pays[0],
+    acctObj=b.acct?S.accts.find(x=>x.id==b.acct):null,
+    dueKey=activeTrial?(b.trialEndDate||subFirstBill(b)):bIso(nextDue(b)),
+    n=dueKey?Math.round((bDt(dueKey)-bDt(today))/864e5):null,
+    state=upState(b),renewing=!gone&&(b.freq||'monthly')!=='once',
+    R=(l,v)=>`<div class="pd-r"><span class="m">${l}</span><b>${v}</b></div>`,
+    details=[],schedule=[],payment=[];
+  details.push(R('Status',activeTrial?'Free Trial':state.label));
+  details.push(R('Category',esc(b.cat||(sub?'Subscriptions':'Bills'))));
+  details.push(R('Default Payment Account',acctObj?paySrcHtml(acctObj.id):'<span class="m">Not Set</span>'));
+  if(trial){
+    if(b.trialStartDate)schedule.push(R('Trial Start Date',noteD(b.trialStartDate)));
+    schedule.push(R('Trial End Date',noteD(b.trialEndDate||subFirstBill(b))));
+    schedule.push(R('First Charge Amount',activeTrial&&renewing?php(b.amt):'<span class="m">Not Scheduled</span>'));
+    if(activeTrial&&renewing)schedule.push(R('First Charge Date',noteD(subFirstBill(b))));
+    if(!activeTrial)schedule.push(R('Price After Trial',`${php(b.amt)}${subFreqTail(b)}`));
+  }
+  if(gone)schedule.push(R(st==='cancelled'?'Cancelled On':'Ended On',b.cancelledOn?noteD(b.cancelledOn):'—'));
+  if(!gone&&(!trial||st==='active')){
+    schedule.push(R(sub?'Next Renewal':'Due Date',noteD(dueKey)));
+  }
+  schedule.push(R(sub?'Billing Frequency':'Repeats',BF[b.freq||'monthly']));
+  if(sub){
+    schedule.push(R('Auto-Renewal',renewing?'On':'<span class="m">Off</span>'));
+  }
+  if(last){
+    payment.push(R('Last Payment',`${noteD(last.d)} · ${php(last.amt)}`));
+    payment.push(R('Paid From',paySrcHtml(last.acct,last.acctName)));
+    const tm=payDiff(last.due,last.d);
+    if(tm!=null)payment.push(R('Payment Timing',upPaymentTiming(tm)));
+  }else payment.push('<p class="up-empty m">No payments yet</p>');
+  const canPay=!gone&&!inTrial(b)&&!paidNow(b);
+  const badge=activeTrial?`<span class="chip tr">${n===0?'Trial ends today':n===1?'Trial ends tomorrow':`Trial ends in ${n} days`}</span>`:sub&&!gone&&n>=0?`<span class="chip ${n<=3?'warn':'due'}">${n===0?'Renews today':n===1?'Renews tomorrow':`Renews in ${n} days`}</span>`:state.chip;
+  const hero=`<div class="pd-hero up-hero"><div class="pd-h"><span class="ico">${bIc(b)}</span><div class="pd-tt"><b>${esc(b.name)}</b><small>${sub?'Subscription':'Bill'}${trial?' · Started Free':''}</small></div></div><div class="pd-amt"><span class="pd-v">${activeTrial?php(0):php(b.amt)}${sub&&!activeTrial?`<span class="up-interval">${subFreqTail(b)}</span>`:''}</span>${badge}</div>${activeTrial?`<div class="up-after">Free Trial · ${php(b.amt)}${subFreqTail(b)} after trial${renewing?'':' · No charge scheduled'}</div>`:''}</div>`;
+  navS(`<div class="sh-h"><h2>${sub?'Subscription Details':'Bill Details'}</h2><button class="pill" aria-label="Close Details" onclick="closeS()">✕</button></div>`
+    +hero
+    +upInfoCard(sub?'Subscription Details':'Billing Details',details)
+    +upInfoCard(sub?'Renewal & Billing':'Schedule',schedule)
+    +upInfoCard('Latest Payment',payment)
+    +`<button class="ph-row" onclick="billHistory(${b.id},'upBillSheet(${b.id})')"><span>Payment History</span><span class="ph-n">${pays.length} ›</span></button>`
+    +(canPay?`<button class="btn" style="width:100%;margin-top:10px" onclick="payBill(${b.id})">Pay ${php(b.amt)}</button>`:'')
+    +`<button class="btn s" style="width:100%;margin-top:10px" onclick="editBillSheet(${b.id})">Edit ${sub?'Subscription':'Bill'}</button>`
+    ,'upbill'+b.id);
+}
+function upCardSheet(cid){
+  const a=S.accts.find(x=>x.id==cid);if(!a)return;
+  const open=outstandingCardStatements().find(x=>x.a.id==cid),
+    latest=open?open.statement:(a.stmt?cSum(a,1):null);
+  if(!latest)return cardPayInfo(cid);
+  const c=latest.c,calc=estimateStatement(a,latest),due=open?open.due:(c.due||''),
+    n=due?Math.round((bDt(due)-bDt(today))/864e5):null,
+    pays=[...new Map((latest.pay||[]).filter(e=>e.x).map(e=>[e.x.id,e.x])).values()].sort((x,y)=>String(y.d).localeCompare(String(x.d))),
+    last=pays[0],paid=calc.remaining<=0.005,status=paid?'Paid':calc.status,
+    stateChip=paid?'<span class="chip ok">✓ Paid</span>':status==='Overdue'?`<span class="chip warn">${calc.daysLate?calc.daysLate+' day'+(calc.daysLate===1?'':'s')+' overdue':'Overdue'}</span>`:n!=null&&n<0?`<span class="chip warn">${Math.abs(n)} day${Math.abs(n)===1?'':'s'} overdue</span>`:n===0?'<span class="chip warn">Due today</span>':n!=null?`<span class="chip due">${n===1?'Due tomorrow':'Due in '+n+' days'}</span>`:'<span class="chip due">Unpaid</span>',
+    R=(l,v)=>`<div class="pd-r"><span class="m">${l}</span><b>${v}</b></div>`,
+    balance=[],schedule=[],payment=[];
+  balance.push(R('Statement Balance',bv(php(latest.close))));
+  balance.push(R('Status',status));
+  schedule.push(R('Statement Period',`${noteD(c.st)} – ${noteD(c.en)}`));
+  schedule.push(R('Statement Date',noteD(c.en)));
+  if(due)schedule.push(R('Due Date',noteD(due)));
+  payment.push(R('Minimum Due',bv(php(latest.minimum))));
+  payment.push(R('Paid to Date',bv(php(latest.paid))));
+  if(latest.paid>.005&&last){
+    payment.push(R('Paid On',noteD(last.d)));
+    payment.push(R('Paid From',paySrcHtml(last.from)));
+    const tm=payDiff(due||last.due,last.d);
+    if(tm!=null)payment.push(R('Payment Timing',upPaymentTiming(tm)));
+  }
+  if(calc.interest)payment.push(R('Estimated Interest',bv(php(calc.interest))+' <span class="m">not booked</span>'));
+  if(calc.fees)payment.push(R('Estimated Fees',bv(php(calc.fees))+' <span class="m">not booked</span>'));
+  const hero=`<div class="pd-hero up-hero"><div class="pd-h"><span class="ico">${cardLogo(a)||'💳'}</span><div class="pd-tt"><b>${esc(a.nickname||a.name)}</b><small>Credit Card Statement</small></div></div><div class="up-amount-label">Remaining Due</div><div class="pd-amt"><span class="pd-v">${bv(php(calc.remaining))}</span>${stateChip}</div></div>`;
+  navS(`<div class="sh-h"><h2>Statement Details</h2><button class="pill" aria-label="Close Details" onclick="closeS()">✕</button></div>`
+    +hero
+    +upInfoCard('Balance Summary',balance)
+    +upInfoCard('Statement Schedule',schedule)
+    +upInfoCard('Payment Summary',payment)
+    +`<button class="ph-row" onclick="cardPaymentHistory(${a.id},'upCardSheet(${a.id})')"><span>Payment History</span><span class="ph-n">${paymentHistoryCount('card',a.id)} ›</span></button>`
+    +(calc.remaining>0?`<button class="btn" style="width:100%;margin-top:10px" onclick="payCard(${a.id},1)">Pay ${php(calc.remaining)}</button>`:'')
+    +(last&&latest.paid>.005?`<button class="btn s dng" style="width:100%;margin-top:10px" onclick="undoCardPay(${last.id},${a.id})">Mark Latest Payment as Unpaid</button>`:'')
+    +`<button class="btn s" style="width:100%;margin-top:10px" onclick="closeS()">Close</button>`
+    ,'upcard'+a.id);
 }
 function cardPayDetail(xid,cid,backAction){
   const x=S.xfer.find(z=>z.id==xid);if(!x)return;

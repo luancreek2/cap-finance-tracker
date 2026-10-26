@@ -10,7 +10,7 @@ const saved = { access_token: 'token-secret', refresh_token: 'refresh-secret', e
 const clone = x => JSON.parse(JSON.stringify(x));
 function response(status, body) { return { ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) }; }
 function fixture(options = {}) {
-  const f = { calls: [], writes: [], reloads: 0, timers: [], online: options.online !== false };
+  const f = { calls: [], writes: [], reloads: 0, timers: [], listeners: {}, online: options.online !== false };
   const storage = new Map([['pera', '{"financial":"do-not-touch"}'], ['baseline-fixture', 'do-not-touch'], ['outbox-fixture', 'do-not-touch']]);
   if (options.session !== null) storage.set(KEY, JSON.stringify(options.session || saved));
   const nodes = new Map();
@@ -20,6 +20,7 @@ function fixture(options = {}) {
     CAP_SUPABASE_CONFIG: options.unconfigured ? {} : { url: 'https://fixture.invalid', publishableKey: 'fixture-key' },
     navigator: { get onLine() { return f.online; } },
     location: { reload: () => { f.reloads++; } },
+    addEventListener: (name, fn) => { f.listeners[name] = fn; },
     localStorage: { getItem: k => storage.get(k) ?? null,
       setItem: (k, v) => { f.writes.push({ op: 'set', k }); storage.set(k, v); }, removeItem: k => { f.writes.push({ op: 'remove', k }); storage.delete(k); } },
     document: { getElementById: id => nodes.get(id) || null, body: { insertAdjacentHTML: (where, html) => {
@@ -61,7 +62,16 @@ async function test(name, body) { await body(); passed++; }
     const f = fixture({ online: false }); await f.finish();
     assert.equal(f.localVisible(), true); assert.equal(f.session(), JSON.stringify(saved)); assert.equal(f.calls.length, 0); assert.equal(f.writes.length, 0);
     assert.equal(f.api.status().authenticated, false); assert.equal(f.api.status().userId, null); assert.equal(f.api.status().localAccess, true);
-    assert.equal(f.api.status().verification, 'offline'); assert.equal(f.nodes.has('cap-local-auth-notice'), true); f.untouched();
+    assert.equal(f.api.status().verification, 'offline'); assert.equal(f.nodes.has('cap-local-auth-notice'), false); f.untouched();
+  });
+  await test('local-only notice stays hidden offline and returns only while unverified online', async () => {
+    const f = fixture({ handler: () => { throw TypeError('network'); } }); await f.finish();
+    assert.equal(f.nodes.has('cap-local-auth-notice'), true, 'online unverified session warns');
+    f.online = false; f.listeners.offline();
+    assert.equal(f.nodes.has('cap-local-auth-notice'), false, 'offline drops the floating warning');
+    f.online = true; f.listeners.online();
+    assert.equal(f.nodes.has('cap-local-auth-notice'), true, 'reconnecting returns the warning');
+    f.untouched();
   });
   await test('cached identity is never returned as currentUser', async () => {
     const f = fixture({ online: false }); await f.finish(); await assert.rejects(f.api.currentUser()); assert.equal(f.calls.length, 0); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();

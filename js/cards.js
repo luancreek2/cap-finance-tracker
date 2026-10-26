@@ -164,21 +164,23 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
 
       /* Account and card management */
       function upcomingBillRow(b) {
-        /* a free trial shows what is coming, never a charge that already happened */
+        /* Every row is a single-tap summary; Pay and ⋮ stay their own controls. */
         if (inTrial(b)) {
           const en = noteD(subFirstBill(b)),
             paid = paidNow(b),
             due = subDue(b),
-            plain = `${trialLabel(b)} · ${php(b.amt)}${subFreqTail(b)} after trial · first charge ${en}`;
-          return `<div class="row trial" ${billAttr(b)} ${billAria(b, trialLabel(b), php(b.amt) + " after trial, first charge " + en)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${trialLabel(b)}</small><small>${php(b.amt)}${subFreqTail(b)} after trial</small><small>Renews ${en} · ${b.acct && acct(b.acct).id ? esc(acct(b.acct).name) : "＋ Choose payment account"}</small></div><b class="m">${php(b.amt)}</b>${due ? (paid ? '<span class="chip ok">✓ Paid</span>' : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`) : ""}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+            label = trialLabel(b);
+          return `<div class="row trial" ${billAttr(b)} ${upBillAria(b, label, php(b.amt) + " after trial")} onclick="upBillSheet(${b.id})"><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${label}</small><small>${php(b.amt)}${subFreqTail(b)} after trial · Renews ${en}</small><small class="up-sub">${upMethodHtml(b)}</small></div>${due ? (paid ? '<span class="chip ok">✓ Paid</span>' : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`) : ""}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
         }
         if (subGone(b)) {
           const why = b.subscriptionStatus == "Cancelled" ? "Cancelled during free trial" : "Subscription ended";
-          return `<div class="row trial done" ${billAttr(b)} ${billAria(b, why, "no charge")}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${why}</small><small>No charge</small></div><button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+          return `<div class="row trial done" ${billAttr(b)} ${upBillAria(b, why, "no charge")} onclick="upBillSheet(${b.id})"><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small class="tr-b">${why}</small><small>No charge</small></div><button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
         }
-        const status = paidNow(b) ? (b.freq == "once" ? "Paid ✓" : "Paid ✓ · next " + bWhen(b)) : bWhen(b),
-          plain = `${bLbl(b)} · ${status}`;
-        return `<div class="row" ${billAttr(b)} ${billAria(b, plain)}><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small>${plain}<br><span class="pf" onclick="event.stopPropagation();billAcct(${b.id})">${b.acct && acct(b.acct).id ? cardLogo(acct(b.acct)) + " " + esc(acct(b.acct).name) : "＋ Choose payment account"}</span></small></div><b>${php(b.amt)}</b>${paidNow(b) ? "" : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
+        const paid = paidNow(b),
+          status = paid ? (b.freq == "once" ? "Paid ✓" : "Paid ✓ · next " + bWhen(b)) : bWhen(b),
+          plain = `${bLbl(b)} · ${status}`,
+          urgency = paid ? "n" : urgOf(days(b));
+        return `<div class="row urg-${urgency}" ${paid ? "" : `data-due="${bIso(nextDue(b))}"`} ${billAttr(b)} ${upBillAria(b, plain)} onclick="upBillSheet(${b.id})"><div class="ico">${bIc(b)}</div><div class="f">${esc(b.name)}<small>${bLbl(b)} · <span class="${paid ? "" : "du-status"}">${status}</span><br>${upMethodHtml(b)}</small></div><b class="du">${php(b.amt)}</b>${paid ? "" : `<button class="pill" onclick="event.stopPropagation();payBill(${b.id})">Pay</button>`}<button class="pill dots" aria-label="Edit ${esc(b.name)}" onclick="event.stopPropagation();editBillSheet(${b.id})">${DOTS}</button></div>`;
       }
       function billGroupHtml(kind,label){
         const items=S.bills.filter(b=>billKind(b)==kind);
@@ -203,8 +205,8 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
           n = Math.round((bDt(x.due) - bDt(today)) / 864e5),
           urgency = urgOf(n),
           status = n < 0 ? `Overdue · ${Math.abs(n)}d` : n == 0 ? "Due today" : `Due in ${n}d`,
-          aria = `${a.name} statement, ${status}, ${php(x.amount)} remaining. ${calc.status}. Press and hold, right-click or press Enter for details.`;
-        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.nickname||a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${esc(status)}</span> · ${calc.status}</small></div><b class="du bv">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
+          aria = `${a.name} statement, ${status}, ${php(x.amount)} remaining. ${calc.status}. Tap for statement details.`;
+        return `<div class="row urg-${urgency}" data-due="${x.due}" data-bcard="${a.id}" tabindex="0" role="button" aria-label="${esc(aria)}" onclick="upCardSheet(${a.id})"><div class="ico">${cardLogo(a)}</div><div class="f">${esc(a.nickname||a.name)}<small>${noteD(c.st)} – ${noteD(c.en)} · <span class="du-status">${esc(status)}</span> · ${calc.status}</small></div><b class="du bv">${php(x.amount)}</b><button class="pill" onclick="event.stopPropagation();payCard(${a.id},1)">Pay</button><button class="pill dots" aria-label="View ${esc(a.name)} statement" onclick="event.stopPropagation();cardPayInfo(${a.id})">${DOTS}</button></div>`;
       }
       function planOld() {
         const cardStatements = outstandingCardStatements();
@@ -219,7 +221,7 @@ function bi(s){s=String(s||'');const b=BR.find(x=>x.re.test(s));return b?`<svg v
             return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between"><span>${ci(c)} ${c}</span><span class="${s > b && b ? "r" : "m"}">${bv(php(s))} / <input style="width:90px;display:inline;padding:3px 6px;margin:0" type="number" min="0" step="0.01" inputmode="decimal" value="${b}" onchange="S.budgets['${c}']=+this.value;render()"></span></div><div class="bar ${s > b && b ? "o" : ""}"><b style="width:${p}%"></b></div></div>`;
           })
           .join("")}</div>
- <div class="card"><h2>Bills &amp; Subscriptions</h2>${typeof annualRenewalRows=='function'&&annualRenewalRows().length?`<div class="eyebrow">Scheduled card fees</div>${annualRenewalRows().map(annualRenewalNoticeRow).join("")}`:''}${billGroupHtml("bill","Bills")}${billGroupHtml("subscription","Subscriptions")}${cardStatements.length ? `<div class="eyebrow" style="margin:18px 0 4px">Credit Card Statements</div>${cardStatements.map(cardStatementRow).join("")}` : ""}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
+ <div class="card up-list"><h2>Bills &amp; Subscriptions</h2>${typeof annualRenewalRows=='function'&&annualRenewalRows().length?`<div class="eyebrow">Scheduled card fees</div>${annualRenewalRows().map(annualRenewalNoticeRow).join("")}`:''}${billGroupHtml("bill","Bills")}${billGroupHtml("subscription","Subscriptions")}${cardStatements.length ? `<div class="eyebrow" style="margin:18px 0 4px">Credit Card Statements</div>${cardStatements.map(cardStatementRow).join("")}` : ""}<br><button class="btn s" onclick="openBill()">＋ Add bill</button></div></div>`;
       }
       function Accounts() {
         const cash = sum(S.accts.filter((a) => a.type != "credit").map((a) => a.bal)),

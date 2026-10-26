@@ -499,10 +499,23 @@ function initActivityScope() {
 
   /* ------------------------------------------------- day-select motion ----- */
 
-  /* The tapped cell presses in and springs back bigger. The calendar is rebuilt
-     on every pick, so the class goes on the fresh cell and the CSS runs it. */
+  /* The tapped cell presses in and springs back bigger. Selection keeps the
+     mounted grid, so the class goes straight on the live cell. */
   function popDay(k) {
-    const c = document.querySelector(`.cal-month-current .dc[data-k="${k}"]`) || document.querySelector(`.acal .dc[data-k="${k}"]`);
+    /* Two months can be visible at once, so animate the cell nearest the middle
+       of the scroller rather than the first match in the strip. */
+    const cells = [...document.querySelectorAll(`.cal-timeline .dc[data-k="${k}"]`)];
+    const view = document.querySelector(".cal-timeline");
+    let c = cells.find(x => x.closest(".cal-month-current"));
+    if (!c && cells.length && view) {
+      const v = view.getBoundingClientRect(), mid = v.top + v.height / 2;
+      const dist = x => {
+        const r = x.getBoundingClientRect();
+        return Math.abs(r.top + r.height / 2 - mid);
+      };
+      c = cells.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+    }
+    if (!c) c = document.querySelector(`.acal .dc[data-k="${k}"]`);
     if (!c || RMA()) return;
     c.classList.remove("pop");
     void c.offsetWidth;
@@ -614,8 +627,19 @@ function initActivityScope() {
     refresh(n);
   };
 
+  /* Selection is a paint operation: it never rebuilds or scrolls the timeline.
+     The grid for a Day scope is the same month grid, so only the highlight (and
+     any week/month dimming left by the previous scope) has to change. */
+  function paintSelection() {
+    const w = el("calwrap");
+    if (!w) return;
+    w.querySelectorAll(".dc[data-k]").forEach(c => {
+      c.classList.toggle("sel", c.dataset.k === sel);
+      c.classList.remove("off", "rng");
+    });
+  }
+
   window.pickDay = k => {
-    /* the calendar is part of the scope, so this one needs the calendar rebuilt */
     const off = ASC.mode === "day" && ASC.anchor === k;
     if (off) ASC.mode = "all";
     else {
@@ -623,7 +647,16 @@ function initActivityScope() {
       ASC.anchor = k;
     }
     selSync();
-    refresh(0);
+    /* A pick changes the selection and the list only. Keeping the mounted
+       timeline avoids both a rebuild and a re-centre, so a calendar resting
+       between two months stays exactly there while a date in either month is
+       chosen. */
+    const t = timeline;
+    if (t && t.w.isConnected && t.w === el("calwrap")) {
+      t.scopeKey = ASC.mode + "|" + ASC.anchor;
+      paintSelection();
+      soft();
+    } else refresh(0);
     /* picking a date plays the day-select motion; clearing one just springs
        the cell back (the CSS transition on .sel covers that half) */
     if (!off) {
@@ -1220,13 +1253,29 @@ function initActivityScope() {
 
   /* ------------------------------------------------ continuous month view */
 
-  // Touch/trackpad inertia belongs to the browser, not a timed month swap.
-  // Mouse/pen dragging uses the same scroll position with a decaying velocity.
-  // No scroll snapping: a half-month position remains a half-month position.
+  // Touch/trackpad momentum belongs to the browser; mouse/pen dragging uses the
+  // same scroll position with a short, decaying velocity. No scroll snapping: a
+  // half-month position remains a half-month position.
   let timeline = null, pointer = null, suppressCalendarClickUntil = 0;
+
+  /* One flick may travel at most a fraction of the viewport and always stops
+     inside a fixed window. The strip is only grown while a finger/pointer is
+     actually driving it, so browser momentum can never run into fresh months. */
+  const COAST_VIEWPORTS = 0.85,
+    COAST_MAX_MS = 700,
+    COAST_TAU = 150,
+    COAST_MAX_VELOCITY = 2,
+    COAST_STOP = 0.02,
+    SETTLE_MS = 220,
+    BURST_MONTHS = 2;
+
   function stopCoast(t) {
     if (!t) return;
-    cancelAnimationFrame(t.raf);t.raf = 0;
+    // The generation token makes every earlier frame a no-op, even if a second
+    // loop ever managed to slip through.
+    t.coastGen = (t.coastGen || 0) + 1;
+    if (t.raf) cancelAnimationFrame(t.raf);
+    t.raf = 0;t.coasting = false;
   }
   function monthSection(offset, grid, headerHTML) {
     const date = new Date(T.getFullYear(), T.getMonth() + offset, 1);
@@ -1242,10 +1291,10 @@ function initActivityScope() {
     }
     const section = document.createElement('section');
     section.className = 'cal-month';section.dataset.offset = offset;
-    const title = date.toLocaleDateString('en-PH', {month:'long',year:'numeric'});
-    section.setAttribute('aria-label', title);
-    const heading = document.createElement('h3');heading.className = 'cal-month-title';heading.textContent = title;
-    section.append(heading, grid);section._headerHTML = headerHTML;
+    // The month name lives in the fixed header above the scroller, not inside
+    // the strip: repeating it here would break the continuous sheet of weeks.
+    section.setAttribute('aria-label', date.toLocaleDateString('en-PH', {month:'long',year:'numeric'}));
+    section.append(grid);section._headerHTML = headerHTML;
     syncCalVisibility(section);
     return section;
   }
@@ -1266,31 +1315,45 @@ function initActivityScope() {
     if (t.extending || !t.w.isConnected) return;
     t.extending = true;
     const margin = t.view.clientHeight * 1.5;
+    let added = 0;
     // overflow-anchor is disabled so the compensating offset is applied once.
     if (t.view.scrollTop < margin) {
       const first = t.strip.firstElementChild, before = first.offsetTop;
       t.strip.prepend(monthSection(+first.dataset.offset - 1));
-      const added = first.offsetTop - before;t.view.scrollTop += added;
-      if (pointer?.t === t) {pointer.origin+=added;pointer.samples.forEach(s => s.y += added);}
+      const shift = first.offsetTop - before;t.view.scrollTop += shift;
+      if (pointer?.t === t) {pointer.origin+=shift;pointer.samples.forEach(s => s.y += shift);}
+      added++;
     }
     if (t.view.scrollHeight - t.view.scrollTop - t.view.clientHeight < margin) {
       t.strip.append(monthSection(+t.strip.lastElementChild.dataset.offset + 1));
+      added++;
     }
+    t.burstGrowth = (t.burstGrowth || 0) + added;
     t.extending = false;
   }
   function trimTimeline(t) {
-    if (!t.w.isConnected || pointer || t.touching || t.raf) return;
+    if (!t.w.isConnected || pointer || t.touching || t.raf || t.coasting) return;
     const firstVisible = [...t.strip.children].find(s => s.offsetTop + s.offsetHeight > t.view.scrollTop);
     const before = firstVisible?.offsetTop || 0;
-    for (const s of [...t.strip.children]) if (Math.abs(+s.dataset.offset - t.offset) > 4) s.remove();
+    for (const s of [...t.strip.children]) if (Math.abs(+s.dataset.offset - t.offset) > 3) s.remove();
     if (firstVisible?.isConnected) t.view.scrollTop += firstVisible.offsetTop - before;
+  }
+  function settleTimeline(t) {
+    if (!t || !t.w.isConnected || t.touching || t.dragging || t.raf || t.coasting) return;
+    t.programmatic = false;
+    extendTimeline(t);
+    trimTimeline(t);
+    t.burstGrowth = 0;
   }
   function timelineScrolled(t) {
     if (!t.w.isConnected) { stopCoast(t);clearTimeout(t.idle);return; }
     currentTimelineMonth(t);
-    if (!t.programmatic) extendTimeline(t);
+    // An active finger/pointer drives the strip without a budget. Momentum may
+    // grow it by at most BURST_MONTHS: enough for a hard flick to keep its feel,
+    // never enough to run through years while the browser keeps coasting.
+    if (!t.programmatic && (t.touching || t.dragging || (t.burstGrowth || 0) < BURST_MONTHS)) extendTimeline(t);
     clearTimeout(t.idle);
-    t.idle = setTimeout(() => {t.programmatic=false;extendTimeline(t);trimTimeline(t);}, 180);
+    t.idle = setTimeout(() => settleTimeline(t), SETTLE_MS);
   }
   function ensureTimeline() {
     const w = el('calwrap');
@@ -1306,14 +1369,17 @@ function initActivityScope() {
     const strip = document.createElement('div');strip.className = 'cal-month-strip';view.append(strip);
     grid.replaceWith(view);
     const centre = monthSection(cm, grid, header?.innerHTML);
-    strip.append(monthSection(cm - 2), monthSection(cm - 1), centre, monthSection(cm + 1), monthSection(cm + 2));
+    strip.append(monthSection(cm - 3), monthSection(cm - 2), monthSection(cm - 1), centre, monthSection(cm + 1), monthSection(cm + 2), monthSection(cm + 3));
     w.style.touchAction = 'pan-y pinch-zoom';
-    const t = timeline = {w,view,strip,header,offset:cm,scopeKey:ASC.mode+'|'+ASC.anchor,raf:0,idle:0,extending:false};
+    const t = timeline = {
+      w,view,strip,header,offset:cm,scopeKey:ASC.mode+'|'+ASC.anchor,
+      raf:0,idle:0,extending:false,coastGen:0,coasting:false,touching:false,dragging:false,burstGrowth:0,
+    };
     view.scrollTop = centre.offsetTop;
     currentTimelineMonth(t);
     view.addEventListener('scroll', () => timelineScrolled(t), {passive:true});
-    view.addEventListener('touchstart',()=>{t.touching=true;t.programmatic=false;stopCoast(t);},{passive:true});
-    const endTouch=e=>{t.touching=e.touches.length>0;if(!t.touching){clearTimeout(t.idle);t.idle=setTimeout(()=>trimTimeline(t),180);}};
+    view.addEventListener('touchstart',()=>{t.touching=true;t.programmatic=false;t.burstGrowth=0;stopCoast(t);},{passive:true});
+    const endTouch=e=>{t.touching=e.touches.length>0;if(!t.touching){clearTimeout(t.idle);t.idle=setTimeout(()=>settleTimeline(t),SETTLE_MS);}};
     view.addEventListener('touchend',endTouch,{passive:true});view.addEventListener('touchcancel',endTouch,{passive:true});
     view.addEventListener('lostpointercapture',e=>endCalendarPointer(e,true));
     // Keyboard scrolling stays local to the calendar and uses the same position.
@@ -1327,16 +1393,16 @@ function initActivityScope() {
   }
   function timelineGo(offset) {
     const t = ensureTimeline();if (!t) return false;
-    stopCoast(t);pointer = null;t.programmatic=true;
+    stopCoast(t);pointer = null;t.dragging = false;t.programmatic=true;
     // Explicit long-distance Today jumps may rebase offscreen content. Ordinary
     // dragging/scrolling never rebuilds the visible grids or the Activity list.
     if (Math.abs(offset - t.offset) > 6) {
-      t.strip.replaceChildren(...[-2,-1,0,1,2].map(n => monthSection(offset+n)));
+      t.strip.replaceChildren(...[-3,-2,-1,0,1,2,3].map(n => monthSection(offset+n)));
     }
-    while (+t.strip.firstElementChild.dataset.offset > offset-2) {
+    while (+t.strip.firstElementChild.dataset.offset > offset-3) {
       const first = t.strip.firstElementChild;t.strip.prepend(monthSection(+first.dataset.offset-1));t.view.scrollTop += first.offsetTop;
     }
-    while (+t.strip.lastElementChild.dataset.offset < offset+2) t.strip.append(monthSection(+t.strip.lastElementChild.dataset.offset+1));
+    while (+t.strip.lastElementChild.dataset.offset < offset+3) t.strip.append(monthSection(+t.strip.lastElementChild.dataset.offset+1));
     const target = [...t.strip.children].find(s => +s.dataset.offset === offset);
     t.view.scrollTo({top:target.offsetTop,behavior:RMA()?'instant':'smooth'});
     if (RMA()) currentTimelineMonth(t);
@@ -1347,10 +1413,13 @@ function initActivityScope() {
 
   function moveCalendarPointer(e) {
     const p = pointer;if (!p || p.id !== e.pointerId || p.event === e) return;p.event = e;
+    // A missed pointerup (released over browser chrome or another window) must
+    // not leave the calendar following the cursor with no button held.
+    if (e.pointerType === 'mouse' && e.buttons === 0) { endCalendarPointer(e, true);return; }
     const dy = e.clientY - p.y, dx = e.clientX - p.x;
     if (!p.moved) {
       if (Math.abs(dy) < 6) return;
-      if (Math.abs(dx) > Math.abs(dy)*1.5) { pointer=null;return; }
+      if (Math.abs(dx) > Math.abs(dy)*1.5) { pointer=null;p.t.dragging=false;return; }
       p.moved = true;
       try { p.t.view.setPointerCapture(e.pointerId); } catch (_) {}
     }
@@ -1358,46 +1427,85 @@ function initActivityScope() {
     // Exactly one CSS pixel per finger/pen/mouse pixel; no damping or stage transform.
     p.t.view.scrollTop = p.origin - dy;
     const now = performance.now();p.samples.push({y:p.t.view.scrollTop,time:now});
-    while (p.samples.length>2 && p.samples[0].time < now-100) p.samples.shift();
+    while (p.samples.length>2 && p.samples[0].time < now-120) p.samples.shift();
     timelineScrolled(p.t);
   }
-  function endCalendarPointer(e, cancelled) {
-    const p = pointer;if (!p || p.id !== e.pointerId) return;pointer = null;
-    if (!p.moved) return;
-    suppressCalendarClickUntil = performance.now()+300;
-    if (cancelled || RMA()) return;
-    const last=p.samples[p.samples.length-1],first=p.samples[0],now=performance.now();
-    let velocity = last.time>first.time && now-last.time<90 ? (last.y-first.y)/(last.time-first.time) : 0;
-    velocity = Math.max(-2.6,Math.min(2.6,velocity));
-    if (Math.abs(velocity)<.03) return;
-    let previous=performance.now();
+  function startCoast(t, velocity) {
+    stopCoast(t); /* only one momentum loop may ever own the scroller */
+    const gen = t.coastGen,
+      budget = Math.max(0, t.view.clientHeight * COAST_VIEWPORTS),
+      started = performance.now();
+    let previous = started, travelled = 0;
+    t.coasting = true;
     const tick = time => {
-      if (!p.t.w.isConnected || RMA()) { stopCoast(p.t);return; }
-      const dt=Math.min(40,time-previous),decay=Math.exp(-dt/200),before=p.t.view.scrollTop;previous=time;
-      p.t.view.scrollTop += velocity*200*(1-decay);velocity*=decay;
-      timelineScrolled(p.t);
-      if (Math.abs(velocity)>.015 && Math.abs(p.t.view.scrollTop-before)>.05) p.t.raf=requestAnimationFrame(tick);
-      else { p.t.raf=0;p.t.idle=setTimeout(()=>trimTimeline(p.t),180); }
+      if (gen !== t.coastGen || !t.w.isConnected || RMA()) { stopCoast(t);return; }
+      const dt = Math.min(32, Math.max(0, time - previous));
+      previous = time;
+      const room = budget - travelled;
+      if (room < 0.5 || time - started > COAST_MAX_MS) { stopCoast(t);settleTimeline(t);return; }
+      const step = Math.max(-room, Math.min(room, velocity * dt));
+      const before = t.view.scrollTop;
+      t.view.scrollTop = before + step;
+      const moved = t.view.scrollTop - before;
+      if (!moved) { stopCoast(t);settleTimeline(t);return; }
+      travelled += moved;
+      velocity *= Math.exp(-dt / COAST_TAU);
+      timelineScrolled(t);
+      if (Math.abs(velocity) < COAST_STOP) { stopCoast(t);settleTimeline(t);return; }
+      t.raf = requestAnimationFrame(tick);
     };
-    p.t.raf=requestAnimationFrame(tick);
+    t.raf = requestAnimationFrame(tick);
+  }
+  function endCalendarPointer(e, cancelled) {
+    const p = pointer;if (!p || p.id !== e.pointerId) return;
+    pointer = null;p.t.dragging = false;
+    if (!p.moved) { settleTimeline(p.t);return; }
+    suppressCalendarClickUntil = performance.now()+300;
+    if (cancelled || RMA()) { settleTimeline(p.t);return; }
+    const now=performance.now(),recent=p.samples.filter(s=>now-s.time<=120);
+    const first=recent[0],last=recent[recent.length-1];
+    const span=first&&last?last.time-first.time:0;
+    let velocity = span>=8 && now-last.time<=120 ? (last.y-first.y)/span : 0;
+    if (!Number.isFinite(velocity)) velocity = 0;
+    velocity = Math.max(-COAST_MAX_VELOCITY,Math.min(COAST_MAX_VELOCITY,velocity));
+    if (Math.abs(velocity) < 0.05) { settleTimeline(p.t);return; }
+    startCoast(p.t, velocity);
   }
   const yearDown=window.calDown,yearMove=window.calMove,yearUp=window.calUp,yearWheel=window.calWheel;
   window.calDown = function (e) {
     const t=ensureTimeline();
     if (!t || !e.target.closest('.cal-timeline')) return yearDown(e);
-    // Real touch is intentionally native: the browser owns tracking, momentum,
-    // deceleration, cancellation, and suppressing taps after a touch scroll.
+    // Any new gesture immediately takes ownership from a running momentum loop.
     stopCoast(t);
     t.programmatic=false;
+    t.burstGrowth=0;
     if (e.pointerType==='touch' || !e.isPrimary || e.button || e.target.closest('button,a,input,select')) return;
     pointer={id:e.pointerId,t,x:e.clientX,y:e.clientY,origin:t.view.scrollTop,moved:false,samples:[{y:t.view.scrollTop,time:performance.now()}]};
+    t.dragging=true;
   };
   window.calMove = function(e) { if(pointer)moveCalendarPointer(e);else if(!timeline)yearMove(e); };
   window.calUp = function(e) { if(pointer)endCalendarPointer(e,e.type==='pointercancel');else if(!timeline)yearUp(e); };
-  window.calWheel = function(e) { const t=ensureTimeline();if(!t)yearWheel(e);else{stopCoast(t);t.programmatic=false;} /* Native wheel scrolling is never prevented. */ };
+  window.calWheel = function(e) {
+    const t=ensureTimeline();
+    if(!t) return yearWheel(e);
+    // A fresh wheel burst may grow the strip again; events of the same burst
+    // share the cap so momentum cannot keep feeding itself for years.
+    const now=performance.now();
+    if(!t.lastWheel||now-t.lastWheel>200) t.burstGrowth=0;
+    t.lastWheel=now;
+    stopCoast(t);t.programmatic=false;
+    /* Native wheel scrolling is never prevented. */
+  };
   document.addEventListener('pointermove',moveCalendarPointer,{passive:false});
   document.addEventListener('pointerup',e=>endCalendarPointer(e,false));
   document.addEventListener('pointercancel',e=>endCalendarPointer(e,true));
+  /* Losing focus can swallow the pointerup entirely: abandon the gesture and its
+     momentum instead of leaving either running in the background. */
+  window.addEventListener('blur',()=>{
+    pointer=null;
+    if(!timeline) return;
+    timeline.dragging=false;stopCoast(timeline);settleTimeline(timeline);
+  });
   document.addEventListener('click',e=>{
     if (performance.now()<suppressCalendarClickUntil && e.target.closest?.('.cal-timeline')) { e.preventDefault();e.stopImmediatePropagation(); }
   },true);

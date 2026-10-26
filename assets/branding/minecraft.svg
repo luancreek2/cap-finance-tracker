@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Minecraft grass block">
+  <polygon points="32,4 58,17 32,30 6,17" fill="#7CBD4A"/>
+  <polygon points="6,17 32,30 32,58 6,45" fill="#8B5A2B"/>
+  <polygon points="58,17 32,30 32,58 58,45" fill="#6B431F"/>
+  <polygon points="6,17 32,30 32,36 6,23" fill="#5E9E38"/>
+  <polygon points="58,17 32,30 32,36 58,23" fill="#4F8A2F"/>
+  <polygon points="18,13 23,10.5 28,13 23,15.5" fill="#93D15D"/>
+  <polygon points="37,16 42,13.5 47,16 42,18.5" fill="#6AAE40"/>
+  <polygon points="26,9 30,7 34,9 30,11" fill="#8ACD54"/>
+  <polygon points="12,31 15.5,29.2 19,31 15.5,32.8" fill="#A06A37"/>
+  <polygon points="38,34 41.5,32.2 45,34 41.5,35.8" fill="#7A4C24"/>
+  <polygon points="15,39 18.5,37.2 22,39 18.5,40.8" fill="#9A6432"/>
+  <polygon points="41,44 44.5,42.2 48,44 44.5,45.8" fill="#5E3A1A"/>
+  <polygon points="20,49 23.5,47.2 27,49 23.5,50.8" fill="#A87240"/>
+  <polygon points="46,33 48.5,31.7 51,33 48.5,34.3" fill="#8A5A2B"/>
+</svg>

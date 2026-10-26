@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v346";
+const VERSION = "cap-shell-v352";
 const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",
@@ -47,6 +47,8 @@ const MEDIA = [
   "./assets/icons/cap-512-maskable.png",
   "./assets/branding/cap-default.png",
   "./assets/branding/cap-dark.png",
+  "./assets/branding/chatgpt.svg",
+  "./assets/branding/minecraft.svg",
   "./assets/media/cash-wallet-transparent.png",
   "./assets/media/payment-confirm.mp3",
   "./assets/media/media-01bcd366ea16.webp",

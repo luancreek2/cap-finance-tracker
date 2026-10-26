@@ -2553,3 +2553,44 @@ nav>div#tabs::before {
 }
 html.noanim #tabs .nav-icon,html.noanim #tabs .nav-icon *,html.noanim #tabs .nav-plus-glyph,
 html.rm #tabs .nav-icon,html.rm #tabs .nav-icon *,html.rm #tabs .nav-plus-glyph { animation:none!important;transition:none!important;transform:none!important; }
+
+/* ===== Plan › Upcoming: logo presentation + summary sheets =====
+   The icon cell keeps its footprint for alignment, but no background, ring or
+   border is drawn around any bill, subscription, card or uploaded logo. */
+.up-list .row>.ico { background:none; border:0; border-radius:0; box-shadow:none; }
+.up-list .row.trial>.ico { background:none; box-shadow:none; }
+.up-list .row>.ico .ci { border-radius:0; }
+.up-list .row>.ico .xcl { filter:none; }
+.up-method { display:inline-flex; align-items:center; gap:6px; max-width:100%; vertical-align:-3px; }
+.up-method .xcl { width:24px; height:15.6px; flex:none; filter:drop-shadow(0 1px 2px #0004); }
+.up-method>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.up-method.none { color:var(--g); font-size:12px; }
+.row.trial .up-sub { color:var(--mut); font-size:12px; }
+/* The OpenAI mark is monochrome; invert only where the surface is dark so it
+   stays the official black/white treatment instead of a coloured substitute. */
+@media(prefers-color-scheme:dark) { :root:not([data-theme="light"]) .oai-mark { filter:invert(1); } }
+:root[data-theme="dark"] .oai-mark { filter:invert(1); }
+/* Detail sheets: the logo sits directly on the hero material. */
+#sb .up-hero .ico { background:none; border:0; border-radius:0; box-shadow:none; }
+#sb .up-hero .ico .ci { border-radius:0; }
+#sb .up-hero .ico .xcl { filter:none; }
+#sb .up-hero .pd-v { font-size:31px; }
+.up-after { margin-top:7px; color:var(--mut); font-size:13px; font-weight:500; }
+#sb .up-sheet .pd-r { padding:9px 0; }
+#sb .up-sheet .pd-r>b { max-width:68%; min-width:0; font-size:13px; font-weight:600; line-height:1.35; }
+#sb .up-sheet .pd-r .psrc { justify-content:flex-end; white-space:normal; }
+#sb .up-sheet .pd-r .psrc>span { overflow:visible; text-overflow:clip; white-space:normal; }
+#sb .up-sheet .up-method { font-size:13px; }
+#sb .up-sheet { margin:0 0 12px; padding:14px 16px; border-radius:18px; }
+#sb .up-sheet .up-section-title { margin:0 0 5px; color:var(--tx); font-size:12px; font-weight:700; line-height:1.4; letter-spacing:.02em; text-transform:none; }
+#sb .up-sheet .pd-r { gap:14px; align-items:flex-start; }
+#sb .up-sheet .pd-r>.m { flex:1; min-width:0; font-size:13px; line-height:1.4; }
+#sb .up-sheet .pd-r>b { overflow-wrap:anywhere; text-align:right; }
+#sb .up-sheet .pd-r:last-child { border-bottom:0; }
+#sb .up-sheet .psrc { max-width:100%; min-width:0; gap:6px; }
+#sb .up-sheet .psrc .xcl { flex:none; border:0; box-shadow:none; filter:none; }
+#sb .up-sheet .up-empty { margin:8px 0 2px; font-size:13px; }
+#sb .up-hero .up-interval { font-size:15px; font-weight:500; color:var(--mut); }
+#sb .up-hero .up-amount-label { margin-top:15px; color:var(--mut); font-size:12px; font-weight:600; }
+#sb .up-hero .pd-amt { flex-wrap:wrap; }
+@media(max-width:390px) { #sb .up-sheet .pd-r>b { max-width:62%; } }

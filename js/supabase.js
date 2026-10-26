@@ -23,7 +23,9 @@
   }
   function notice(){
     const old=document.getElementById('cap-local-auth-notice');
-    if(!localAccess||verifiedUser){if(old)old.remove();return;}
+    /* Offline is expected local-only use, not a verification warning: keep the
+       screen clear and let the normal offline status speak for itself. */
+    if(offline()||!localAccess||verifiedUser){if(old)old.remove();return;}
     if(old)return;
     document.body.insertAdjacentHTML('beforeend','<div id="cap-local-auth-notice" class="cap-local-auth-notice" role="status">Local access only · Cloud authentication is not verified. Cloud Sync stays OFF. Reconnect and reload to verify your session.</div>');
   }
@@ -186,5 +188,11 @@
     return notesRpcReadyState;
   }
   window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,productionRpcPaths:PRODUCTION_RPC_PATHS,localIdentity:()=>cachedLocal(session)?session.user.id:null,sessionGeneration:()=>sessionRevision,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
+  /* Keep the local-only notice tied to connectivity: hide it when the device
+     goes offline and restore it online only while the session is unverified. */
+  if(typeof addEventListener==='function'){
+    addEventListener('offline',notice);
+    addEventListener('online',notice);
+  }
   boot();
 })();

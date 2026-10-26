@@ -135,10 +135,12 @@ async function boot(context, origin) {
     const quickDrag = async (dy, hold) => {
       const b = await page.locator('.cal-timeline').boundingBox(),
         x = Math.floor(b.x + b.width / 2),
-        y = Math.floor(dy<0 ? b.y+b.height-35 : b.y+35);
+        y = Math.floor(dy < 0 ? b.y + b.height - 35 : b.y + 35);
       await page.mouse.move(x, y);
       await page.mouse.down();
-      for (let i = 1; i <= 6; i++) await page.mouse.move(x, y + (dy * i) / 6, { steps: 1 });
+      /* one protocol round trip for the whole gesture: a flick must not lose its
+         velocity to test-harness latency between the last move and pointerup */
+      await page.mouse.move(x, y + dy, { steps: 12 });
       if (hold) await hold();
       await page.mouse.up();
     };
@@ -186,8 +188,113 @@ async function boot(context, origin) {
       await resetTimeline();await drag(-100);const first=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
       await page.waitForTimeout(90);const second=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
       await page.waitForTimeout(90);const third=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
-      assert.ok(first>second&&second>third);assert.ok(first-second>second-third);
+      assert.ok(first>second&&second>third,JSON.stringify({first,second,third,top:await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),grid:await page.evaluate(()=>window.__grid.isConnected)}));assert.ok(first-second>second-third);
       await page.waitForTimeout(1300);const stopped=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(180);assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),stopped);
+    });
+    await test('month and year headings are gone from inside the scrolling strip',async()=>{
+      await resetTimeline();
+      const a=await page.evaluate(()=>{
+        const v=document.querySelector('.cal-timeline');
+        return {titles:v.querySelectorAll('.cal-month-title').length,h3:v.querySelectorAll('h3').length,
+          months:v.querySelectorAll('.cal-month').length,
+          labels:[...v.querySelectorAll('.cal-month')].every(m=>!!m.getAttribute('aria-label')),
+          header:document.querySelector('#calwrap>.cal-timeline-header')?.innerText||'',
+          expected:new Date(T.getFullYear(),T.getMonth(),1).toLocaleDateString('en-PH',{month:'long',year:'numeric'}),
+          today:!!document.querySelector('#calwrap button[onclick="calToday()"]'),
+          arrows:document.querySelectorAll('#calwrap button[onclick^="calGo"]').length};
+      });
+      assert.equal(a.titles,0,'repeated month title remains');
+      assert.equal(a.h3,0,'heading remains inside the strip');
+      assert.ok(a.months>=3);
+      assert.equal(a.labels,true,'sections need an accessible name');
+      assert.ok(a.header.includes(a.expected),'fixed month header missing');
+      assert.equal(a.today,true);assert.equal(a.arrows,2);
+    });
+    for (const [width,height] of [[390,844],[768,1024]]) {
+    await test(`${width}x${height}: selecting a date never moves the calendar, even between two months`,async()=>{
+      await page.setViewportSize({width,height});
+      await resetTimeline();
+      // hold still before release so the strip parks at a fixed fractional offset
+      await drag(-200,()=>page.waitForTimeout(380));
+      await page.waitForTimeout(600); /* settle, then clear the post-drag click suppressor */
+      const target=await page.evaluate(()=>{
+        const v=document.querySelector('.cal-timeline'),vr=v.getBoundingClientRect();
+        const second=[...v.querySelectorAll('.cal-month')].find(s=>{const r=s.getBoundingClientRect();return r.top>vr.top+24&&r.top<vr.bottom-140;});
+        const cell=second&&[...second.querySelectorAll('.dc[data-k]')].find(c=>{const r=c.getBoundingClientRect();return !c.classList.contains('x')&&r.top>vr.top+20&&r.bottom<vr.bottom-4;});
+        return cell?{k:cell.dataset.k,offset:+second.dataset.offset}:null;
+      });
+      assert.ok(target,'no partially visible second month to tap');
+      const before=await page.evaluate(()=>{
+        const v=document.querySelector('.cal-timeline');
+        return {scrollTop:v.scrollTop,sections:[...v.querySelectorAll('.cal-month')].map(s=>({o:+s.dataset.offset,top:Math.round(s.getBoundingClientRect().top*10)/10}))};
+      });
+      await page.evaluate(k=>{
+        const c=[...document.querySelectorAll('.cal-timeline .dc[data-k]')].find(x=>x.dataset.k===k&&!x.classList.contains('x'));
+        c.click();
+      },target.k);
+      await page.waitForTimeout(160);
+      const after=await page.evaluate(()=>{
+        const v=document.querySelector('.cal-timeline');
+        return {scrollTop:v.scrollTop,selected:[...v.querySelectorAll('.dc.sel')].map(c=>c.dataset.k),
+          sections:[...v.querySelectorAll('.cal-month')].map(s=>({o:+s.dataset.offset,top:Math.round(s.getBoundingClientRect().top*10)/10})),
+          mode:ASC.mode,grid:window.__grid.isConnected,calendar:window.__calendar===document.getElementById('calwrap')};
+      });
+      assert.equal(after.scrollTop,before.scrollTop,'date selection changed the scroll offset');
+      assert.deepEqual(after.sections,before.sections,'visible months moved after date selection');
+      assert.ok(after.selected.length&&after.selected.every(k=>k===target.k),'selected date not highlighted');
+      assert.equal(after.mode,'day');assert.equal(after.grid,true);assert.equal(after.calendar,true);
+      assert.ok(target.offset!==0,'the tap was not in the adjacent month');
+      await page.screenshot({path:path.join(shots,`selection-between-months-${width}.png`)});
+    });
+    }
+    await page.setViewportSize({width:390,height:844});
+    await test('a small flick cannot travel through years',async()=>{
+      await resetTimeline();
+      const start=await page.locator('.cal-timeline').evaluate(e=>({top:e.scrollTop,height:e.clientHeight,month:cm}));
+      await drag(-40);
+      await page.waitForTimeout(1400);
+      const after=await page.locator('.cal-timeline').evaluate(e=>({top:e.scrollTop,month:cm}));
+      const travelled=after.top-start.top;
+      assert.ok(travelled<start.height*1.1,'small flick travelled '+travelled+'px');
+      assert.ok(Math.abs(after.month-start.month)<=1,'small flick crossed '+(after.month-start.month)+' months');
+      const parked=await page.locator('.cal-month-current').evaluate(e=>e.getBoundingClientRect().top);
+      await page.waitForTimeout(400);
+      assert.ok(Math.abs(await page.locator('.cal-month-current').evaluate(e=>e.getBoundingClientRect().top)-parked)<0.6,'momentum never stopped');
+    });
+    await test('repeated swipes start from rest and do not add stale velocity',async()=>{
+      await resetTimeline();
+      const topOf=k=>page.evaluate(k=>{const s=document.querySelector(`.cal-month[data-offset="${k}"]`);return s?s.getBoundingClientRect().top:null;},k);
+      const runs=[];
+      for(let i=0;i<3;i++){
+        const ref=await page.evaluate(()=>+document.querySelector('.cal-month-current').dataset.offset+1);
+        await drag(-40);
+        const releasedAt=await topOf(ref);
+        await page.waitForTimeout(900);
+        const restAt=await topOf(ref);
+        assert.ok(releasedAt!=null&&restAt!=null,'flick '+(i+1)+' lost its reference month');
+        assert.ok(restAt<releasedAt-30,'flick '+(i+1)+' did not move');
+        await page.waitForTimeout(200);
+        assert.ok(Math.abs(await topOf(ref)-restAt)<0.6,'flick '+(i+1)+' kept coasting');
+        runs.push(releasedAt-restAt);
+      }
+      assert.ok(runs.every(d=>d<600),'a flick ran away: '+runs.join(','));
+      assert.ok(Math.max(...runs)-Math.min(...runs)<200,'velocity accumulated: '+runs.join(','));
+    });
+    await test('a new touch cancels the previous momentum immediately',async()=>{
+      await resetTimeline();
+      await drag(-220);
+      const b=await page.locator('.cal-timeline').boundingBox(),cdp=await context.newCDPSession(page);
+      const a=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await page.waitForTimeout(50);
+      const moving=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      assert.ok(moving>a,'momentum was not running');
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
+      const stoppedAt=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);
+      await page.waitForTimeout(220);
+      assert.equal(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop),stoppedAt,'old momentum survived a touch');
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await page.waitForTimeout(200);
+      await cdp.detach();
     });
     await test('rapid flicks do not duplicate calendars, drop input, or corrupt the list',async()=>{
       await resetTimeline();await drag(-120);await quickDrag(-120);await quickDrag(-120);await page.waitForTimeout(1500);
@@ -216,7 +323,9 @@ async function boot(context, origin) {
         render();
       });
       await page.waitForTimeout(120);
-      const b=await calendarBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,600);
+      const b=await calendarBox();
+      const step=await page.locator('.cal-month').first().evaluate(e=>e.offsetHeight);
+      await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,step+10);
       await page.waitForTimeout(500);
       const jan = await page.evaluate(() => ({
         cm,
@@ -224,7 +333,7 @@ async function boot(context, origin) {
       }));
       assert.equal(jan.month, "January 2027");
       await page.waitForTimeout(460);
-      await page.mouse.wheel(0,-600);
+      await page.mouse.wheel(0,-(step+10));
       await page.waitForTimeout(500);
       const dec = await page.evaluate(() => ({
         cm,
@@ -257,13 +366,14 @@ async function boot(context, origin) {
         await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
         for(let i=1;i<=10;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+direction*280*i/10}]});await page.waitForTimeout(25);}
         await page.waitForTimeout(180);
-        const during=await page.locator('.cal-timeline').evaluate(e=>{const r=e.getBoundingClientRect();return {top:e.scrollTop,visible:[...e.querySelectorAll('.cal-month')].filter(n=>{const b=n.getBoundingClientRect();return b.bottom>r.top+12&&b.top<r.bottom-12;}).length,opacity:[...e.querySelectorAll('.acal')].every(n=>getComputedStyle(n).opacity==='1')};});
+        const during=await page.locator('.cal-timeline').evaluate(e=>{const r=e.getBoundingClientRect();return {top:e.scrollTop,visual:window.__grid.getBoundingClientRect().top,visible:[...e.querySelectorAll('.cal-month')].filter(n=>{const b=n.getBoundingClientRect();return b.bottom>r.top+12&&b.top<r.bottom-12;}).length,opacity:[...e.querySelectorAll('.acal')].every(n=>getComputedStyle(n).opacity==='1')};});
         const displacement=await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-before;
         assert.ok(Math.abs(displacement-direction*280)<22,'native touch tracking '+displacement);assert.ok(during.visible>=2);assert.equal(during.opacity,true);
         assert.equal(await page.evaluate(()=>scrollY),pageTop);assert.equal(await page.evaluate(()=>window.__grid.isConnected),true);
         await page.screenshot({path:path.join(shots,`continuous-touch-${width}-${direction<0?'next':'previous'}.png`)});
         await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(300);
-        assert.ok(Math.abs(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop)-during.top)<3,'slow release snapped');assert.equal(await page.evaluate(()=>ASC.mode),'all');
+        const releasedVisual=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);
+        assert.ok(Math.abs(releasedVisual-during.visual)<1.5,'slow release snapped '+JSON.stringify({during:during.visual,released:releasedVisual}));assert.equal(await page.evaluate(()=>ASC.mode),'all');
         await cdp.detach();
       });
       await test(`${width}x${height}: real short ${direction<0?'up':'down'} touch flick retains native momentum`,async()=>{
@@ -515,19 +625,29 @@ async function boot(context, origin) {
       const reduced = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
       await reduced.route("**/*", r => (new URL(r.request().url()).origin === origin ? r.continue() : r.abort()));
       const rp = await boot(reduced, origin);
-      const start = await rp.locator('.cal-timeline').evaluate(e=>e.scrollTop);
       await rp.evaluate(() => document.querySelector('.cal-timeline').scrollIntoView({ block: "center" }));
       const b = await rp.locator('.cal-timeline').boundingBox(),
         x = Math.floor(b.x + b.width / 2),
         y = Math.floor(b.y + b.height / 2);
+      const ref = await rp.evaluate(() => +document.querySelector('.cal-month-current').dataset.offset);
+      const topOf = () => rp.evaluate(o => document.querySelector(`.cal-month[data-offset="${o}"] .acal`).getBoundingClientRect().top, ref);
+      const before = await topOf();
       await rp.mouse.move(x, y);
       await rp.mouse.down();
       for (let i = 1; i <= 6; i++) await rp.mouse.move(x, y - (140 * i) / 6);
-      const during = await rp.evaluate(() => document.querySelectorAll(".cal-vstage").length);
+      const during = await rp.evaluate(() => ({
+        stage: document.querySelectorAll(".cal-vstage").length,
+      }));
+      const duringTop = await topOf();
       await rp.mouse.up();
       await rp.waitForTimeout(120);
-      assert.equal(during, 0);
-      assert.ok(Math.abs(await rp.locator('.cal-timeline').evaluate(e=>e.scrollTop)-start-140)<2);
+      assert.equal(during.stage, 0);
+      assert.ok(Math.abs(before - duringTop - 140) < 2, "direct drag did not track the pointer");
+      const atRelease = await topOf();
+      assert.ok(Math.abs(atRelease - duringTop) < 1.5, "reduced motion moved after release");
+      await rp.waitForTimeout(320);
+      const settled = await topOf();
+      assert.ok(Math.abs(settled - atRelease) < 1.5, "reduced motion kept a momentum loop");
       assert.equal(await rp.evaluate(() => document.querySelectorAll(".cal-vstage").length), 0);
       await reduced.close();
     });
