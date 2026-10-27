@@ -310,9 +310,9 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++}
    await command(sentence,false);assert.equal(await page.locator('.sl-confirm').count(),0);assert.equal(await snap(),before);
   }
  });
- await test('Search stays inactive and cannot call the Smart Log parser, even for a valid log sentence',async()=>{
+  await test('Search is read-only and cannot call the Smart Log parser, even for a valid log sentence',async()=>{
   await reset();await command('How much did I spend?',false);await page.getByRole('button',{name:'Switch to Search',exact:true}).click();assert.equal(await preview.isVisible(),false);
-  await input.fill('Jollibee 450 BDO');const before=await snap();await input.press('Enter');assert.equal(await preview.isVisible(),false);assert.equal(await snap(),before);assert.match(await page.locator('.cb-status').innerText(),/future phase/);
+   await input.fill('Jollibee 450 BDO');const before=await snap();await input.press('Enter');await page.locator('.fs-results').waitFor({state:'visible'});assert.equal(await preview.isVisible(),false);assert.equal(await snap(),before);assert.match(await page.locator('.cb-status').innerText(),/Read-only search/);
  });
  await test('microphone transcript only fills input; one shared parser runs only on explicit submit',async()=>{
   await reset();await page.evaluate(()=>{window.SpeechRecognition=class{constructor(){window.__speech=this}start(){}abort(){}}});

@@ -1,0 +1,34 @@
+/* Financial Search: typography and a single quiet, scrollable results surface. */
+.fs-results { position:absolute; left:0; right:0; bottom:calc(100% + 10px); box-sizing:border-box; padding:20px; overflow:auto; overscroll-behavior:contain; background:var(--card); color:var(--tx); border:1px solid var(--line); border-radius:24px; box-shadow:0 14px 42px #0002; animation:fsEnter .18s ease-out; }
+:root[data-theme="apple"] .fs-results { background:var(--popup-surface); border-color:var(--popup-border); }
+.fs-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.fs-eyebrow { color:var(--mut); font-size:9px; font-weight:650; letter-spacing:.13em; }
+.fs-head h3 { margin:3px 0 0; font-size:18px; letter-spacing:-.025em; }
+.fs-head h3:focus { outline:none; }
+#cap-command-bar .fs-head button { width:44px; height:44px; flex:none; font-size:24px; color:var(--mut); }
+.fs-query { margin:12px 0 10px; font-size:13px; line-height:1.45; overflow-wrap:anywhere; color:var(--mut); }
+.fs-chips { display:flex; flex-wrap:wrap; gap:5px; }
+.fs-chips span { padding:4px 8px; border-radius:8px; background:color-mix(in srgb,var(--mut) 10%,transparent); color:var(--tx); font-size:10px; text-transform:capitalize; }
+.fs-summary { margin:22px 0 16px; }
+.fs-total { font-size:clamp(28px,7vw,40px); font-weight:740; line-height:1.1; letter-spacing:-.045em; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.fs-summary>p { margin:6px 0 14px; color:var(--mut); font-size:12px; }
+.fs-stats { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:11px; color:var(--mut); }
+.fs-stats b { font-weight:600; color:var(--tx); }
+.fs-list { list-style:none; padding:0; margin:0; }
+.fs-row { display:flex; align-items:center; gap:10px; padding:13px 0; border-top:1px solid var(--line); }
+.fs-art { display:grid; place-items:center; flex:none; width:32px; height:32px; font-size:22px; overflow:hidden; }
+.fs-art img,.fs-art svg,.fs-art .ci,.fs-art .bl { width:28px; height:28px; object-fit:contain; }
+.fs-row-main { min-width:0; flex:1; display:grid; gap:3px; }
+.fs-row-main b { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.fs-row-main small { color:var(--mut); font-size:10px; overflow-wrap:anywhere; line-height:1.4; }
+.fs-row>strong { max-width:45%; font-size:13px; font-weight:650; overflow-wrap:anywhere; text-align:right; }
+.fs-expense { color:var(--r); }.fs-income { color:var(--g); }
+.fs-note { margin:12px 0 0; color:var(--mut); font-size:10px; line-height:1.5; }
+.fs-empty { padding:20px 0 12px; }.fs-empty h4 { margin:0 0 8px; font-size:18px; letter-spacing:-.02em; }.fs-empty p { font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.fs-help { color:var(--mut); }
+#cap-command-bar .fs-more { width:100%; min-height:44px; margin:8px 0; border:1px solid var(--line); font-size:12px; }
+body:has(.fs-results:not([hidden])) #cap-command-status { display:none; }
+@keyframes fsEnter { from { opacity:.5; transform:translateY(5px); } to { opacity:1; transform:none; } }
+@media(max-width:360px) { .fs-results { padding:15px; }.fs-row { gap:8px; }.fs-art { width:26px; }.fs-row>strong { font-size:12px; } }
+@media(prefers-reduced-motion:reduce) { .fs-results { animation:none; } }
+html.rm .fs-results,html.noanim .fs-results { animation:none; }

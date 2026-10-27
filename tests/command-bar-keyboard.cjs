@@ -36,11 +36,26 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++}
  const input=page.locator('#cap-command-input'),bar=page.locator('#cap-command-bar'),preview=page.locator('.sl-preview');
  const snapshot=()=>page.evaluate(()=>JSON.stringify(S));const before=await snapshot();
  const viewport=async props=>{await page.evaluate(props=>{Object.assign(visualViewport,props);visualViewport.dispatchEvent(new Event('resize'));visualViewport.dispatchEvent(new Event('scroll'));},props);await page.waitForTimeout(90)};
- const anchor=async()=>{await page.waitForFunction(()=>{const p=CapCommandBar.getPlacement(),r=document.querySelector('#cap-command-bar').getBoundingClientRect();return Math.abs(p.visibleBottom-r.bottom-12)<=2});const p=await page.evaluate(()=>CapCommandBar.getPlacement()),r=await bar.boundingBox();assert.ok(p.keyboard);assert.ok(Math.abs(p.visibleBottom-(p.top+64)-12)<=1);assert.ok(Math.abs(p.visibleBottom-(r.y+r.height)-12)<=2,JSON.stringify({p,r}));};
- await page.evaluate(()=>CapCommandBar.open());await page.waitForFunction(()=>CapCommandBar.getState().state==='open');await page.waitForTimeout(260);
- await test('focus expands modestly; hardware keyboard focus does not imply occlusion',async()=>{
-  const focused=await bar.boundingBox();assert.ok(await bar.evaluate(e=>e.classList.contains('cb-focused')));assert.equal(await page.evaluate(()=>CapCommandBar.getPlacement().keyboard),false);
-  await input.blur();await page.waitForTimeout(280);const unfocused=await bar.boundingBox();assert.ok(focused.width>unfocused.width&&focused.width-unfocused.width<=12);assert.ok(Math.abs(focused.y-unfocused.y)<2);
+  const anchor=async()=>{
+   // Wait for the latest viewport, not a still-aligned previous rotation frame.
+   // Capture placement + DOMRect atomically so protocol latency cannot combine
+   // a portrait placement with a landscape rectangle.
+   const sample=await page.waitForFunction(()=>{
+    const p=CapCommandBar.getPlacement(),r=document.querySelector('#cap-command-bar').getBoundingClientRect(),v=window.visualViewport;
+    const bottom=v?v.offsetTop+v.height:innerHeight;
+    return p.keyboard&&Math.abs(p.visibleBottom-bottom)<=1&&Math.abs(p.visibleBottom-r.bottom-12)<=2?{p,r:{x:r.x,y:r.y,width:r.width,height:r.height}}:false;
+   });
+   const {p,r}=await sample.jsonValue();await sample.dispose();
+   assert.ok(p.keyboard);assert.ok(Math.abs(p.visibleBottom-(p.top+64)-12)<=1);assert.ok(Math.abs(p.visibleBottom-(r.y+r.height)-12)<=2,JSON.stringify({p,r}));
+  };
+  await page.evaluate(()=>CapCommandBar.open());await page.waitForFunction(()=>CapCommandBar.getState().state==='open');await page.waitForTimeout(260);
+  await test('focus expands modestly; hardware keyboard focus does not imply occlusion',async()=>{
+   const settledWidth=async focused=>{
+    const sample=await page.waitForFunction(focused=>{const e=document.querySelector('#cap-command-bar'),r=e.getBoundingClientRect(),p=CapCommandBar.getPlacement();return !!p.focused===focused&&Math.abs(r.width-parseFloat(e.style.width))<.01&&!e.getAnimations().some(a=>a.playState==='running')?{x:r.x,y:r.y,width:r.width,height:r.height}:false},focused);
+    const r=await sample.jsonValue();await sample.dispose();return r;
+   };
+   const focused=await settledWidth(true);assert.ok(await bar.evaluate(e=>e.classList.contains('cb-focused')));assert.equal(await page.evaluate(()=>CapCommandBar.getPlacement().keyboard),false);
+   await input.blur();const unfocused=await settledWidth(false);assert.ok(focused.width>unfocused.width&&focused.width-unfocused.width<=12,JSON.stringify({focused,unfocused}));assert.ok(Math.abs(focused.y-unfocused.y)<2);
   await input.focus();
  });
  for(const [name,width,height,visible,offset] of [

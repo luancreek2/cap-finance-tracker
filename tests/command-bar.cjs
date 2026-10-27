@@ -87,19 +87,23 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
   assert.equal(await page.locator('.cb-mode .cb-current-icon svg circle').count(),1);
   await input.fill('coffee yesterday');
   await page.locator('.cb-mode').click();await page.getByRole('menuitemradio',{name:'Log',exact:true}).click();
-  assert.equal(await input.inputValue(),'coffee yesterday');assert.equal(await input.getAttribute('placeholder'),'Log or search anything…');
+   assert.equal(await input.inputValue(),'','Search text never overwrites the Log draft');assert.equal(await input.getAttribute('placeholder'),'Log or search anything…');
+   await page.evaluate(()=>CapCommandBar.setMode('search'));assert.equal(await input.inputValue(),'coffee yesterday');await page.evaluate(()=>CapCommandBar.setMode('log'));
  });
  await test('typing and Enter in either mode never mutate records, balances, baseline, outbox or sync',async()=>{
   for(const mode of ['Log','Search']){
    await page.locator('.cb-mode').click();await page.getByRole('menuitemradio',{name:mode,exact:true}).click();
-   await input.fill(mode==='Log'?'spent 500 on food from cash':'how much did I spend?');await input.press('Enter');
+    await input.fill(mode==='Log'?'spent 500 on food from cash':'how much did I spend?');await input.press('Enter');
+    if(mode==='Search')await page.locator('.fs-results').waitFor({state:'visible'});
    assert.match(await page.locator('.cb-status').innerText(),/Nothing was submitted/);
    assert.equal(await snapshot(),before);
   }
   assert.equal(requests.length,0);
  });
- await test('Escape dismisses menu first, then contracts bar and restores focus to the trigger',async()=>{
-  await page.locator('.cb-mode').click();await page.keyboard.press('Escape');assert.equal(await page.getByRole('menu').isVisible(),false);assert.equal((await state()).state,'open');
+  await test('Escape dismisses menu, then Search results, then contracts bar and restores trigger focus',async()=>{
+   await page.locator('.cb-mode').click();await page.keyboard.press('Escape');assert.equal(await page.getByRole('menu').isVisible(),false);assert.equal((await state()).state,'open');
+   assert.equal(await page.locator('.fs-results').isVisible(),true);
+   await page.keyboard.press('Escape');assert.equal(await page.locator('.fs-results').isVisible(),false);assert.equal((await state()).state,'open');
   await page.keyboard.press('Escape');await waitClosed();assert.equal(await bar.isVisible(),false);
   assert.equal(await page.locator('#tabs .nav-action').evaluate(e=>e===document.activeElement),true);
   assert.equal(await page.locator('#tabs .nav-action').getAttribute('aria-expanded'),'false');

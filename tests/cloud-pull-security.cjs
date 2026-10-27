@@ -14,6 +14,8 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'tests/command-bar-keyboard.cjs','tests/manual/command-bar-keyboard.md',
   'tests/calendar-inertia.cjs',
   'js/smart-log-parser.js','js/smart-log-merchants.js','js/smart-log.js','css/smart-log.css','tests/smart-log-parser.cjs','tests/smart-log-browser.cjs',
+  'js/financial-search-parser.js','js/financial-search-engine.js','js/financial-search.js','css/financial-search.css','tests/financial-search.cjs','tests/financial-search-browser.cjs',
+  'docs/financial-search.md',
   'supabase_phase6o_transaction_update_delete.sql','tests/sync-presence-diagnostic.cjs',
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',

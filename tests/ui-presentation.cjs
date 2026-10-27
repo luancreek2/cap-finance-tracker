@@ -87,7 +87,7 @@ test('v1.0.5 release notes describe the current features and retain earlier rele
   assert.ok(c.updates[0].changes.length>=7);assert.equal(c.updates[1].version,'1.0.4');assert.equal(c.updates[2].version,'1.0.3');
 });
 test('release shell version bumped and changed UI files are in offline CORE',()=>{
-  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v363/);
+  const worker=read('service-worker.js');assert.match(worker,/cap-shell-v364/);
   for(const file of ['js/app.js','js/cards.js','js/animations.js','css/styles.css','css/animations.css'])assert.ok(worker.includes('./'+file),file);
 });
 console.log(`PASS: ${passed} UI presentation regression checks; local preferences, hand-off guards and layer contract`);

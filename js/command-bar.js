@@ -26,6 +26,7 @@
   const closeButton=document.createElement('button');closeButton.type='button';closeButton.className='cb-close';closeButton.setAttribute('aria-label','Close Command Bar');closeButton.textContent='×';root.appendChild(closeButton);
   let state='closed',mode='log',revision=0,animations=[],statusTimer=0,frame=0,recognition=null,voiceRevision=0;
   let focused=false,keyboard=false,baseline=innerHeight,layoutWidth=innerWidth,restBottom=null,placement=null,dismissal=null;
+  const drafts={log:'',search:''};
   const inertBefore=new Map();
   const trigger=()=>document.querySelector('#tabs .nav-action');
   const reduced=()=>matchMedia('(prefers-reduced-motion:reduce)').matches||document.documentElement.classList.contains('rm')||document.documentElement.classList.contains('noanim');
@@ -137,6 +138,7 @@
   }
   function setMode(next){
     if(!modes[next])return;
+    if(next!==mode){drafts[mode]=input.value;input.value=drafts[next];}
     stopVoice();mode=next;input.placeholder=modes[mode].placeholder;
     selector.setAttribute('aria-label','Command mode: '+modes[mode].label);
     const label=selector.querySelector('.cb-mode-label');label.textContent=modes[mode].label;
@@ -217,7 +219,10 @@
     if(mode==='log'){
       announce('Review the draft before logging. Nothing was submitted.');
       root.dispatchEvent(new CustomEvent('cap:command-submit',{detail:{mode,text:input.value}}));
-    }else{dismissKeyboard();announce('Financial search will be available in a future phase. Nothing was submitted.');}
+    }else{
+      announce('Read-only search. Nothing was submitted.');
+      root.dispatchEvent(new CustomEvent('cap:command-submit',{detail:{mode,text:input.value}}));
+    }
   }
   document.addEventListener('keydown',e=>{
     const picker=ownedPicker();
