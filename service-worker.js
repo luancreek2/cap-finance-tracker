@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v367";
+const VERSION = "cap-shell-v368";
 const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",
@@ -18,6 +18,7 @@ const CORE = [
   "./css/smart-log.css",
   "./css/financial-search.css",
   "./css/financial-health.css",
+  "./css/notifications.css",
   "./js/brand.js",
   "./js/runtime-config.js",
   "./supabase-config.js",
@@ -49,6 +50,8 @@ const CORE = [
   "./js/financial-search.js",
   "./js/financial-health-engine.js",
   "./js/financial-health.js",
+  "./js/notification-engine.js",
+  "./js/notifications.js",
 ];
 const MEDIA = [
   "./assets/icons/cap-16.png",
@@ -180,15 +183,18 @@ self.addEventListener("message", (e) => {
   if (e.data === "SKIP_WAITING") self.skipWaiting();
 });
 
-// Reminder taps: focus an open Cap window instead of opening a duplicate tab.
+// Notification taps never execute financial actions or trust a supplied URL.
+// Phase 5A safely opens the in-app center, not a payment/deep accounting route.
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || "./";
+  const scope = new URL(self.registration.scope);
+  const target = new URL(scope.href);
+  target.searchParams.set("cap-notifications", "1");
   e.waitUntil(
-    self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then((cs) => {
-      const open = cs.find((c) => c.url.indexOf(self.location.origin) === 0);
-      if (open) return open.focus();
-      return self.clients.openWindow(url);
+    self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then(async (cs) => {
+      const open = cs.find((c) => {try {const u = new URL(c.url);return u.origin === scope.origin && u.pathname.startsWith(scope.pathname);} catch (_) {return false;}});
+      if (open) {await open.focus();open.postMessage({type:"cap-notification-open",version:1});return;}
+      return self.clients.openWindow(target.href);
     }),
   );
 });

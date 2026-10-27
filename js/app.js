@@ -3684,7 +3684,7 @@ function bvToggle(){
 function applyHide(){try{document.documentElement.classList.toggle('bvhide',S.hide==1)}catch(e){}}
 function themeLbl(){const t=appearanceTheme();return t=='bluish-white'?'Bluish White':t=='apple'?'Apple Theme':t=='light'?'Light':t=='dark'?'Dark':'Auto'}
 function catCountLbl(){const n=(S.cats||[]).filter(c=>!c.a).length;return n+' categor'+(n==1?'y':'ies')}
-function notifLbl(){const n=notifCfg();if(!n.on)return 'Off';return notifState()=='granted'?'On':'Blocked'}
+function notifLbl(){return window.CapNotifications?.settingsLabel()||'Off'}
 function soundLbl(){return S.snd!=0?'On':'Muted'}
 function secLbl(){try{return JSON.parse(localStorage.getItem(LOCK_KEY)||'{}').pin?'On':(S.hide==1?'Balances hidden':'Off')}catch(e){return S.hide==1?'Balances hidden':'Off'}}
 function cloudOn(){try{return !!(window.CapOff&&CapOff.status().cloud)}catch(e){return false}}
@@ -3820,113 +3820,14 @@ function stCatArch(i){const c=(S.cats||[])[i];if(!c)return;c.a=1;ensureCats();sa
 function stCatRestore(i){const c=(S.cats||[])[i];if(!c)return;delete c.a;ensureCats();save();render();stGo('cat-'+i,1);toast('Category restored',true)}
 function stCatDelAsk(i){const c=(S.cats||[])[i];if(!c)return;
   confirmBox('Delete “'+c.n+'”?','The category is removed from Cap. Any transaction that used it keeps its name in history. This cannot be undone.',()=>{S.cats.splice(i,1);ensureCats();save();render();stGo('categories',1);toast('Category deleted',true)},'Delete')}
-/* ==========================================================================
-   Notifications — real reminders. Cap can only wake the browser while it is
-   open (and catch up the next time it opens), so the copy says exactly that.
-   ========================================================================== */
-/* A read-only view of the reminder settings: absent keys fall back to the defaults
-   without writing anything into the saved document until the user actually changes one. */
-function notifDef(){return {on:0,bills:1,billsD:3,renew:1,renewD:3,trial:1,trialD:3,card:1,cardD:5,budget:1,low:0,lowAmt:500}}
-function notifCfg(){const d=notifDef(),n=(S.notif&&typeof S.notif=='object')?S.notif:{},o={};Object.keys(d).forEach(k=>{o[k]=n[k]==null?d[k]:n[k]});return o}
-function notifPut(k,v){if(!S.notif||typeof S.notif!='object')S.notif={};S.notif[k]=v}
-function notifState(){try{if(!('Notification' in window))return 'unsupported';return Notification.permission}catch(e){return 'unsupported'}}
-function notifPermText(){
-  const s=notifState();
-  return s=='granted'?'Allowed by your browser. Reminders appear while Cap is open, and catch up the next time you open it.'
-    :s=='denied'?'Blocked in your browser. Allow notifications for this site to use reminders.'
-    :s=='unsupported'?'This browser cannot show notifications, so reminders are not available here.'
-    :'Turning this on asks your browser for permission.';
-}
-async function notifFire(title,body,tag){
-  try{
-    if(notifState()!='granted')return false;
-    let reg=null;
-    try{reg=navigator.serviceWorker&&(navigator.serviceWorker.controller?await navigator.serviceWorker.ready:await navigator.serviceWorker.getRegistration())}catch(e){}
-    if(reg&&reg.showNotification){await reg.showNotification(title,{body,tag,icon:'assets/icons/icon-192.png',badge:'assets/icons/icon-192.png',data:{url:'./'}});return true}
-    new Notification(title,{body,tag,icon:'assets/icons/icon-192.png'});return true;
-  }catch(e){
-    try{new Notification(title,{body});return true}catch(_){return false}
-  }
-}
-function notifOnce(k){try{const o=JSON.parse(localStorage.getItem(NOTIF_SEEN)||'{}'),d=o[today]||(o[today]={});if(d[k])return false;d[k]=1;localStorage.setItem(NOTIF_SEEN,JSON.stringify(o));return true}catch(e){return true}}
-function dueWord(d){d=+d;if(d<0)return Math.abs(d)+' day'+(d<-1?'s':'')+' overdue';if(d==0)return 'today';if(d==1)return 'tomorrow';return 'in '+d+' days'}
-function notifScan(){
-  const n=notifCfg();if(!n.on||notifState()!='granted')return;
-  const out=[],d0=bDt(today);
-  const push=(k,t,b)=>{if(notifOnce(k))out.push({k,t,b})};
-  const B=S.bills||[],fq=b=>b.freq&&b.freq!='once';
-  if(+n.bills!==0)B.forEach(b=>{
-    if(isTrial(b)||fq(b))return;
-    const nd=bIso(nextDue(b)),d=Math.round((bDt(nd)-d0)/864e5);
-    if(d<=+n.billsD)push('bill'+b.id+nd,'Bill due '+php(b.amt),b.name+' is due '+dueWord(d));
-  });
-  if(+n.renew!==0)B.forEach(b=>{
-    if(isTrial(b)||!fq(b))return;
-    const nd=bIso(nextDue(b)),d=Math.round((bDt(nd)-d0)/864e5);
-    if(d<=+n.renewD)push('renew'+b.id+nd,'Renewal '+php(b.amt),b.name+' renews '+dueWord(d));
-  });
-  if(+n.trial!==0)B.forEach(b=>{
-    if(!inTrial(b))return;
-    const fb=bIso(subFirstBill(b)),d=Math.round((bDt(fb)-d0)/864e5);
-    if(d<=+n.trialD)push('trial'+b.id+fb,'Free trial ending',b.name+' starts billing '+dueWord(d)+' · '+php(b.amt));
-  });
-  if(+n.card!==0)try{
-    outstandingCardStatements().forEach(s=>{
-      const d=Math.round((bDt(s.due)-d0)/864e5);
-      if(d<=+n.cardD)push('card'+(s.a?s.a.id:'')+s.due,'Card payment due '+php(s.amount),(s.a?s.a.name:'Credit card')+' is due '+dueWord(d));
-    });
-  }catch(e){}
-  if(+n.budget!==0)Object.keys(S.budgets||{}).forEach(c=>{
-    const lim=+S.budgets[c]||0;if(lim<=0)return;
-    let sp=0;try{sp=spent(c)}catch(e){return}
-    if(sp>lim)push('budget'+c+'-'+ym+'v2','Over budget: '+c,php(sp)+' of '+php(lim)+' used this month');
-  });
-  if(+n.low===1)(S.accts||[]).forEach(a=>{
-    if(a.type=='credit')return;
-    if(+a.bal<+n.lowAmt)push('low'+a.id+today,'Low balance',a.name+' is down to '+php(a.bal));
-  });
-  out.slice(0,5).forEach((x,i)=>setTimeout(()=>notifFire(x.t,x.b,x.k),i*400));
-}
-function stNotif(){ stStart();
-  const n=notifCfg(),perm=notifState();
-  const daySel=(k,v,lbl)=>`<select class="st-sel" aria-label="${lbl}" onchange="stNotifSet('${k}',this.value)">${[[0,'On the day'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[5,'5 days before'],[7,'1 week before'],[14,'2 weeks before']].map(o=>`<option value="${o[0]}" ${+v==o[0]?'selected':''}>${o[1]}</option>`).join('')}</select>`;
-  const h=stHead('Notifications','openSettings()')
-    +`<div class="st-box">${stSw('Notifications','Bill, renewal and budget reminders',!!n.on,'stNotifMaster(this.checked)')}</div>`
-    +`<p class="st-note">${notifPermText()}</p>`
-    +`<div class="st-grp eyebrow">Reminders</div><div class="st-box">`
-      +stSw('Bill Reminders','One-off bills',+n.bills!==0,"stNotifSet('bills',this.checked)")
-      +stSel('Bill reminder',daySel('billsD',n.billsD,'Bill reminder'))
-      +stSw('Subscription Renewals','Recurring subscriptions',+n.renew!==0,"stNotifSet('renew',this.checked)")
-      +stSel('Subscription reminder',daySel('renewD',n.renewD,'Subscription reminder'))
-      +stSw('Free Trial Ending','Before the first charge',+n.trial!==0,"stNotifSet('trial',this.checked)")
-      +stSel('Free trial ending',daySel('trialD',n.trialD,'Free trial ending'))
-      +stSw('Credit Card Due Dates','Card statements due soon',+n.card!==0,"stNotifSet('card',this.checked)")
-      +stSel('Credit card payment',daySel('cardD',n.cardD,'Credit card payment'))
-      +stSw('Budget Alerts','When a category reaches its budget',+n.budget!==0,"stNotifSet('budget',this.checked)")
-      +stSw('Low Balance Alerts','When an account falls below your limit',+n.low===1,"stNotifSet('low',this.checked)")
-      +stSel('Low balance limit',`<input class="st-in" type="number" inputmode="decimal" min="0" step="50" style="max-width:130px;text-align:right" value="${+n.lowAmt||0}" onchange="stNotifSet('lowAmt',this.value)">`)
-    +`</div><p class="st-note">Cap cannot run while it is closed, so reminders arrive while the app is open and any you missed appear when you next open it.</p>`
-    +`<div class="st-grp eyebrow">Check it works</div><div class="st-box"><div class="st-r"><span class="f"><b>Send a test reminder</b><small>${perm=='granted'?'Uses your browser notification':'Turn notifications on first'}</small></span><button class="pill" onclick="stNotifTest()">Send</button></div></div>`;
-  stSheet(h,'set-notif',stKeep);
-}
-function stNotifSet(k,v){
-  const val=(k=='billsD'||k=='renewD'||k=='trialD'||k=='cardD'||k=='lowAmt')?Math.max(0,+v||0):((v===true||v==='true')?1:0);
-  notifPut(k,val);
-  save();render();stGo('notif',1)
-}
-function stNotifMaster(on){
-  if(!on){notifPut('on',0);save();render();stGo('notif',1);return}
-  const s=notifState();
-  if(s=='unsupported'){toast('This browser cannot show notifications');stGo('notif',1);return}
-  if(s=='denied'){toast('Notifications are blocked for this site');stGo('notif',1);return}
-  const go=()=>{notifPut('on',1);save();render();stGo('notif',1);notifScan()};
-  if(s=='granted')return go();
-  try{Notification.requestPermission().then(p=>{if(p=='granted')go();else stGo('notif',1)}).catch(()=>stGo('notif',1))}catch(e){stGo('notif',1)}
-}
-function stNotifTest(){
-  if(notifState()!='granted')return toast('Turn notifications on first');
-  notifFire('Cap test reminder','If you can see this, reminders are working.','cap-test').then(ok=>toast(ok?'Test reminder sent':'Could not send a reminder',ok));
-}
+/* Notification-only bridge. Rules, device-local preferences and presentation
+   live in notifications.js; no financial save/render path is used here. */
+function notifCfg(){return window.CapNotifications?.preferences()||{on:false}}
+function notifScan(){return window.CapNotifications?.evaluate()}
+function stNotif(){return window.CapNotifications?.settings()}
+function stNotifSet(k,v){return window.CapNotifications?.setPreference(k,v)}
+function stNotifMaster(on){return stNotifSet('on',on)}
+function stNotifTest(){return window.CapNotifications?.test()}
 /* ---- Sounds & Haptics ---- */
 function stSounds(){ stStart();
   const canVib=hapOk();

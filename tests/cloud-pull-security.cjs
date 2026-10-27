@@ -19,6 +19,7 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'css/financial-health.css','docs/financial-health.md','js/financial-health-engine.js','js/financial-health.js','tests/financial-health.cjs','tests/financial-health-browser.cjs',
   'tests/bluish-white.cjs','tests/bluish-white-browser.cjs',
   'tests/home-logo-browser.cjs',
+  'js/notification-engine.js','js/notifications.js','css/notifications.css','docs/notifications.md','tests/notifications.cjs','tests/notifications-browser.cjs',
   'supabase_phase6o_transaction_update_delete.sql','tests/sync-presence-diagnostic.cjs',
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',

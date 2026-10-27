@@ -72,7 +72,7 @@ test('ChatGPT and Minecraft use local, offline-cached artwork with no remote URL
   assert.match(app,/\{r:'chatgpt\|openai',s:'<img class="ci lg oai-mark" alt="" src="assets\/branding\/chatgpt\.svg">'\}/);
   assert.match(app,/\{r:'minecraft',s:'<img class="ci lg" alt="" src="assets\/branding\/minecraft\.svg">'\}/);
   assert.doesNotMatch(app,/cdn\.simpleicons|api\.iconify|simple-icons\.org/);
-  assert.match(sw,/cap-shell-v367/);
+  assert.match(sw,/cap-shell-v368/);
   assert.match(sw,/\.\/assets\/branding\/chatgpt\.svg/);
   assert.match(sw,/\.\/assets\/branding\/minecraft\.svg/);
 });

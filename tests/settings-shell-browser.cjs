@@ -122,9 +122,9 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
     await page.evaluate(()=>document.documentElement.classList.add('rm'));await open();assert.equal(await page.locator('.st-exit').count(),0);await page.evaluate(()=>document.documentElement.classList.remove('rm'));
   });
   await test('appearance previews, logo and motion controls remain available and settings touch targets fit',async()=>{
-    await go('appearance');assert.equal(await page.locator('.theme-choice').count(),4);assert.equal(await page.locator('.cap-logo-choices button').count(),2);
+    await go('appearance');assert.equal(await page.locator('.theme-choice').count(),5);assert.equal(await page.locator('.cap-logo-choices button').count(),2);
     for(const label of ['Animations','Reduce Motion'])assert.ok((await page.locator('.st-scroll').innerText()).includes(label));
-    for(const theme of ['light','dark','auto','apple']){await page.locator(`[data-theme-choice="${theme}"]`).click();assert.equal(await page.locator(`[data-theme-choice="${theme}"]`).getAttribute('aria-pressed'),'true');}
+    for(const theme of ['light','dark','auto','apple','bluish-white']){await page.locator(`[data-theme-choice="${theme}"]`).click();assert.equal(await page.locator(`[data-theme-choice="${theme}"]`).getAttribute('aria-pressed'),'true');}
     await open();assert.equal(await page.locator('.st-row[onclick]').evaluateAll(es=>es.every(e=>e.getBoundingClientRect().height>=44)),true);
     await go('profile');assert.equal(await page.locator('.st-photo-actions button').evaluateAll(es=>es.every(e=>e.getBoundingClientRect().height>=44)),true);
   });
