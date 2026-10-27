@@ -56,10 +56,10 @@ test('Upcoming unpaid bills reuse Home urgency tiers and live date refresh, paid
 });
 
 test('Upcoming treats logos as presentation only: no box, ring or baked background',()=>{
-  assert.match(css,/\.up-list \.row>\.ico \{ background:none; border:0; border-radius:0; box-shadow:none; \}/);
-  assert.match(css,/\.up-list \.row\.trial>\.ico \{ background:none; box-shadow:none; \}/);
-  assert.match(css,/\.up-list \.row>\.ico \.ci \{ border-radius:0; \}/);
-  assert.match(css,/\.up-list \.row>\.ico \.xcl \{ filter:none; \}/);
+  assert.match(css,/\.up-list \.row>\.ico,\s*\.home-bill-list \.row>\.ico \{ background:none; border:0; border-radius:0; box-shadow:none; \}/);
+  assert.match(css,/\.up-list \.row\.trial>\.ico,\s*\.home-bill-list \.row\.trial>\.ico \{ background:none; box-shadow:none; \}/);
+  assert.match(css,/\.up-list \.row>\.ico \.ci,\s*\.home-bill-list \.row>\.ico \.ci \{ border-radius:0; \}/);
+  assert.match(css,/\.up-list \.row>\.ico \.xcl,\s*\.home-bill-list \.row>\.ico \.xcl \{ filter:none; \}/);
   assert.match(css,/#sb \.up-hero \.ico \{ background:none; border:0; border-radius:0; box-shadow:none; \}/);
   assert.match(css,/\.up-method \.xcl \{ width:24px; height:15\.6px; flex:none;/);
 });
@@ -72,7 +72,7 @@ test('ChatGPT and Minecraft use local, offline-cached artwork with no remote URL
   assert.match(app,/\{r:'chatgpt\|openai',s:'<img class="ci lg oai-mark" alt="" src="assets\/branding\/chatgpt\.svg">'\}/);
   assert.match(app,/\{r:'minecraft',s:'<img class="ci lg" alt="" src="assets\/branding\/minecraft\.svg">'\}/);
   assert.doesNotMatch(app,/cdn\.simpleicons|api\.iconify|simple-icons\.org/);
-  assert.match(sw,/cap-shell-v364/);
+  assert.match(sw,/cap-shell-v367/);
   assert.match(sw,/\.\/assets\/branding\/chatgpt\.svg/);
   assert.match(sw,/\.\/assets\/branding\/minecraft\.svg/);
 });

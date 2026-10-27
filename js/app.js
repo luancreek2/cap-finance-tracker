@@ -1694,8 +1694,8 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
 <div style="margin-bottom:16px">${netChart(cash, owed)}</div>
 <div class="stats"><div class="card"><div class="eyebrow">In</div><b class="g bv home-balance-stat" data-home-stat="${inc}" data-stat-prefix="+">+${php(inc)}</b></div><div class="card"><div class="eyebrow">Out</div><b class="r bv home-balance-stat" data-home-stat="${out}">${php(out)}</b></div><div class="card"><div class="eyebrow">Net</div><b class="${inc - out >= 0 ? "g" : "r"} bv home-balance-stat" data-home-stat="${inc-out}">${php(inc - out)}</b></div></div>
   <div class="grid home-spend-grid" style="margin-top:14px"><div style="min-width:0">${spendingChart()}</div>
-<div><div class="card"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${bv(php(spent(c) - S.budgets[c]))}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
-<div class="card"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map(upRow).join("")}</div></div></div>`;
+<div><div class="card home-bill-list"><div class="eyebrow">Needs attention</div>${due.map(attnRow).join("") + over.map((c) => `<div class="row"><div class="ico">📊</div><div class="f">${c} is over budget<small>+${bv(php(spent(c) - S.budgets[c]))}</small></div></div>`).join("") || '<p class="m">All clear 🎉</p>'}</div>
+<div class="card home-bill-list"><div class="eyebrow">Coming up · ${php(sum(up.map((b) => b.amt)))} out</div>${up.map(upRow).join("")}</div></div></div>`;
       }
       let CH = null;
       /* Balance chart helpers */
@@ -2184,10 +2184,10 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
       ];
       /* Preferences and plan rendering */
       function appearanceTheme() {
-        // Presentation-only override: never add Apple to synced S.theme.
+        // Device-only appearance overrides never enter synced S.theme.
         try {
           const t = localStorage.getItem('cap-appearance-theme');
-          if (['auto','light','dark','apple'].includes(t)) return t;
+          if (['auto','light','dark','apple','bluish-white'].includes(t)) return t;
         } catch (_) {}
         return ['auto','light','dark'].includes(S.theme) ? S.theme : 'auto';
       }
@@ -2197,7 +2197,7 @@ const CAT0 = Object.keys(CATS).map((n) => ({ n, i: CATS[n] }));
         else document.documentElement.setAttribute("data-theme", t);
       }
       function setTheme(t) {
-        if (!['auto','light','dark','apple'].includes(t)) return;
+        if (!['auto','light','dark','apple','bluish-white'].includes(t)) return;
         try { localStorage.setItem('cap-appearance-theme', t); }
         catch (_) { toast('Appearance could not be saved on this device.'); return; }
         applyTheme();
@@ -3682,7 +3682,7 @@ function bvToggle(){
   const s=document.getElementById('st-bvsub');if(s)s.textContent=bvSub();
 }
 function applyHide(){try{document.documentElement.classList.toggle('bvhide',S.hide==1)}catch(e){}}
-function themeLbl(){const t=appearanceTheme();return t=='apple'?'Apple Theme':t=='light'?'Light':t=='dark'?'Dark':'Auto'}
+function themeLbl(){const t=appearanceTheme();return t=='bluish-white'?'Bluish White':t=='apple'?'Apple Theme':t=='light'?'Light':t=='dark'?'Dark':'Auto'}
 function catCountLbl(){const n=(S.cats||[]).filter(c=>!c.a).length;return n+' categor'+(n==1?'y':'ies')}
 function notifLbl(){const n=notifCfg();if(!n.on)return 'Off';return notifState()=='granted'?'On':'Blocked'}
 function soundLbl(){return S.snd!=0?'On':'Muted'}
@@ -3735,14 +3735,14 @@ function stPhoto(inp){const file=inp.files&&inp.files[0];if(!file)return;if(!fil
 function stNoPhoto(){try{localStorage.setItem('cap_profile_photo','')}catch(_){return toast('Could not remove the photo on this device')}stGo('profile',1)}
 /* ---- Appearance ---- */
 function appearancePreview(t,label,selected){
-  const description=t==='auto'?'Follows device':t==='apple'?'Frosted Apple surfaces':t==='dark'?'Quiet dark surfaces':'Clean light surfaces';
+  const description=t==='bluish-white'?'Cool white · calm blue':t==='auto'?'Follows device':t==='apple'?'Frosted Apple surfaces':t==='dark'?'Quiet dark surfaces':'Clean light surfaces';
   return `<button type="button" class="theme-choice${selected?' on':''}" data-theme-choice="${t}" aria-label="${label}" aria-pressed="${selected}" onclick="setTheme('${t}')"><span class="theme-preview preview-${t}" aria-hidden="true"><i class="preview-heading"></i><i class="preview-balance"></i><i class="preview-card"></i><i class="preview-row"></i><i class="preview-nav"><b></b></i></span><span class="theme-choice-name">${label}<span class="theme-choice-check" aria-hidden="true">✓</span></span><small>${description}</small></button>`;
 }
 function stAppearance(){
   stStart();
   const t=appearanceTheme();
   const h=stHead('Appearance','openSettings()')
-    +`<div class="st-grp eyebrow">Theme</div><div class="appearance-themes">${[['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme']].map(x=>appearancePreview(x[0],x[1],t==x[0])).join('')}</div>`
+    +`<div class="st-grp eyebrow">Theme</div><div class="appearance-themes">${[['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme'],['bluish-white','Bluish White']].map(x=>appearancePreview(x[0],x[1],t==x[0])).join('')}</div>`
     +`<p class="st-note">Auto and Apple Theme follow your device's light or dark setting. Appearance stays on this device and does not change Cloud Sync preferences.</p>`
     +capLogoChoices()
     +`<div class="st-grp eyebrow">Motion</div><div class="st-box">`

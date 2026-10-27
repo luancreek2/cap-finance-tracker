@@ -2517,6 +2517,8 @@ nav>div#tabs::before {
 .preview-nav b { display:block; width:30%; height:7px; margin:2px 4px; border-radius:99px; background:var(--preview-ink); }
 .preview-apple .preview-nav { background:linear-gradient(90deg,#ffffff70,#ffffff22); border-color:#ffffff80; box-shadow:inset 0 1px 0 #fff7; }
 .preview-apple .preview-nav b { background:#007aff; }
+.preview-bluish-white { background:radial-gradient(ellipse at 10% 0%,#3977f61f,transparent 70%),#f5f8fc; --preview-card:#fff; --preview-ink:#172033; }
+.preview-bluish-white .preview-nav b { background:#3977f6; }
 .activity-action-menu { display:grid; gap:9px; }
 .activity-action-menu button { margin:0; min-height:44px; text-align:left; }
 .row[data-tx]>.activity-actions,.row[data-xfer]>.activity-actions { width:44px; height:44px; min-width:44px; min-height:44px; margin-left:4px; }
@@ -2557,10 +2559,14 @@ html.rm #tabs .nav-icon,html.rm #tabs .nav-icon *,html.rm #tabs .nav-plus-glyph 
 /* ===== Plan › Upcoming: logo presentation + summary sheets =====
    The icon cell keeps its footprint for alignment, but no background, ring or
    border is drawn around any bill, subscription, card or uploaded logo. */
-.up-list .row>.ico { background:none; border:0; border-radius:0; box-shadow:none; }
-.up-list .row.trial>.ico { background:none; box-shadow:none; }
-.up-list .row>.ico .ci { border-radius:0; }
-.up-list .row>.ico .xcl { filter:none; }
+.up-list .row>.ico,
+.home-bill-list .row>.ico { background:none; border:0; border-radius:0; box-shadow:none; }
+.up-list .row.trial>.ico,
+.home-bill-list .row.trial>.ico { background:none; box-shadow:none; }
+.up-list .row>.ico .ci,
+.home-bill-list .row>.ico .ci { border-radius:0; }
+.up-list .row>.ico .xcl,
+.home-bill-list .row>.ico .xcl { filter:none; }
 .up-method { display:inline-flex; align-items:center; gap:6px; max-width:100%; vertical-align:-3px; }
 .up-method .xcl { width:24px; height:15.6px; flex:none; filter:drop-shadow(0 1px 2px #0004); }
 .up-method>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -2597,3 +2603,29 @@ html.rm #tabs .nav-icon,html.rm #tabs .nav-icon *,html.rm #tabs .nav-plus-glyph 
 #sb .up-hero .chip.up-trial-y { color:var(--uy); }
 #sb .up-hero .chip.up-trial-o { color:var(--ud); }
 @media(max-width:390px) { #sb .up-sheet .pd-r>b { max-width:62%; } }
+
+/* Bluish White is device-only, always bright (including on dark OS settings).
+   Shared tokens cover screens, controls and popups without a parallel theme engine. */
+:root[data-theme="bluish-white"] {
+  color-scheme:light;
+  --bg:#f5f8fc; --bgi:radial-gradient(ellipse at 8% 0%,#3977f612,transparent 48%),#f5f8fc;
+  --card:#fff; --tx:#172033; --mut:#657287; --line:#e2e9f3;
+  --ac:#3977f6; --ac-t:#fff; --g:#23764e; --r:#b44e4d; --uy:#95651f; --ud:#b44e4d;
+  --gl:#fff; --gb:#e2e9f3; --gon:#e9f0ff; --gnav:#f5f8fc;
+  --gsh:0 6px 24px #3044690a; --rim:#ffffffb3; --rim2:#e2e9f3;
+  --color-primary:#3977f6; --color-primary-strong:#2861d2; --color-link:#2861d2;
+  --color-text-primary:#172033; --color-text-secondary:#657287;
+  --color-surface:#fff; --color-surface-secondary:#f5f8fc; --color-divider:#e2e9f3;
+  --color-success:#23764e; --color-danger:#b44e4d; --color-danger-strong:#a03f3e;
+  --color-warning:#95651f; --color-caution:#95651f;
+  --color-glass:rgba(255,255,255,.92); --color-glass-border:#e2e9f3;
+  --nav-fallback:#fff; --nav-highlight:#fff; --nav-shadow:#3044690d;
+  --nav-selected:#e9f0ff; --nav-selected-text:#2861d2; --nav-material:none;
+  --nav-reflection:linear-gradient(180deg,#fff8,transparent);
+  --popup-surface:#fff; --popup-border:#e2e9f3; --popup-scrim:#17203326;
+  --popup-highlight:#fff; --popup-shadow:#30446914; --popup-material:none;
+}
+:root[data-theme="bluish-white"] body { background:var(--bgi); }
+:root[data-theme="bluish-white"] .oai-mark { filter:none; }
+:root[data-theme="bluish-white"] :is(.theme-choice.on,.theme-choice:focus-visible) { outline-color:var(--ac); }
+:root[data-theme="bluish-white"] .theme-choice-check { background:var(--ac); }

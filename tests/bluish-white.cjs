@@ -1,0 +1,17 @@
+/* Execute the actual shared appearance functions. No financial/save/sync IO. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const app=fs.readFileSync(__dirname+'/../js/app.js','utf8'),css=fs.readFileSync(__dirname+'/../css/styles.css','utf8');
+const storage=new Map(),attrs=new Map(),S={theme:'dark',accts:[{id:1,bal:100}],tx:[],budgets:{Food:500}};let pages=0,passed=0;
+const deny=()=>{throw Error('Appearance attempted a financial write')};
+const c={S,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)},document:{documentElement:{setAttribute:(k,v)=>attrs.set(k,v),removeAttribute:k=>attrs.delete(k)}},save:deny,render:deny,CapProductionSync:{request:deny},stGo:k=>{assert.equal(k,'appearance');pages++},toast:()=>{}};vm.createContext(c);
+const load=()=>vm.runInContext(app.slice(app.indexOf('      function appearanceTheme()'),app.indexOf('      function openSettings()')),c);load();const before=JSON.stringify(S);
+const test=(n,f)=>{f();passed++;console.log('PASS '+n)};
+test('Bluish White uses the existing device-local key, not S.theme',()=>{c.setTheme('bluish-white');assert.equal(storage.get('cap-appearance-theme'),'bluish-white');assert.equal(attrs.get('data-theme'),'bluish-white');assert.equal(JSON.stringify(S),before);assert.equal(pages,1);assert.equal(storage.size,1)});
+test('saved selection restores through the actual preference functions',()=>{load();c.applyTheme();assert.equal(c.appearanceTheme(),'bluish-white');assert.equal(attrs.get('data-theme'),'bluish-white')});
+test('all five themes remain compatible and immediately selectable',()=>{for(const t of ['light','dark','auto','apple','bluish-white']){c.setTheme(t);assert.equal(c.appearanceTheme(),t);assert.equal(attrs.get('data-theme'),t==='auto'?undefined:t)}assert.equal(JSON.stringify(S),before)});
+test('invalid preference cannot introduce another theme',()=>{c.setTheme('blue');assert.equal(c.appearanceTheme(),'bluish-white');storage.set('cap-appearance-theme','invalid');assert.equal(c.appearanceTheme(),'dark')});
+test('storage read failure preserves the legacy fallback',()=>{const get=c.localStorage.getItem;c.localStorage.getItem=()=>{throw Error('Unavailable')};assert.equal(c.appearanceTheme(),'dark');c.localStorage.getItem=get});
+test('storage write failure cannot change financial state or theme',()=>{const set=c.localStorage.setItem;c.localStorage.setItem=()=>{throw Error('Unavailable')};c.setTheme('bluish-white');assert.equal(JSON.stringify(S),before);c.localStorage.setItem=set});
+test('selector and label expose the real fifth option',()=>{assert.ok(app.includes("['bluish-white','Bluish White']"));assert.match(app,/t=='bluish-white'\?'Bluish White'/);assert.match(css,/\.preview-bluish-white/)});
+test('new palette is explicit and scoped after legacy dark media defaults',()=>{const block=css.slice(css.lastIndexOf(':root[data-theme="bluish-white"] {'),css.lastIndexOf(':root[data-theme="bluish-white"] body'));for(const token of ['--bg:#f5f8fc','--card:#fff','--tx:#172033','--mut:#657287','--line:#e2e9f3','--ac:#3977f6','--nav-selected:#e9f0ff','--nav-selected-text:#2861d2','--nav-material:none','color-scheme:light'])assert.ok(block.includes(token),token);assert.ok(css.lastIndexOf(':root[data-theme="bluish-white"] {')>css.lastIndexOf('@media(prefers-color-scheme:dark)'))});
+console.log(`PASS: ${passed} Bluish White appearance checks`);

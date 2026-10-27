@@ -76,10 +76,10 @@ function pixel(png){let i=8,data=[];while(i<png.length){const n=png.readUInt32BE
     assert.ok(await page.locator('#cfm.open').count());await page.locator('#cfm-no').click();await pause(page);await page.evaluate(()=>closeS());await pause(page);
     assert.equal(await snapshot(),before);
   });
-  await test('four visual previews select and persist with an accessible non-color indicator',async()=>{
+  await test('five visual previews select and persist with an accessible non-color indicator',async()=>{
     await page.evaluate(()=>stGo('appearance'));await pause(page);
-    assert.equal(await page.locator('.theme-choice .theme-preview').count(),4);
-    for(const [key,label] of [['light','Light'],['dark','Dark'],['auto','Auto'],['apple','Apple Theme']]){
+    assert.equal(await page.locator('.theme-choice .theme-preview').count(),5);
+    for(const [key,label] of [['light','Light'],['dark','Dark'],['auto','Auto'],['bluish-white','Bluish White'],['apple','Apple Theme']]){
       await page.getByRole('button',{name:label,exact:true}).click();await pause(page);
       assert.equal(await page.evaluate(()=>localStorage.getItem('cap-appearance-theme')),key);
       const selected=page.locator('.theme-choice[aria-pressed="true"]');assert.equal(await selected.count(),1);
