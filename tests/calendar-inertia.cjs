@@ -27,6 +27,28 @@ test('first RAF timestamp before/equal to release time waits for a real elapsed 
     f.frame(116);assert.ok(f.t.view.scrollTop>1000);f.finish();
   }
 });
+test('a positive subpixel first frame is not mistaken for a scroll boundary',()=>{
+  for(const direction of [-1,1]){
+    const f=fixture();f.c.startCoast(f.t,direction*.6686626746308106);
+    f.frame(100.7); // Observed browser failure: 0.7ms * 0.6687px/ms rounds to zero CSS px.
+    assert.equal(f.t.view.scrollTop,1000);
+    assert.equal(f.t.coasting,true,'rounding inside the scroll range must not cancel momentum');
+    assert.equal(f.frames.size,1,'one live frame must remain after a subpixel step');
+    f.frame(116.7);assert.ok((f.t.view.scrollTop-1000)*direction>5);f.finish();
+  }
+});
+test('successive subpixel frames accumulate symmetrically without reversing direction',()=>{
+  for(const direction of [-1,1]){
+    const f=fixture();f.c.startCoast(f.t,direction*.1);
+    for(let i=1;i<=20;i++){
+      const before=f.t.view.scrollTop;f.frame(100+i);
+      assert.ok((f.t.view.scrollTop-before)*direction>=0,'fractional carry must not reverse motion');
+    }
+    const travel=(f.t.view.scrollTop-1000)*direction;
+    assert.ok(travel>=1&&travel<=3,'subpixel displacement must accumulate instead of disappearing');
+    f.finish();
+  }
+});
 test('a queued stale RAF cannot cancel or advance a newer gesture momentum loop',()=>{
   const f=fixture();f.c.startCoast(f.t,1);const stale=f.frames.values().next().value;
   f.c.startCoast(f.t,-1);const id=f.t.raf,gen=f.t.coastGen;stale(116);

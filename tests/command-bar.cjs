@@ -48,10 +48,25 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
   assert.equal(await bar.isVisible(),false);assert.equal(await page.locator('#tabs button').count(),5);
   assert.deepEqual(await page.locator('#tabs button').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label'))),['Home','Activity','Add transaction','Plan','Accounts']);
  });
- const before=await snapshot();
- await test('center + morphs from its actual bounds, defaults to Log, focuses after expansion',async()=>{
-  await page.locator('#tabs .nav-action').click();
-  const frames=await page.locator('.cb-surface').evaluate(e=>e.getAnimations().flatMap(a=>a.effect.getKeyframes()));
+  const before=await snapshot();
+  // Observe real WAAPI keyframes when the animation is created. A protocol
+  // round trip after click can outlive the 420ms morph on a loaded renderer;
+  // getAnimations() then correctly returns no active animations.
+  await page.evaluate(()=>{
+   for(const e of document.querySelectorAll('.cb-surface,#cap-command-backdrop')){
+    const animate=e.animate;
+    e.__morphFrames=[];
+    e.animate=function(...args){
+     const animation=animate.apply(this,args);
+     this.__morphFrames=animation.effect.getKeyframes();
+     return animation;
+    };
+   }
+  });
+  await test('center + morphs from its actual bounds, defaults to Log, focuses after expansion',async()=>{
+   await page.locator('.cb-surface').evaluate(e=>{e.__morphFrames=[]});
+   await page.locator('#tabs .nav-action').click();
+   const frames=await page.locator('.cb-surface').evaluate(e=>e.__morphFrames);
   assert.ok(frames.some(f=>f.clipPath&&f.clipPath!=='inset(0px 0px round 32px)'));
   await waitOpen();assert.equal((await state()).mode,'log');assert.equal(await input.getAttribute('placeholder'),'Log or search anything…');
   assert.equal(await input.evaluate(e=>e===document.activeElement),true);
@@ -99,9 +114,10 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
    assert.equal(await page.locator('#tabs .on .nav-label').innerText(),tab);
   }
  });
- await test('shared backdrop fades with morph, keeps command sharp and traps focus away from inert background',async()=>{
-  await page.locator('#tabs .nav-action').click();
-  const frames=await page.locator('#cap-command-backdrop').evaluate(e=>e.getAnimations().flatMap(a=>a.effect.getKeyframes()));assert.ok(frames.some(f=>f.opacity===0||f.opacity==='0'));
+  await test('shared backdrop fades with morph, keeps command sharp and traps focus away from inert background',async()=>{
+   await page.locator('#cap-command-backdrop').evaluate(e=>{e.__morphFrames=[]});
+   await page.locator('#tabs .nav-action').click();
+   const frames=await page.locator('#cap-command-backdrop').evaluate(e=>e.__morphFrames);assert.ok(frames.some(f=>f.opacity===0||f.opacity==='0'));
   await waitOpen();
   assert.equal(await page.locator('#app').evaluate(e=>e.inert),true);assert.equal(await page.locator('nav').evaluate(e=>e.inert),true);
   assert.equal(await bar.getAttribute('aria-modal'),'true');
@@ -198,7 +214,10 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
  for(const width of [320,390,768,1440])for(const theme of ['light','dark','auto','apple'])await test(width+'px '+theme+': bar and dropdown fit, targets remain 44px, themed materials work',async()=>{
   await page.setViewportSize({width,height:900});await page.evaluate(t=>{localStorage.setItem('cap-appearance-theme',t);applyTheme()},theme);
   await open();const r=await bar.boundingBox();assert.ok(r.x>=0&&r.x+r.width<=width);
-  const b=await page.locator('.cb-manual').boundingBox();assert.ok(b.width>=44&&b.height>=44);
+   const b=await page.locator('.cb-manual').boundingBox();
+   // Translated DOMRects can round 44 CSS px to 43.99999999999997.
+   assert.ok(b.width>=44-.001&&b.height>=44-.001,'manual target remains 44 CSS px');
+   assert.ok(await page.locator('.cb-manual').evaluate(e=>parseFloat(getComputedStyle(e).width)>=44&&parseFloat(getComputedStyle(e).height)>=44));
   assert.ok(await input.evaluate(e=>e.clientWidth>=70));
   await page.locator('.cb-mode').click();const m=await page.locator('.cb-menu').boundingBox();assert.ok(m.x>=0&&m.x+m.width<=width);
   assert.equal(await page.locator('.cb-surface').evaluate(e=>getComputedStyle(e).backdropFilter),'none');

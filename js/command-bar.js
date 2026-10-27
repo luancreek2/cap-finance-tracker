@@ -1,6 +1,5 @@
-/* Phase 1: ephemeral UI only. No parsers, financial queries, persistence or sync.
-   Modes are descriptors so future phases can supply separate execution adapters;
-   until then Enter is deliberately inert. Manual entry delegates to openTx(). */
+/* Command Bar shell: no financial writes or parsing here. Mode submission is
+   dispatched to separate adapters; manual entry continues to delegate to openTx(). */
 (function(){
   'use strict';
   const modes=Object.freeze({log:{label:'Log',placeholder:'Log or search anything…'},search:{label:'Search',placeholder:'Search your finances…'}});
@@ -26,13 +25,17 @@
   // adding another visible control to the requested compact input layout.
   const closeButton=document.createElement('button');closeButton.type='button';closeButton.className='cb-close';closeButton.setAttribute('aria-label','Close Command Bar');closeButton.textContent='×';root.appendChild(closeButton);
   let state='closed',mode='log',revision=0,animations=[],statusTimer=0,frame=0,recognition=null,voiceRevision=0;
+  let focused=false,keyboard=false,baseline=innerHeight,layoutWidth=innerWidth,restBottom=null,placement=null,dismissal=null;
   const inertBefore=new Map();
   const trigger=()=>document.querySelector('#tabs .nav-action');
   const reduced=()=>matchMedia('(prefers-reduced-motion:reduce)').matches||document.documentElement.classList.contains('rm')||document.documentElement.classList.contains('noanim');
   const active=()=>state==='open'||state==='opening';
+  const ownedPicker=()=>document.querySelector('.ps-pop[data-command-owner="cap-command-bar"]:not(.out)');
+  const contains=target=>root.contains(target)||target.closest?.('[data-command-owner="cap-command-bar"]');
   function syncTrigger(){const t=trigger();if(t)t.setAttribute('aria-expanded',String(active()));}
   function setState(next){
     state=next;root.inert=!active();const blocking=active()||next==='closing';
+    if(root.hidden&&frame){cancelAnimationFrame(frame);frame=0;}
     document.body.classList.toggle('command-bar-active',blocking);backdrop.hidden=!blocking;
     if(blocking){
       document.querySelectorAll('nav,#app,#settings-button,#pop').forEach(el=>{if(!inertBefore.has(el))inertBefore.set(el,el.inert);el.inert=true;});
@@ -62,6 +65,7 @@
         const parts=[];for(let i=0;i<e.results.length;i++)parts.push(e.results[i][0].transcript);
         const text=parts.join(' ').trim();
         input.value=(base?base+' ':'')+text;
+        root.dispatchEvent(new CustomEvent('cap:command-change'));
       };
       speech.onerror=e=>{
         if(token!==voiceRevision)return;
@@ -72,17 +76,59 @@
     }catch(_){stopVoice();announce('Voice input is unavailable. You can still type.');}
   }
   function focus(el){try{el.focus({preventScroll:true})}catch(_){el.focus()}}
+  const editable=el=>!!el?.matches?.('input:not([type="hidden"]),textarea,select,[contenteditable="true"]');
+  function cancelDismissal(){
+    if(!dismissal)return;
+    const old=dismissal;dismissal=null;clearTimeout(old.quiet);clearTimeout(old.fallback);old.resolve(false);
+  }
+  function finishDismissal(){
+    if(!dismissal)return;
+    const old=dismissal;dismissal=null;clearTimeout(old.quiet);clearTimeout(old.fallback);schedulePosition();old.resolve(active()&&!focused);
+  }
+  function settled(){
+    if(!dismissal)return;
+    clearTimeout(dismissal.quiet);
+    // Start the quiet window only once actual keyboard occlusion has gone.
+    if(!keyboard)dismissal.quiet=setTimeout(finishDismissal,100);
+  }
+  function dismissKeyboard(){
+    cancelDismissal();
+    position();
+    const hadKeyboard=keyboard||baseline-(window.visualViewport?.height??innerHeight)>12;
+    if(root.contains(document.activeElement)&&editable(document.activeElement))document.activeElement.blur();
+    focused=false;root.classList.remove('cb-focused');schedulePosition();
+    if(!hadKeyboard)return Promise.resolve(active());
+    return new Promise(resolve=>{
+      // One compatibility sample, not a polling loop or permission to show over a keyboard.
+      dismissal={resolve,quiet:0,fallback:setTimeout(()=>{position();if(!keyboard)finishDismissal();},450)};
+    });
+  }
   function position(){
+    if(frame)cancelAnimationFrame(frame);
+    frame=0;
     if(root.hidden)return;
     const vv=window.visualViewport,left=vv?vv.offsetLeft:0,top=vv?vv.offsetTop:0,width=vv?vv.width:innerWidth,height=vv?vv.height:innerHeight;
-    const w=Math.min(640,Math.max(0,width-24)),nav=document.querySelector('#tabs')?.getBoundingClientRect();
-    // Keep clear of the visible keyboard, not a guessed vh or keyboard height.
-    const bottom=Math.min(nav?nav.top-12:top+height-90,top+height-12);
-    root.style.width=w+'px';root.style.left=(left+(width-w)/2)+'px';root.style.top=Math.max(top+8,bottom-64)+'px';
-    const roomAbove=parseFloat(root.style.top)-top;
+    const layoutHeight=Math.max(document.documentElement.clientHeight,innerHeight);
+    if(Math.abs(innerWidth-layoutWidth)>80){layoutWidth=innerWidth;baseline=layoutHeight;restBottom=null;}
+    if(!focused&&!keyboard)baseline=Math.max(baseline,layoutHeight,height);
+    const shrink=Math.max(layoutHeight-height,baseline-height);
+    // Focus is a style state, not proof of a software keyboard (iPad hardware keyboards).
+    keyboard=(focused||keyboard||!!dismissal)&&shrink>80&&(!vv||!vv.scale||Math.abs(vv.scale-1)<.05);
+    const safe=parseFloat(getComputedStyle(root).getPropertyValue('--cb-safe-bottom'))||0;
+    const nav=!keyboard?document.querySelector('#tabs')?.getBoundingClientRect():null;
+    if(!keyboard)restBottom=nav?nav.top-12:top+height-76-safe;
+    const bottom=keyboard?top+height-12:Math.min(restBottom??top+height-76-safe,top+height-12-safe);
+    const w=Math.min(focused?652:640,Math.max(0,width-(focused?24:32)));
+    const x=Math.round(left+(width-w)/2),y=Math.round(Math.max(top+8,bottom-64));
+    root.classList.toggle('cb-keyboard',keyboard||!!dismissal);
+    root.style.width=w+'px';root.style.transform=`translate3d(${x}px,${y}px,0)`;
+    const roomAbove=y-top;
     menu.style.bottom=roomAbove<116?'auto':'calc(100% + 8px)';menu.style.top=roomAbove<116?'calc(100% + 8px)':'auto';
+    placement={top:y,visibleTop:top,visibleBottom:top+height,keyboard,focused};
+    root.dispatchEvent(new CustomEvent('cap:command-position',{detail:placement}));
+    settled();
   }
-  function schedulePosition(){cancelAnimationFrame(frame);frame=requestAnimationFrame(position);}
+  function schedulePosition(){if(!root.hidden&&!frame)frame=requestAnimationFrame(position);}
   function closeMenu(restore){menu.hidden=true;selector.setAttribute('aria-expanded','false');if(restore)focus(selector);}
   function openMenu(){
     if(!active())return;
@@ -100,6 +146,7 @@
       modeIcon.animate?.([{opacity:0},{opacity:1}],{duration:160,easing:'ease-out'});
     }
     menu.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.mode===mode)));
+    root.dispatchEvent(new CustomEvent('cap:command-change'));
     closeMenu(false);clearStatus();focus(input);
   }
   function geometry(){
@@ -123,14 +170,16 @@
   async function open(){
     if(active())return;
     if(document.getElementById('sheet')?.classList.contains('open')||document.getElementById('lock')?.classList.contains('open'))return;
-    const token=++revision,fresh=root.hidden;root.hidden=false;setState('opening');closeMenu(false);clearStatus();position();
+    const token=++revision,fresh=root.hidden;if(fresh)root.classList.remove('cb-positioned');root.hidden=false;setState('opening');closeMenu(false);clearStatus();position();
     await morph(true,token,fresh);if(token!==revision)return;
-    cancelAnimations();ghost.hidden=true;manual.style.opacity='';setState('open');
-    focus(input);position();
+    cancelAnimations();ghost.hidden=true;manual.style.opacity='';root.classList.add('cb-positioned');setState('open');
+    focus(root.querySelector('.sl-preview:not([hidden]) h3')||input);position();
   }
   async function close(options={}){
     if(state==='closed')return;
     const token=++revision;
+    cancelDismissal();
+    root.dispatchEvent(new CustomEvent('cap:command-close'));
     stopVoice();closeMenu(false);clearStatus();input.blur();
     if(state==='suspended'){setState('closed');root.hidden=true;return;}
     setState('closing');
@@ -138,17 +187,18 @@
     root.hidden=true;cancelAnimations();ghost.hidden=true;manual.style.opacity='';setState('closed');
     if(options.restoreFocus!==false&&trigger())focus(trigger());
   }
-  function manualEntry(){
+  function suspend(work){
     if(!active())return;
-    ++revision;stopVoice();cancelAnimations();closeMenu(false);clearStatus();input.blur();root.hidden=true;setState('suspended');
+    ++revision;cancelDismissal();stopVoice();cancelAnimations();closeMenu(false);clearStatus();input.blur();root.hidden=true;setState('suspended');
     // The form, validation, save and transaction accounting remain entirely existing code.
-    try{window.openTx()}catch(error){setState('closed');open();throw error;}
+    try{work()}catch(error){setState('closed');open();throw error;}
   }
+  function manualEntry(){suspend(()=>window.openTx())}
   manual.addEventListener('click',manualEntry);
   closeButton.addEventListener('click',()=>close());
   mic.addEventListener('click',startVoice);
   backdrop.addEventListener('wheel',e=>e.preventDefault(),{passive:false});
-  input.addEventListener('input',()=>{if(recognition)stopVoice()});
+  input.addEventListener('input',()=>{if(recognition)stopVoice();root.dispatchEvent(new CustomEvent('cap:command-change'))});
   selector.addEventListener('click',()=>menu.hidden?openMenu():closeMenu(true));
   selector.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();openMenu();}});
   menu.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)setMode(b.dataset.mode)});
@@ -160,28 +210,50 @@
   input.addEventListener('keydown',e=>{
     if(e.key!=='Enter'||e.isComposing)return;
     e.preventDefault();e.stopPropagation();stopVoice();closeMenu(false);clearStatus();
-    status.textContent=(mode==='log'?'Log commands':'Financial search')+' will be available in a future phase. Nothing was submitted.';
-    status.hidden=false;statusTimer=setTimeout(clearStatus,3500);
+    submitCommand();
   });
+  function submitCommand(){
+    stopVoice();closeMenu(false);clearStatus();
+    if(mode==='log'){
+      announce('Review the draft before logging. Nothing was submitted.');
+      root.dispatchEvent(new CustomEvent('cap:command-submit',{detail:{mode,text:input.value}}));
+    }else{dismissKeyboard();announce('Financial search will be available in a future phase. Nothing was submitted.');}
+  }
   document.addEventListener('keydown',e=>{
+    const picker=ownedPicker();
+    if(picker&&active()&&['Escape','Tab'].includes(e.key)){
+      e.preventDefault();e.stopPropagation();const anchor=root.querySelector('.ps-btn[aria-expanded="true"]');
+      picker.dispatchEvent(new Event('cap:overlay-dismiss'));focus(anchor||input);return;
+    }
     if(e.key==='Tab'&&active()){
       if(!menu.hidden){e.preventDefault();closeMenu(false);focus(e.shiftKey?selector:mic);return;}
-      const controls=[closeButton,manual,input,selector,mic];
+      const controls=[closeButton,...root.querySelectorAll('button,input,select,textarea')].filter((e,i,all)=>all.indexOf(e)===i&&!e.disabled&&!e.closest('[hidden]')&&e.getClientRects().length);
       const i=controls.indexOf(document.activeElement);
       e.preventDefault();focus(controls[(i+(e.shiftKey?-1:1)+controls.length)%controls.length]);
     }
     if(e.key!=='Escape'||!active())return;
-    e.preventDefault();e.stopPropagation();if(recognition){stopVoice();announce('Voice input stopped. Nothing was submitted.');}else if(!menu.hidden)closeMenu(true);else close();
+    e.preventDefault();e.stopPropagation();if(recognition){stopVoice();announce('Voice input stopped. Nothing was submitted.');}else if(!menu.hidden)closeMenu(true);else{
+      const event=new CustomEvent('cap:command-escape',{cancelable:true});if(root.dispatchEvent(event))close();
+    }
   },true);
   document.addEventListener('pointerdown',e=>{
-    if(!active()||root.contains(e.target))return;
+    if(!active()||contains(e.target))return;
     e.preventDefault();e.stopPropagation();close();
   },true);
   // Keyboard-activated navigation needs the same hand-off as pointer navigation.
   document.addEventListener('click',e=>{
-    if((active()||state==='closing')&&!root.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();if(active())close();}
+    if((active()||state==='closing')&&!contains(e.target)){e.preventDefault();e.stopImmediatePropagation();if(active())close();}
   },true);
-  document.addEventListener('focusin',e=>{if(active()&&!root.contains(e.target))focus(input);});
+  document.addEventListener('focusin',e=>{if(active()&&!contains(e.target))focus(input);});
+  root.addEventListener('focusin',e=>{
+    if(!editable(e.target))return;
+    cancelDismissal();focused=true;root.classList.add('cb-focused');schedulePosition();
+    root.dispatchEvent(new CustomEvent('cap:command-edit-focus',{detail:{command:e.target===input}}));
+  });
+  root.addEventListener('focusout',()=>{
+    // focusout precedes focusin when moving between owned editor controls.
+    queueMicrotask(()=>{focused=contains(document.activeElement)&&editable(document.activeElement);root.classList.toggle('cb-focused',focused);schedulePosition();});
+  });
   new MutationObserver(()=>{syncTrigger();if(active())schedulePosition()}).observe(document.getElementById('tabs'),{childList:true});
   new MutationObserver(()=>{
     const sheet=document.getElementById('sheet');
@@ -190,8 +262,9 @@
   }).observe(document.getElementById('sheet'),{attributes:true,attributeFilter:['class']});
   new MutationObserver(()=>{if(document.getElementById('lock').classList.contains('open'))close({restoreFocus:false});}).observe(document.getElementById('lock'),{attributes:true,attributeFilter:['class']});
   addEventListener('resize',schedulePosition);
+  addEventListener('orientationchange',()=>{restBottom=null;baseline=0;layoutWidth=0;schedulePosition();});
   window.visualViewport?.addEventListener('resize',schedulePosition);
   window.visualViewport?.addEventListener('scroll',schedulePosition);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopVoice()});
-  window.CapCommandBar=Object.freeze({open,close,toggle:()=>active()?close():open(),getState:()=>({state,mode})});
+  window.CapCommandBar=Object.freeze({open,close,suspend,setMode,dismissKeyboard,submit:submitCommand,toggle:()=>active()?close():open(),getState:()=>({state,mode}),getPlacement:()=>placement});
 })();

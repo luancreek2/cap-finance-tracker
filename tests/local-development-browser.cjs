@@ -73,6 +73,8 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);
   });
   await test('Your Profile alone shows red Sign Out and a read-only email disclosure without extra requests',async()=>{
+    await page.waitForFunction(()=>window.StShell&&!window.capLaunchActive);
+    await page.evaluate(()=>{if(document.querySelector('.whats-new-overlay'))closeWhatsNew()});
     await page.evaluate(()=>{localStorage.setItem('cap-appearance-theme','apple');applyTheme();openSettings();});assert.equal(await page.getByRole('button',{name:'Sign Out',exact:true}).count(),0);
     const start=requests.length;await page.getByRole('button',{name:'Your Profile',exact:true}).click();
     const button=page.getByRole('button',{name:'Sign Out',exact:true});assert.equal(await button.count(),1);
@@ -112,7 +114,8 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     await prod.evaluate(()=>navigator.serviceWorker.ready);await prod.reload();await prod.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await context.setOffline(true);await prod.reload();
     assert.equal(await prod.evaluate(()=>CapSupabase.configured()),true);assert.equal(await prod.locator('.cap-local-indicator').count(),0);
-    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v355')));
+    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v363')));
+    assert.equal(await prod.evaluate(()=>typeof CapSmartLogParser?.parse),'function');
     await prod.waitForFunction(()=>window.StShell&&window.CapOverlays&&!window.capLaunchActive);
     const offlineSettings=await prod.evaluate(()=>{
       if(document.querySelector('.whats-new-overlay'))closeWhatsNew();

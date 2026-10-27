@@ -2445,6 +2445,9 @@ const XBR=[
  {r:"pldt|fibr",s:'<img class="ci lg" alt="" src="assets/media/media-912569743662.webp">'},
  {r:"puregold|pure gold",s:'<img class="ci lg" alt="" src="assets/media/media-c72d8b39a5da.webp">'},
  {r:"jollibee|jolly ?spaghetti|chickenjoy",s:'<img class="ci lg" alt="" src="assets/media/media-784db5476c1a.webp">'},
+ {r:"mcdonald'?s|\\bmcdo\\b",s:_bd('#DA291C','<path d="M5 17V9.5a3 3 0 0 1 6 0V17M13 17V9.5a3 3 0 0 1 6 0V17" stroke="#FFC72C" stroke-width="2.6" fill="none" stroke-linecap="round"/>')},
+ {r:"kfc|kentucky fried",s:_bd('#C8102E',_tx('KFC',7.2,'#fff',15))},
+ {r:"starbucks",s:_bd('#00704A','<circle cx="12" cy="12" r="6.4" fill="none" stroke="#fff" stroke-width="1.4"/><path d="M12 7.6l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" fill="#fff"/>')},
  {r:"\\bsm\\b|sm supermall|sm mall|sm hyper|sm city|sm savemore|sm store|sm markets?",s:'<img class="ci lg" alt="" src="assets/media/media-f094ad645fc2.webp">'},
  {r:"kenny ?rogers|\\bkrr\\b",s:'<img class="ci lg" alt="" src="assets/media/media-45199bcfde38.webp">'},
  {r:"max[’']?s (restaurant|fried|chicken)|\\bmax[’']?s\\b",s:'<img class="ci lg" alt="" src="assets/media/media-db2cc84b3a80.webp">'},
@@ -2468,6 +2471,8 @@ const XBR=[
  {r:'cimb',s:_bd('#B3261E',_tx('CIMB',6.6,'#fff',14.5))},
  {r:'gotyme|go ?tyme',s:_bd('#00B5B8',_tx('GT',10.5,'#fff',16))},
  {r:'lazada',s:_bd('#0F146D',_em('💙'))},
+ {r:'shopee',s:_bd('#EE4D2D','<path d="M7 9h10l-1 9H8L7 9Z" fill="#fff"/><path d="M9.5 9V7a2.5 2.5 0 0 1 5 0v2" stroke="#fff" stroke-width="1.6" fill="none"/>')},
+ {r:'grabfood|grab food|grab ride|grab car|grab taxi|\\bgrab\\b',s:_bd('#00B14F',_tx('Grab',6.2,'#fff',14.5))},
  {r:'7-?eleven|seven.?eleven',s:_bd('#F26B1D',_tx('7',15,'#fff',17.5)+'<rect x="5" y="19" width="14" height="1.6" rx=".8" fill="#00873C"/>')},
  {r:'mercury ?drug',s:_bd('#D71920',_em('💊'))},
  {r:'disney',s:_bd('#113CCF',_tx('D+',9.5,'#fff',15.5))},
@@ -4838,14 +4843,14 @@ function stBoot(){
 function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement('a');a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}
 function expJSON(){dl(`cap-financetracker-backup-${today}.json`,JSON.stringify({app:'cap-finance-tracker',version:'1.01',exported:new Date().toISOString(),data:S},null,1),'application/json');toast('Backup exported')}
 const q2=v=>{v=String(v==null?'':v);return/[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-function expCSV(){const rows=[...S.tx.map(t=>[t,'posted']),...S.pend.map(t=>[t,'pending'])].sort((a,b)=>a[0].d.localeCompare(b[0].d)).map(([t,s])=>{const a=acct(t.acct);return[t.id,t.d,t.pd||'',t.amt<0?'expense':'income',s,t.amt,t.cat,a.name,a.type||'',t.note||''].map(q2).join(',')});dl(`cap-financetracker-transactions-${today}.csv`,'\ufeff'+['id,date,posting_date,type,status,amount,category,account,account_type,description',...rows].join('\r\n'),'text/csv');toast('Transactions exported')}
+function expCSV(){const rows=[...S.tx.map(t=>[t,'posted']),...S.pend.map(t=>[t,'pending'])].sort((a,b)=>a[0].d.localeCompare(b[0].d)).map(([t,s])=>{const a=acct(t.acct);return[t.id,t.d,t.tm||'',t.pd||'',t.amt<0?'expense':'income',s,t.amt,t.cat,a.name,a.type||'',t.note||''].map(q2).join(',')});dl(`cap-financetracker-transactions-${today}.csv`,'\ufeff'+['id,date,time,posting_date,type,status,amount,category,account,account_type,description',...rows].join('\r\n'),'text/csv');toast('Transactions exported')}
 function csvP(t){t=t.replace(/^\ufeff/,'');const R=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const h=t[i];if(q){if(h=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=h}else if(h=='"')q=true;else if(h==','){r.push(c);c=''}else if(h=='\n'||h=='\r'){if(h=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';if(r.some(x=>x!==''))R.push(r);r=[]}else c+=h}r.push(c);if(r.some(x=>x!==''))R.push(r);return R}
 const sig=t=>[t.d,Math.round(t.amt*100),t.acct,(t.note||'').trim().toLowerCase()].join('|'),DRE=/^\d{4}-\d{2}-\d{2}$/;let IMP=null;
 function csvPlan(txt){const R=csvP(txt);if(R.length<2)throw Error('The CSV has no data rows.');const H=R[0].map(h=>h.trim().toLowerCase().replace(/\s+/g,'_')),ix=n=>H.indexOf(n);if(ix('date')<0||ix('amount')<0)throw Error('The CSV needs at least “date” and “amount” columns.');
 const g=(r,n)=>{const i=ix(n);return i<0?'':String(r[i]||'').trim()},seen=new Set([...S.tx,...S.pend].map(sig)),ids=new Set([...S.tx,...S.pend].map(t=>String(t.id))),ok=[],bad=[];let dup=0;
 R.slice(1).forEach((r,n)=>{const ln=n+2,d=g(r,'date'),ty=g(r,'type').toLowerCase();let amt=+g(r,'amount').replace(/[^\d.\-]/g,'');const an=g(r,'account').toLowerCase(),a=S.accts.find(x=>String(x.id)==g(r,'account_id')||x.name.toLowerCase()==an);let e=null;
 if(!DRE.test(d)||isNaN(new Date(d+'T00:00:00')))e='invalid date (use YYYY-MM-DD)';else if(!Number.isFinite(amt)||!amt)e='invalid amount';else if(!a)e='unknown account “'+g(r,'account')+'”';if(e){bad.push(`Row ${ln}: ${e}`);return}
-if(ty=='expense'&&amt>0)amt=-amt;if(ty=='income'&&amt<0)amt=-amt;const cat=g(r,'category'),pd=g(r,'posting_date'),st=g(r,'status').toLowerCase()=='pending'&&a.type=='credit'?'pending':'posted',t={id:uid(),d,amt,cat:CATS[cat]?cat:'Other',acct:a.id,note:g(r,'description')||g(r,'note')};
+if(ty=='expense'&&amt>0)amt=-amt;if(ty=='income'&&amt<0)amt=-amt;const cat=g(r,'category'),pd=g(r,'posting_date'),st=g(r,'status').toLowerCase()=='pending'&&a.type=='credit'?'pending':'posted',t={id:uid(),d,amt,cat:CATS[cat]?cat:'Other',acct:a.id,note:g(r,'description')||g(r,'note')};const tm=g(r,'time');if(/^([01]\d|2[0-3]):[0-5]\d$/.test(tm))t.tm=tm;
 if(st=='posted'&&a.type=='credit'&&DRE.test(pd)&&pd>=d)t.pd=pd;const oid=g(r,'id');if(seen.has(sig(t))||(oid&&ids.has(oid))){dup++;return}seen.add(sig(t));ok.push({t,st})});return{kind:'csv',ok,dup,bad}}
 function jsonPlan(txt){const o=JSON.parse(txt),d=o&&o.data&&o.data.accts?o.data:o,E=[];if(!d||!Array.isArray(d.accts)||!Array.isArray(d.tx))throw Error('This isn’t a Cap backup: accounts or transactions are missing.');const N=x=>typeof x=='number'&&isFinite(x),ids=new Set();
 d.accts.forEach((a,i)=>{if(!a||!N(a.id)||typeof a.name!='string'||!['debit','credit','ewallet'].includes(a.type)||!Number.isFinite(+a.bal))E.push('Account #'+(i+1)+' is invalid');else ids.add(a.id)});
@@ -4967,6 +4972,7 @@ window.CapOverlays={
   function open(s,b,kind){
     close(false,true);
     const p=document.createElement('div'); p.className='ps-pop'; p.setAttribute('role','listbox');
+    const commandOwner=b.closest('#cap-command-bar');if(commandOwner)p.dataset.commandOwner=commandOwner.id;
     if(kind=='acct'){p.classList.add('grid');
       p.innerHTML=[...s.options].map((o,i)=>{if(o.disabled)return'';const a=acctOf(o.value);
         return `<div class="ps-copt${o.selected?' on':''}" role="option" tabindex="0" aria-selected="${o.selected}" aria-label="${esc(a?a.name:o.text)}" data-i="${i}"><div class="pick">${a?cardH(a,false,false):''}</div><span class="ps-cap">${a?esc(a.name)+(a.l4?' •• '+esc(a.l4):''):esc(o.text)}</span></div>`}).join('');
@@ -4987,8 +4993,8 @@ window.CapOverlays={
       else if(e.key=='Tab')close();});
     (sel||p.querySelector('[role=option]'))?.focus({preventScroll:true});
   }
-  function enhance(){
-    const root=document.getElementById('sb'); if(!root)return;
+  function enhance(scope){
+    const root=scope?.nodeType===1?scope:document.getElementById('sb'); if(!root)return;
     root.querySelectorAll('select').forEach(s=>{
       if(s.dataset.ps)return; const kind=kindOf(s); if(!kind)return; s.dataset.ps=1;
       const b=document.createElement('button'); b.type='button'; b.className='ps-btn';

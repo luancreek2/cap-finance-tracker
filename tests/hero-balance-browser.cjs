@@ -7,6 +7,10 @@ const shots=path.join(process.env.LOCALAPPDATA||process.env.TEMP,'Temp','opencod
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp','.svg':'image/svg+xml','.mp3':'audio/mpeg'};
 const samples=['₱0.00','₱1.00','₱999.99','₱14,181.20','₱18,969.00','₱999,999.99','₱1,234,567.89'];
 const sizes=[[320,740],[390,844],[768,1024],[1024,768],[1440,900]];
+// CSSOM may serialize the identical multi-word family quoted (Chromium) or
+// unquoted (WebKit). Keep the exact family list/order, not serializer punctuation.
+const fontFamily=value=>value.replace(/(['"])Segoe UI\1/g,'Segoe UI');
+const expectedFamily='-apple-system, Segoe UI, Inter, Roboto, sans-serif';
 let server,browser,passed=0,requests=0;
 async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
 (async()=>{
@@ -39,7 +43,7 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
         const s=getComputedStyle(document.body),h=getComputedStyle(document.querySelector('#chv.ch-balance'));
         return {body:s.fontFamily,hero:h.fontFamily,numeric:h.fontVariantNumeric,features:h.fontFeatureSettings};
       });
-      assert.match(a.body,/-apple-system, "Segoe UI", Inter, Roboto, sans-serif/);
+      assert.equal(fontFamily(a.body),expectedFamily);
       assert.equal(a.body,a.hero);
       assert.equal(a.numeric,'normal');assert.equal(a.features,'normal');
       assert.equal(await page.evaluate(()=>CSS.supports('font-variant-numeric','proportional-nums')),true);
@@ -65,7 +69,7 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name);}
           assert.equal(r.stretch,'100%',label);assert.equal(r.size,'44px',label);
           assert.equal(r.weight,'700',label);
           assert.ok(Math.abs(parseFloat(r.spacing)+.88)<.01,label+' original tracking changed');
-          assert.match(r.font,/-apple-system, "Segoe UI", Inter, Roboto, sans-serif/);
+          assert.equal(fontFamily(r.font),expectedFamily);
           assert.equal(r.whiteSpace,'nowrap',label);assert.equal(r.lines,1,label);
           assert.ok(r.ink.right<=r.rect.right+1&&r.ink.left>=r.rect.left-1,label+' clipped amount');
           assert.ok(r.rect.right<=r.parent.right+1&&r.rect.left>=r.parent.left-1,label+' amount overflow');

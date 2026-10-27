@@ -1336,7 +1336,11 @@ function initActivityScope() {
     const firstVisible = [...t.strip.children].find(s => s.offsetTop + s.offsetHeight > t.view.scrollTop);
     const before = firstVisible?.offsetTop || 0;
     for (const s of [...t.strip.children]) if (Math.abs(+s.dataset.offset - t.offset) > 3) s.remove();
-    if (firstVisible?.isConnected) t.view.scrollTop += firstVisible.offsetTop - before;
+    // Trimming can leave the first visible section's offset unchanged.
+    // Writing scrollTop with an unchanged value is not free: it
+    // cancels an in-flight smooth scroll (the arrow step's month animation).
+    const shift = firstVisible ? firstVisible.offsetTop - before : 0;
+    if (firstVisible?.isConnected && shift) t.view.scrollTop += shift;
   }
   function settleTimeline(t) {
     if (!t || !t.w.isConnected || t.touching || t.dragging || t.raf || t.coasting) return;
@@ -1435,7 +1439,7 @@ function initActivityScope() {
     const gen = t.coastGen,
       budget = Math.max(0, t.view.clientHeight * COAST_VIEWPORTS),
       started = performance.now();
-    let previous = started, travelled = 0;
+    let previous = started, travelled = 0, fractional = 0;
     t.coasting = true;
     const tick = time => {
       // An invalidated frame no longer owns this scroller. In particular, it
@@ -1451,11 +1455,15 @@ function initActivityScope() {
       if (time <= previous) { t.raf = requestAnimationFrame(tick);return; }
       const dt = Math.min(32, time - previous);
       previous = time;
-      const step = Math.max(-room, Math.min(room, velocity * dt));
+      const step = Math.max(-room, Math.min(room, velocity * dt + fractional));
       const before = t.view.scrollTop;
       t.view.scrollTop = before + step;
       const moved = t.view.scrollTop - before;
-      if (!moved) { stopCoast(t);settleTimeline(t);return; }
+      // scrollTop can quantize a positive elapsed step to zero CSS pixels. Carry
+      // that remainder into the next frame; only an unfulfilled whole-pixel step
+      // proves the scroller is blocked. Frame phase must not cancel a valid flick.
+      fractional = step - moved;
+      if (!moved && Math.abs(step) >= 1) { stopCoast(t);settleTimeline(t);return; }
       travelled += Math.abs(moved);
       velocity *= Math.exp(-dt / COAST_TAU);
       timelineScrolled(t);

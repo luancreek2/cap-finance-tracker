@@ -29,8 +29,11 @@ async function test(name, fn) {
   passed++;
   console.log("PASS " + name);
 }
-async function boot(context, origin) {
+async function boot(context, origin, pointerClock=false) {
   const page = await context.newPage();
+  // Install before app timers/RAF are registered. It runs normally except inside
+  // the repeated-swipe experiment and belongs only to this disposable context.
+  if(pointerClock)await page.clock.install();
   await page.goto(origin);
   await page.waitForFunction(() => window.CapOverlays && window.CapProductionSync && !window.capLaunchActive);
   await page.evaluate(() => {
@@ -97,7 +100,7 @@ async function boot(context, origin) {
     browser = await chromium.launch({ channel: "chrome", headless: true });
     const context = await browser.newContext({ reducedMotion: "no-preference", viewport: { width: 390, height: 844 }, hasTouch: true });
     await context.route("**/*", r => (new URL(r.request().url()).origin === origin ? r.continue() : r.abort()));
-    const page = await boot(context, origin);
+    const page = await boot(context, origin, true);
     await test("calendar weekday headers use three-letter names", async () => {
       assert.deepEqual(await page.locator("#calwrap .cal-weekdays span").allTextContents(),
         ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
@@ -132,15 +135,18 @@ async function boot(context, origin) {
       await page.waitForTimeout(80);
       return page.locator('.cal-timeline').boundingBox();
     };
+    let controlledPointerClock=false;
     const quickDrag = async (dy, hold) => {
       const b = await page.locator('.cal-timeline').boundingBox(),
         x = Math.floor(b.x + b.width / 2),
         y = Math.floor(dy < 0 ? b.y + b.height - 35 : b.y + 35);
       await page.mouse.move(x, y);
       await page.mouse.down();
-      /* one protocol round trip for the whole gesture: a flick must not lose its
-         velocity to test-harness latency between the last move and pointerup */
-      await page.mouse.move(x, y + dy, { steps: 12 });
+      if(controlledPointerClock){
+        // Twelve real mouse moves over 96ms of application time: driver latency
+        // cannot turn a defined flick into a slow drag or a held release.
+        for(let i=1;i<=12;i++){await page.mouse.move(x,y+dy*i/12);await page.clock.runFor(8);}
+      }else await page.mouse.move(x, y + dy, { steps: 12 });
       if (hold) await hold();
       await page.mouse.up();
     };
@@ -262,6 +268,11 @@ async function boot(context, origin) {
       assert.ok(Math.abs(await page.locator('.cal-month-current').evaluate(e=>e.getBoundingClientRect().top)-parked)<0.6,'momentum never stopped');
     });
     await test('repeated swipes start from rest and do not add stale velocity',async()=>{
+      // This assertion compares equal-speed flicks, not arbitrary CDP throughput.
+      // Pause ahead of the current time (not a sleep), then initialize the strip.
+      await page.clock.pauseAt(await page.evaluate(()=>Date.now()+1000));
+      controlledPointerClock=true;
+      try{
       await resetTimeline();
       const topOf=k=>page.evaluate(k=>{const s=document.querySelector(`.cal-month[data-offset="${k}"]`);return s?s.getBoundingClientRect().top:null;},k);
       const runs=[];
@@ -269,16 +280,17 @@ async function boot(context, origin) {
         const ref=await page.evaluate(()=>+document.querySelector('.cal-month-current').dataset.offset+1);
         await drag(-40);
         const releasedAt=await topOf(ref);
-        await page.waitForTimeout(900);
+        await page.clock.runFor(900);
         const restAt=await topOf(ref);
         assert.ok(releasedAt!=null&&restAt!=null,'flick '+(i+1)+' lost its reference month');
         assert.ok(restAt<releasedAt-30,'flick '+(i+1)+' did not move');
-        await page.waitForTimeout(200);
+        await page.clock.runFor(200);
         assert.ok(Math.abs(await topOf(ref)-restAt)<0.6,'flick '+(i+1)+' kept coasting');
         runs.push(releasedAt-restAt);
       }
       assert.ok(runs.every(d=>d<600),'a flick ran away: '+runs.join(','));
       assert.ok(Math.max(...runs)-Math.min(...runs)<200,'velocity accumulated: '+runs.join(','));
+      }finally{controlledPointerClock=false;await page.clock.resume();}
     });
     await test('a new touch cancels the previous momentum immediately',async()=>{
       await resetTimeline();
@@ -304,16 +316,27 @@ async function boot(context, origin) {
 
     await test("previous, next and Today controls share the canonical month state", async () => {
       await resetTimeline();
+      // Arrows start a smooth scroll; the month commits from its scroll events.
+      // Wait for the state and for the scroll to stop before the next control,
+      // otherwise a second smooth scroll can be issued mid-animation and dropped.
+      const still=()=>page.evaluate(()=>new Promise(resolve=>{
+        const v=document.querySelector('.cal-timeline');let last=v.scrollTop,quiet=0,frames=0;
+        const tick=()=>{if(v.scrollTop===last){if(++quiet>=4)return resolve(v.scrollTop)}else{last=v.scrollTop;quiet=0}
+          if(++frames>900)return resolve(v.scrollTop);requestAnimationFrame(tick);};
+        requestAnimationFrame(tick);
+      }));
       const start = await page.evaluate(() => cm);
       await page.locator('#calwrap button[onclick="calGo(1)"]').click();
-      await page.waitForTimeout(650);
+      await page.waitForFunction(s => cm === s + 1, start, { timeout: 2000 });
       assert.equal(await page.evaluate(() => cm), start + 1);
+      await still();
       await page.locator('#calwrap button[onclick="calGo(-1)"]').click();
-      await page.waitForTimeout(650);
+      await page.waitForFunction(s => cm === s, start, { timeout: 2000 });
       assert.equal(await page.evaluate(() => cm), start);
+      await still();
       await page.evaluate(() => (cm = 3, render()));
       await page.locator('#calwrap button[onclick="calToday()"]').click();
-      await page.waitForTimeout(650);
+      await page.waitForFunction(() => cm === 0, undefined, { timeout: 2000 });
       assert.equal(await page.evaluate(() => cm), 0);
     });
 
@@ -378,13 +401,71 @@ async function boot(context, origin) {
       });
       await test(`${width}x${height}: real short ${direction<0?'up':'down'} touch flick retains native momentum`,async()=>{
         await resetTimeline();const b=await calendarBox(),x=b.x+b.width*.52,y=b.y+b.height*(direction<0?.7:.3),cdp=await context.newCDPSession(page);
-        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
-        for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+direction*110*i/5}]});await page.waitForTimeout(12);}
-        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-        const released=await page.evaluate(()=>window.__grid.getBoundingClientRect().top);await page.waitForTimeout(160);
-        assert.ok((await page.evaluate(()=>window.__grid.getBoundingClientRect().top)-released)*direction>8,'native inertia missing');
+        const ready=await page.evaluate(({x,y,direction})=>{
+          const view=document.querySelector('.cal-timeline'),grid=window.__grid;
+          const state={started:false,cancelled:false,release:null};
+          // Record at the native release event, not after a CDP round trip: the
+          // compositor can finish most of a valid fling before that read returns.
+          const start=e=>{state.started=e.isTrusted&&e.target.closest('.cal-timeline')===view};
+          const end=e=>{if(!e.touches.length)state.release={top:grid.getBoundingClientRect().top,trusted:e.isTrusted}};
+          const cancel=()=>{state.cancelled=true};
+          view.__nativeFlick=state;
+          view.addEventListener('touchstart',start,{capture:true,passive:true});
+          view.addEventListener('touchend',end,{capture:true,passive:true});
+          view.addEventListener('touchcancel',cancel,{capture:true,passive:true});
+          view.__clearNativeFlick=()=>{
+            view.removeEventListener('touchstart',start,true);view.removeEventListener('touchend',end,true);view.removeEventListener('touchcancel',cancel,true);
+            delete view.__nativeFlick;delete view.__clearNativeFlick;
+          };
+          return {width:innerWidth,height:innerHeight,owns:document.elementFromPoint(x,y)?.closest('.cal-timeline')===view,
+            room:direction<0?view.scrollHeight-view.clientHeight-view.scrollTop:view.scrollTop};
+        },{x,y,direction});
+        const nativeEvents=[];
+        const collect=e=>nativeEvents.push(...e.value);
+        let tracing=false;
+        const finishTrace=async()=>{
+          if(!tracing)return;tracing=false;
+          const complete=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));
+          await cdp.send('Tracing.end');await complete;
+        };
+        try{
+        assert.deepEqual([ready.width,ready.height],[width,height],'native touch viewport is applied');
+        assert.ok(ready.owns,'native touch starts on the calendar, not another layer');
+        assert.ok(ready.room>110,'native touch starts away from a scrolling boundary');
+        // Native touch uses Chromium's compositor, not the application's mouse
+        // RAF. Verify a real fling so a pending drag update cannot satisfy this test.
+        cdp.on('Tracing.dataCollected',collect);
+        await cdp.send('Tracing.start',{categories:'input',transferMode:'ReportEvents'});tracing=true;
+        // A short flick is 110px of finger travel in 120ms. Supplying the event
+        // timestamps pins the compositor's release velocity (916px/s) so driver
+        // or CPU latency cannot turn this flick into a near-stop in one run.
+        const stampBase=Date.now()/1000-0.25,stamp=i=>({timestamp:stampBase+i*0.024});
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}],...stamp(0)});
+        for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+direction*110*i/5}],...stamp(i)});await page.waitForTimeout(12);}
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[],...stamp(6)});
+        // Observe actual post-release movement within the existing 1400ms native
+        // settle budget, rather than taking a late baseline then sleeping 160ms.
+        await page.waitForFunction(direction=>{
+          const state=document.querySelector('.cal-timeline').__nativeFlick;
+          return state?.release&&(window.__grid.getBoundingClientRect().top-state.release.top)*direction>8;
+        },direction,{timeout:1400});
+        const motion=await page.evaluate(()=>({state:document.querySelector('.cal-timeline').__nativeFlick,top:window.__grid.getBoundingClientRect().top}));
+        assert.equal(motion.state.started,true,'trusted touchstart reaches the calendar');
+        assert.equal(motion.state.release.trusted,true,'trusted touchend reaches the calendar');
+        assert.equal(motion.state.cancelled,false,'native touch gesture is not cancelled');
+        assert.ok((motion.top-motion.state.release.top)*direction>8,'native inertia missing');
+        await finishTrace();
+        const fling=nativeEvents.find(e=>e.name==='FlingController::HandlingGestureFling'&&e.ph==='b');
+        assert.ok(fling&&fling.args.vy*direction>0,'native compositor requests momentum in the gesture direction');
+        assert.ok(nativeEvents.some(e=>e.name==='ProgressFling'&&e.ts>=fling.ts),'native compositor actually advances the fling');
         await page.waitForTimeout(1400);const stopped=await page.locator('.cal-timeline').evaluate(e=>e.scrollTop);await page.waitForTimeout(150);assert.ok(Math.abs(await page.locator('.cal-timeline').evaluate(e=>e.scrollTop)-stopped)<2);
-        assert.equal(await page.locator('.cal-vstage').count(),0);await cdp.detach();
+        assert.equal(await page.locator('.cal-vstage').count(),0);
+        }finally{
+          try{await finishTrace();}finally{
+            cdp.off('Tracing.dataCollected',collect);
+            try{await page.locator('.cal-timeline').evaluate(e=>e.__clearNativeFlick?.());}finally{await cdp.detach();}
+          }
+        }
       });
     }
     await test('scrolling outside the calendar continues to scroll the page normally',async()=>{

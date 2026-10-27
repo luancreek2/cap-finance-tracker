@@ -1,5 +1,9 @@
 /* Compact floating Command Bar, below sheets and above its shared backdrop. */
-#cap-command-bar { position:fixed; z-index:80; height:64px; color:var(--tx); isolation:isolate; }
+#cap-command-bar { position:fixed; top:0; left:0; z-index:80; height:64px; color:var(--tx); isolation:isolate; --cb-safe-bottom:env(safe-area-inset-bottom,0px); }
+#cap-command-bar.cb-positioned { transition:transform .18s cubic-bezier(.4,0,.2,1),width .24s cubic-bezier(.4,0,.2,1); }
+/* Viewport events describe the keyboard animation; avoid a long trailing tween. */
+#cap-command-bar.cb-positioned.cb-keyboard { transition:width .24s cubic-bezier(.4,0,.2,1); }
+#cap-command-bar.cb-focused .cb-surface { box-shadow:0 16px 44px #0003,inset 0 1px 0 #ffffff30; }
 #cap-command-bar[hidden],#cap-command-bar [hidden],#cap-command-backdrop[hidden] { display:none!important; }
 #cap-command-backdrop { position:fixed; inset:0; z-index:79; background:#0000001f; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); touch-action:none; }
 :root[data-theme="dark"] #cap-command-backdrop { background:#00000038; }
@@ -42,5 +46,7 @@ body.command-bar-active nav #tabs .nav-action-plus { opacity:0; }
 @keyframes cbModeIn { from { opacity:.3; transform:translateY(2px); } to { opacity:1; transform:none; } }
 @media(max-width:360px) { .cb-content { gap:0; padding:6px; } #cap-command-bar .cb-manual { width:44px; } #cap-command-bar .cb-mode { padding:0 8px; } #cap-command-input { padding-inline:3px; } }
 @media(prefers-reduced-motion:reduce) { .cb-menu,.cb-mode-label,.cb-mic svg { animation:none!important; } nav #tabs { transition:none; } }
+@media(prefers-reduced-motion:reduce) { #cap-command-bar.cb-positioned,#cap-command-bar.cb-positioned.cb-keyboard { transition:none; } }
+html.rm #cap-command-bar.cb-positioned,html.noanim #cap-command-bar.cb-positioned { transition:none; }
 html.rm .cb-menu,html.rm .cb-mode-label,html.noanim .cb-menu,html.noanim .cb-mode-label,html.rm .cb-mic svg,html.noanim .cb-mic svg { animation:none!important; }
 html.rm nav #tabs,html.noanim nav #tabs { transition:none; }
