@@ -8,7 +8,6 @@
   padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
 }
 body:has(#sheet.st.open) {overflow:hidden;}
-body:has(#sheet.st.open) .sbtn {visibility:hidden;}
 #sheet.st.open {animation:stDimIn .22s ease both;}
 #sheet.st.open>#sb {animation:stPanelIn .28s cubic-bezier(.22,.8,.28,1) both;}
 #sheet.st.closing {animation:stDimOut .2s ease forwards;}
