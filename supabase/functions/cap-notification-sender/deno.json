@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@block65/webcrypto-web-push": "npm:@block65/webcrypto-web-push@2.0.0",
+    "@supabase/server": "npm:@supabase/server@1.9.2",
+    "postgres": "npm:postgres@3.4.9"
+  },
+  "compilerOptions": { "strict": true },
+  "nodeModulesDir": "none",
+  "lock": { "path": "./deno.lock", "frozen": true }
+}

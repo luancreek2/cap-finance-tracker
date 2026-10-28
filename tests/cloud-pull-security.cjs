@@ -29,7 +29,14 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'tests/apple-theme.cjs','tests/apple-theme-browser.cjs','css/activity-scope.css','tests/hero-balance-browser.cjs',
   'js/activity-scope.js','js/transactions.js','tests/apple-liquid-ui.cjs','tests/calendar-navigation.cjs',
   'tests/nav-icon-motion.cjs','css/account-options.css','js/account-options.js',
-  'css/settings-shell.css','js/settings-shell.js','tests/settings-shell-browser.cjs'];
+  'css/settings-shell.css','js/settings-shell.js','tests/settings-shell-browser.cjs',
+  'docs/notifications-phase5b3.md','supabase/config.toml',
+  'supabase/functions/cap-notification-sender/deno.json','supabase/functions/cap-notification-sender/deno.lock',
+  'supabase/functions/cap-notification-sender/index.ts','supabase/functions/cap-notification-sender/results.ts',
+  'supabase/functions/cap-notification-sender/runtime.ts','supabase/functions/cap-notification-sender/webpush.ts',
+  'supabase_notifications_sender_5b3.sql',
+  'tests/helpers/notification-sender-tests.ts','tests/helpers/sender-deno.cjs','tests/helpers/sender-pg.cjs',
+  'tests/notification-sender-edge.cjs','tests/notification-sender.cjs','tests/notification-webpush.cjs','tests/notifications-sender-sql.cjs'];
 const git=(...args)=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\r?\n/).filter(Boolean);
 const changed=[...new Set([...git('diff','--name-only','HEAD'),...git('ls-files','--others','--exclude-standard')])];
 assert.ok(changed.every(f=>allowed.includes(f)),'Unexpected files in proposed release');

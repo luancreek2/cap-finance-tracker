@@ -1,0 +1,5 @@
+# Local/review configuration only. No project link, deployment or scheduler.
+project_id = "cap-notification-sender-local"
+
+[functions.cap-notification-sender]
+verify_jwt = false
