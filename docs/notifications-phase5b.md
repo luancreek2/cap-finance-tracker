@@ -7,6 +7,20 @@ UI, PushManager subscription, VAPID key, Edge Function, sender, cron job,
 pg_cron or pg_net installation is included. Phase 5A remains the running
 application at shell **cap-shell-v368**.
 
+> **Phase 5B.2A1 applied amendment:**
+> `supabase_notifications_enrollment_5b2a1_v2.sql` replaced the parked
+> `'unconfigured'` VAPID placeholder with versioned identities
+> (`^v[1-9][0-9]{0,2}$`). It was approved
+> (SHA-256 `291AA08EBF3D867233235150DCCC5B038060E3DFC32D42C0B2DBB90FA6D444CA`)
+> and applied to production exactly once on 2026-10-28 as one atomic
+> transaction. The earlier V1 artifact was applied once and failed closed with
+> SQLSTATE 42501; its entire transaction rolled back with no surviving
+> production change, it was never retried, and it must not be applied. The
+> foundation stays parked: `background_enabled=false`, `runtime_parked=true`.
+> See `docs/notifications-phase5b2a1.md`, including the PushManager capability
+> detection and Safari/iOS platform corrections. Phase 5B.2B remains dark and
+> unstarted.
+
 ## Evidence and production boundary
 
 The owner supplied a completed read-only production preflight: Cap is healthy on
@@ -157,8 +171,10 @@ Their exact names and definitions are inspectable from the SQL
 and the catalog-only inventory query below.
 
 Binding states: `pending`, `disabled`, `retired`. There is intentionally no
-`active` state yet, and `last_confirmed_at` must remain NULL. VAPID key version
-is the literal placeholder `unconfigured`; there is no public/private VAPID key.
+`active` state yet, and `last_confirmed_at` must remain NULL. The installed
+contract now carries the 5B.2A1 V2 versioned VAPID identity
+`^v[1-9][0-9]{0,2}$` (the parked literal `unconfigured` was retired with zero
+production bindings). There is no public/private VAPID key.
 Prepared schedules have only `state='prepared'`, not a runnable dispatch state.
 
 Ledger states: `queued`, `claimed`, `dispatch_started`, `retry_wait`, `accepted`,
@@ -378,6 +394,14 @@ inventory of roles, memberships, tables/columns, constraints, indexes, policies,
 function owners/signatures/ACLs and financial privilege violations. It reads no
 endpoint, key, auth/session, Vault secret, schedule or financial rows. It neither
 installs anything nor grants readiness by itself.
+
+Phase 5B.2A1 adds `tests/notifications-enrollment-sql.cjs` (21 checks),
+`tests/notifications-enrollment-v2-real-pg.cjs` (18 checks against real
+PostgreSQL 17) and `tests/sql/notifications-enrollment-audit.sql` for the
+versioned VAPID contract; see `docs/notifications-phase5b2a1.md`. V1 failed
+closed in production and rolled back and must not be applied; V2 was applied to
+production exactly once on 2026-10-28 and left the foundation parked and
+background delivery off.
 
 Tests cover guarded install/replay, late rollback after function ownership
 transfers, cross-owner denial, hidden endpoints, unknown versions, seven-day
