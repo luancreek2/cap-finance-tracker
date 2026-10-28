@@ -8,7 +8,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
     caches:{open:async name=>{cacheName=name;return cache;}},fetch:async()=>{throw Error('Offline');},
     self:{location:{origin:'https://synthetic.invalid'},skipWaiting:async()=>{},addEventListener:(n,fn)=>events.set(n,fn)}};
   vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(root,'service-worker.js'),'utf8'),c);
-  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v368');
+  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v369');
   const html=stored.get('./index.html').toString();
   for(const name of ['cloud-to-local','cloud-bootstrap','sync-production']){
     const asset='./js/'+name+'.js';assert.ok(stored.has(asset));assert.ok(html.includes('src="'+asset.slice(2)+'"'));
@@ -17,5 +17,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
   }
   assert.ok(html.indexOf('src="js/cloud-to-local.js"')<html.indexOf('src="js/cloud-bootstrap.js"'));
   assert.ok(html.indexOf('src="js/cloud-to-local.js"')<html.indexOf('src="js/sync-production.js"'));
+  const vapid='./js/vapid-public.js',enrollment='./js/notification-enrollment.js';
+  assert.ok(stored.has(vapid)&&stored.has(enrollment),'Phase 5B.2B modules must be precached');
+  assert.ok(html.indexOf('src="js/vapid-public.js"')>0&&html.indexOf('src="js/vapid-public.js"')<html.indexOf('src="js/production-rpc.js"'));
+  assert.ok(html.indexOf('src="js/notification-enrollment.js"')>html.indexOf('src="js/notifications.js"'));
+  assert.ok(!/addEventListener\(['"]push|pushsubscriptionchange/.test(fs.readFileSync(path.join(root,'service-worker.js'),'utf8')));
   console.log('PASS: 5 Phase 6O shell cache/load checks; actual worker handlers, synthetic offline transport');
 })().catch(e=>{console.error(e);process.exitCode=1;});

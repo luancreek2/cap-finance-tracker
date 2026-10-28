@@ -10,7 +10,16 @@
     '/rest/v1/rpc/cap_sync_transaction_update','/rest/v1/rpc/cap_sync_transaction_delete',
     '/rest/v1/rpc/cap_verify_transaction_update_delete_v1',
     '/rest/v1/rpc/cap_notes_change','/rest/v1/rpc/cap_notes_read',
-    '/rest/v1/rpc/cap_verify_notes_lifecycle'];
+    '/rest/v1/rpc/cap_verify_notes_lifecycle',
+    '/rest/v1/rpc/cap_notifications_register_v1',
+    '/rest/v1/rpc/cap_notifications_invalidate_v1',
+    '/rest/v1/rpc/cap_notifications_summary_v1',
+    '/rest/v1/rpc/cap_notifications_readiness_v1'];
+  // Notification application errors are not authentication evidence. A stale
+  // binding, a foreign endpoint reservation or an enrollment 4xx must never
+  // invalidate a previously verified session; only the fresh /auth/v1/user
+  // verification path may establish that the session itself is invalid.
+  const NOTIFICATION_RPC_PATHS=PRODUCTION_RPC_PATHS.filter(p=>p.startsWith('/rest/v1/rpc/cap_notifications_'));
   const clean=v=>String(v||'').replace(/\/$/,'');
   const configured=()=>!!(cfg.url&&cfg.publishableKey);
   function readSession(){try{return JSON.parse(localStorage.getItem(KEY)||'null')}catch(_){return null}}
@@ -45,7 +54,16 @@
       if(!r.ok){const err=Error(data?.msg||data?.message||data?.error_description||body||('HTTP '+r.status));err.status=r.status;err.code=data?.code||data?.error_code||null;throw err}
       if(revision!==sessionRevision)throw Error('Session changed during request');
       return data;
-    }catch(error){if(revision===sessionRevision){invalidate(offline()?'offline':'unverified');notice();}throw error}
+    }catch(error){
+      const auth=path.startsWith('/auth/v1/'),notification=NOTIFICATION_RPC_PATHS.includes(path);
+      const status=Number(error?.status),application4xx=Number.isInteger(status)&&status>=400&&status<500;
+      // A generic application-level 4xx is not proof that the session is
+      // invalid. The fresh /auth/v1/user response remains the only authority.
+      if(revision===sessionRevision&&!notification&&(auth||offline()||!application4xx)){
+        invalidate(offline()?'offline':'unverified');notice();
+      }
+      throw error;
+    }
   }
   async function user(){
     if(!configured()||!hasToken(session))throw Error('Online sign-in required');
@@ -54,7 +72,7 @@
     // Only a successful, fresh server response establishes cloud identity.
     // Cached session.user is exclusively evidence for local offline access.
     if(!session.user?.id)writeSession({...session,user:u});
-    const newlyVerified=!verifiedUser;verifiedUser=u;localAccess=true;verification='verified';notice();if(newlyVerified){window.CapProductionSync?.request('authenticated');window.CapCloudBootstrap?.refresh();}return u;
+    const newlyVerified=!verifiedUser;verifiedUser=u;localAccess=true;verification='verified';notice();if(newlyVerified){window.CapProductionSync?.request('authenticated');window.CapCloudBootstrap?.refresh();try{window.CapNotificationEnrollment?.onSessionVerified?.()}catch(_){}}return u;
   }
   const accessRejected=e=>e?.status===401||e?.status===403;
   const refreshRejected=e=>accessRejected(e)||e?.status===400&&['refresh_token_not_found','refresh_token_already_used','session_not_found','user_not_found','user_banned','invalid_credentials','invalid_grant'].includes(e.code);
@@ -84,7 +102,12 @@
   function loginMarkup(){const logo=typeof capBrandLogo==='function'?capBrandLogo('default'):'<img src="assets/branding/cap-default.png" alt="">';return `<div id="cap-auth" class="cap-auth" role="dialog" aria-modal="true" aria-labelledby="cap-auth-title"><form class="cap-auth-card" onsubmit="event.preventDefault();CapSupabase.signIn()"><div class="cap-auth-logo">${logo}</div><h1 id="cap-auth-title">Welcome to Cap</h1><p class="m">Sign in to connect your personal cloud database.</p><label>Email<input id="cap-auth-email" type="email" autocomplete="username" required></label><label>Password<span class="cap-auth-pass"><input id="cap-auth-password" type="password" autocomplete="current-password" required><button type="button" aria-label="Show password" onclick="CapSupabase.togglePassword(this)">Show</button></span></label><div id="cap-auth-error" class="cap-auth-error" role="alert"></div><button id="cap-auth-submit" class="btn" type="submit">Sign In</button><small class="cap-auth-local">Your Cap data remains on this device. Cloud sync is not enabled.</small></form></div>`}
   async function signIn(){const button=document.getElementById('cap-auth-submit'),email=document.getElementById('cap-auth-email')?.value.trim(),password=document.getElementById('cap-auth-password')?.value;if(!configured())return showError('Supabase is not configured.');if(!email||!password)return showError('Enter your email and password.');button.disabled=true;button.textContent='Signing in…';showError('');try{const s=await request('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});if(!hasToken(s))throw Error('Invalid session');writeSession(s);await restore();if(verifiedUser||localAccess){hideLogin();notice();}else showError('Sign-in could not be verified. Please try again online.');}catch(_){showError(offline()?'You are offline. Reconnect before signing in.':'Sign-in could not be verified. Check your connection and credentials.');}finally{button.disabled=false;button.textContent='Sign In'}}
   function togglePassword(button){const input=document.getElementById('cap-auth-password');if(!input)return;input.type=input.type==='password'?'text':'password';button.textContent=input.type==='password'?'Show':'Hide';button.setAttribute('aria-label',input.type==='password'?'Show password':'Hide password')}
-  async function signOut(){const token=session?.access_token;writeSession(null);notice();try{if(token)await request('/auth/v1/logout',{method:'POST',headers:{Authorization:'Bearer '+token}});}catch(_){}location.reload()}
+  async function signOut(){
+    // Bounded notification cleanup (8s max inside the hook), before any session
+    // clearing. Server-first invalidation then local unsubscribe; failure only
+    // persists pending-disable and can never permanently block sign-out.
+    try{await window.CapNotificationEnrollment?.beforeSignOut?.()}catch(_){}
+    const token=session?.access_token;writeSession(null);notice();try{if(token)await request('/auth/v1/logout',{method:'POST',headers:{Authorization:'Bearer '+token}});}catch(_){}location.reload()}
   async function testCurrent(){
     if(!configured())throw Error('Supabase URL and Publishable key are not configured');
     const u=await user();
@@ -147,6 +170,12 @@
     return report;
   }
   function status(){if(offline()&&verifiedUser)invalidate('offline');return{configured:configured(),authenticated:!!verifiedUser,userId:verifiedUser?.id||null,localAccess,verification}}
+  // Side-effect-free evidence for read-only notification reconciliation. In
+  // particular it never calls status(), which may invalidate verification while
+  // offline merely because it was read.
+  function authEvidence(){return{authenticated:!!verifiedUser,userId:verifiedUser?.id||null,
+    localOwner:cachedLocal(session)?session.user.id:null,localAccess,verification,
+    sessionGeneration:sessionRevision,online:!offline()}}
   function boot(){
     if(bootPromise)return bootPromise;
     bootPromise=(async()=>{
@@ -187,7 +216,7 @@
     }catch(_){if(check!==notesRpcCheck)return false;notesRpcVerifierResult={checked:true,ready:false,blocked:true};}
     return notesRpcReadyState;
   }
-  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,productionRpcPaths:PRODUCTION_RPC_PATHS,localIdentity:()=>cachedLocal(session)?session.user.id:null,sessionGeneration:()=>sessionRevision,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
+  window.CapSupabase={configured,signIn,signOut,testCurrent,testCloudDatabase,migratePlan,validateRealData,currentUser:user,syncRequest:request,productionRpcPaths:PRODUCTION_RPC_PATHS,notificationRpcPaths:NOTIFICATION_RPC_PATHS,authEvidence,localIdentity:()=>cachedLocal(session)?session.user.id:null,sessionGeneration:()=>sessionRevision,rpcReady:()=>rpcReadyState,refreshRpcReadiness,rpcVerifierStatus,notesRpcReady:()=>notesRpcReadyState,refreshNotesRpcReadiness,notesRpcVerifierStatus:()=>notesRpcVerifierResult,togglePassword,status,boot};
   /* Keep the local-only notice tied to connectivity: hide it when the device
      goes offline and restore it online only while the session is unverified. */
   if(typeof addEventListener==='function'){

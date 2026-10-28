@@ -20,6 +20,8 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'tests/bluish-white.cjs','tests/bluish-white-browser.cjs',
   'tests/home-logo-browser.cjs',
   'js/notification-engine.js','js/notifications.js','css/notifications.css','docs/notifications.md','tests/notifications.cjs','tests/notifications-browser.cjs',
+  'js/notification-enrollment.js','js/vapid-public.js','docs/notifications-phase5b2.md',
+  'tests/notification-enrollment.cjs','tests/notification-enrollment-browser.cjs',
   'supabase_phase6o_transaction_update_delete.sql','tests/sync-presence-diagnostic.cjs',
   'tests/sync-presence-diagnostic-execution.cjs','tests/sync-presence-diagnostic-browser.cjs',
   'tests/sync-planner-presence-fix.cjs','tests/sync-planner-presence-execution.cjs',

@@ -32,6 +32,18 @@ body:has(#sheet.st.open) .cn-home-actions { visibility:hidden; }
 .cn-empty { display:grid; justify-items:center; align-content:center; min-height:150px; text-align:center; padding:20px 12px; color:var(--cn-muted); }.cn-empty svg { width:28px; height:28px; margin-bottom:10px; }.cn-empty h3 { margin:10px 0 0; font-size:18px; font-weight:650; color:var(--tx); }.cn-empty p { max-width:360px; margin:12px 0 0; font-size:13px; line-height:1.7; }
 .cn-note { color:var(--cn-muted); font-size:11px; line-height:1.7; margin:20px 0 0; }.cn-storage-status:empty { display:none; }.cn-footer { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-top:16px; padding-top:16px; border-top:1px dotted var(--line); }.cn-limit { max-width:480px; margin:0; color:var(--cn-muted); font-size:11px; line-height:1.7; }.cn-close { flex:none; background:transparent; }
 .cn-permission { padding:16px 0; font-size:12px; line-height:1.65; }.cn-permission>b { font-size:13px; }.cn-permission p { color:var(--mut); }.cn-settings-limit { line-height:1.7; }
+/* Phase 5B.2B background-reminder enrollment block. Presentation only: it
+   carries no state and never triggers a permission prompt by itself. */
+.cn-bg { display:grid; gap:10px; padding:14px 16px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--tx); font-size:12px; line-height:1.65; }
+.cn-bg>b { font-size:13px; font-weight:650; color:var(--tx); }
+.cn-bg>p { margin:0; color:var(--mut); }
+.cn-bg-action { justify-self:start; min-height:44px; min-width:44px; padding:10px 16px; border:1px solid var(--line); border-radius:12px; background:color-mix(in srgb,var(--ac) 8%,transparent); color:var(--tx); font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+.cn-bg-action:disabled { opacity:.6; cursor:progress; }
+.cn-bg-action:focus-visible { outline:2px solid var(--color-primary,var(--ac)); outline-offset:2px; }
+@media(hover:hover) { .cn-bg-action:not(:disabled):hover { background:color-mix(in srgb,var(--ac) 14%,transparent); } }
+.cn-bg-status { margin:0; color:var(--mut); font-size:11px; }
+.cn-bg-status:empty { display:none; }
+@media(prefers-reduced-motion:reduce) { .cn-bg-action { transition:none!important; } }
 .cn-bell:focus-visible,.cn-home-actions>#settings-button:focus-visible,.cn-icon-button:focus-visible,.cn-filter:focus-visible,.cn-close:focus-visible,.cn-row summary:focus-visible,.cn-dismiss:focus-visible { outline:2px solid var(--color-primary,var(--ac)); outline-offset:2px; }
 @media(hover:hover) { .cn-bell:hover,.cn-home-actions>#settings-button:hover,.cn-icon-button:hover,.cn-close:hover { background:color-mix(in srgb,var(--ac) 7%,transparent); color:var(--tx); } }
 .cn-bell:active,.cn-home-actions>#settings-button:active,.cn-icon-button:active { background:color-mix(in srgb,var(--ac) 10%,transparent); transform:none!important; }

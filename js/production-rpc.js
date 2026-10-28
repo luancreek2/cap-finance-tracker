@@ -4,9 +4,14 @@
       cap_verify_production_sync_v1 / cap_sync_snapshot_v1 /
       cap_sync_transaction_create / cap_sync_transaction_update /
       cap_sync_transaction_delete / cap_notes_change / cap_notes_read /
-      cap_verify_notes_lifecycle
-   Local-first behaviour is unchanged: this module never touches local
-   storage, the baseline or the outbox. */
+      cap_verify_notes_lifecycle, plus the Phase 5B.2B owner-scoped
+      notification enrollment/readiness surface:
+      cap_notifications_register_v1 / cap_notifications_invalidate_v1 /
+      cap_notifications_summary_v1 / cap_notifications_readiness_v1.
+   Publication/scheduling (cap_notifications_publish_v1) is deliberately not
+   reachable from the browser in this phase. Local-first behaviour is
+   unchanged: this module never touches local storage, the baseline or the
+   outbox. */
 (function () {
   'use strict';
   const RPC = {
@@ -18,7 +23,11 @@
     transactionCapability: 'cap_verify_transaction_update_delete_v1',
     notesChange: 'cap_notes_change',
     notesRead: 'cap_notes_read',
-    notesVerify: 'cap_verify_notes_lifecycle'
+    notesVerify: 'cap_verify_notes_lifecycle',
+    notificationRegister: 'cap_notifications_register_v1',
+    notificationInvalidate: 'cap_notifications_invalidate_v1',
+    notificationSummary: 'cap_notifications_summary_v1',
+    notificationReadiness: 'cap_notifications_readiness_v1'
   };
   const ALLOWED = Object.keys(RPC).map(k => RPC[k]);
   const ENTITIES = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals',
@@ -227,6 +236,107 @@
     if (!isObject(raw) || !['APPLIED', 'ALREADY_APPLIED', 'CONFLICT'].includes(raw.status)) throw failure('TRANSACTION_WRITE_UNVERIFIED');
     return raw;
   }
+  // ---- Phase 5B.2B notification enrollment surface -----------------------
+  // These wrappers never publish schedules, never read financial rows and
+  // never expose endpoint/key values back to callers. Each response is
+  // validated against the installed foundation contract before use.
+  const NOTIFICATION_STATES = ['pending', 'disabled', 'retired'];
+  const B64URL = /^[A-Za-z0-9_-]+$/;
+  const VAPID_VERSION = /^v[1-9][0-9]{0,2}$/;
+  function nonNegative(value) { return Number.isSafeInteger(value) && value >= 0; }
+  function notificationBinding(raw, installationId) {
+    if (!isObject(raw) || !uuid(raw.binding_id) || !uuid(raw.installation_id)) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (installationId && raw.installation_id !== installationId) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!Number.isSafeInteger(raw.generation) || raw.generation < 1) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!nonNegative(raw.schedule_revision)) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!NOTIFICATION_STATES.includes(raw.state)) throw failure('NOTIFICATION_BINDING_INVALID');
+    return { binding_id: raw.binding_id, installation_id: raw.installation_id,
+      generation: raw.generation, schedule_revision: raw.schedule_revision, state: raw.state };
+  }
+  function invalidateBinding(raw) {
+    if (!isObject(raw) || !uuid(raw.binding_id)) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!Number.isSafeInteger(raw.generation) || raw.generation < 1) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!nonNegative(raw.schedule_revision)) throw failure('NOTIFICATION_BINDING_INVALID');
+    if (!NOTIFICATION_STATES.includes(raw.state)) throw failure('NOTIFICATION_BINDING_INVALID');
+    return { binding_id: raw.binding_id, generation: raw.generation,
+      schedule_revision: raw.schedule_revision, state: raw.state };
+  }
+  function summaryBinding(raw) {
+    if (!isObject(raw) || !uuid(raw.binding_id) || !uuid(raw.installation_id)) return false;
+    if (!Number.isSafeInteger(raw.generation) || raw.generation < 1) return false;
+    if (!nonNegative(raw.schedule_revision) || !nonNegative(raw.preference_revision)) return false;
+    if (!NOTIFICATION_STATES.includes(raw.state)) return false;
+    // Lifecycle timestamps are optional evidence; a confirmed binding stays a
+    // valid binding. Nothing here accepts endpoint or key material.
+    const confirmed = raw.last_confirmed_at;
+    if (confirmed !== null && (typeof confirmed !== 'string' || Number.isNaN(Date.parse(confirmed)))) return false;
+    return true;
+  }
+  async function notificationRegister(options) {
+    const installationId = options?.installationId, version = options?.vapidKeyVersion;
+    const expectedGeneration = options?.expectedGeneration;
+    if (!uuid(installationId)) throw failure('INSTALLATION_ID_INVALID');
+    if (!nonNegative(expectedGeneration)) throw failure('NOTIFICATION_GENERATION_INVALID');
+    if (options?.protocol !== undefined && options.protocol !== 'CAP_PUSH_V1') throw failure('NOTIFICATION_PROTOCOL_UNSUPPORTED');
+    if (typeof options?.endpoint !== 'string' || !options.endpoint || options.endpoint.length > 4096) throw failure('NOTIFICATION_ENDPOINT_INVALID');
+    let endpoint = null;
+    try { endpoint = new URL(options.endpoint); } catch (_) { endpoint = null; }
+    if (!endpoint || endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.port) {
+      throw failure('NOTIFICATION_ENDPOINT_INVALID');
+    }
+    if (typeof options?.p256dh !== 'string' || !B64URL.test(options.p256dh) || options.p256dh.includes('=')) throw failure('NOTIFICATION_KEYS_INVALID');
+    if (typeof options?.auth !== 'string' || !B64URL.test(options.auth) || options.auth.includes('=')) throw failure('NOTIFICATION_KEYS_INVALID');
+    if (typeof version !== 'string' || !VAPID_VERSION.test(version)) throw failure('NOTIFICATION_VAPID_VERSION_INVALID');
+    const expiration = options?.browserExpiration ?? null;
+    if (expiration !== null && (typeof expiration !== 'string' || Number.isNaN(Date.parse(expiration)))) {
+      throw failure('NOTIFICATION_EXPIRATION_INVALID');
+    }
+    const raw = await call(RPC.notificationRegister, {
+      p_installation_id: installationId,
+      p_expected_generation: expectedGeneration,
+      p_protocol: 'CAP_PUSH_V1',
+      p_endpoint: options.endpoint,
+      p_p256dh: options.p256dh,
+      p_auth: options.auth,
+      p_vapid_key_version: version,
+      p_browser_expiration: expiration
+    });
+    return notificationBinding(raw, installationId);
+  }
+  async function notificationInvalidate(options) {
+    if (!uuid(options?.bindingId)) throw failure('NOTIFICATION_BINDING_ID_INVALID');
+    if (!Number.isSafeInteger(options?.generation) || options.generation < 1) throw failure('NOTIFICATION_GENERATION_INVALID');
+    if (!nonNegative(options?.scheduleRevision)) throw failure('NOTIFICATION_REVISION_INVALID');
+    if (options?.disable !== true) throw failure('NOTIFICATION_INVALIDATE_INVALID');
+    const raw = await call(RPC.notificationInvalidate, {
+      p_binding_id: options.bindingId,
+      p_generation: options.generation,
+      p_expected_revision: options.scheduleRevision,
+      p_disable: true
+    });
+    return invalidateBinding(raw);
+  }
+  async function notificationSummary() {
+    try {
+      const raw = await call(RPC.notificationSummary);
+      const ok = !!(isObject(raw) && raw.protocol === 'CAP_PUSH_V1' &&
+        raw.background_enabled === false && Array.isArray(raw.bindings) &&
+        raw.bindings.every(summaryBinding));
+      return { ok, raw: ok ? raw : null, reason: ok ? null : 'NOTIFICATION_SUMMARY_NOT_VERIFIED' };
+    } catch (e) { return { ok: false, raw: null, reason: String(e?.message || e) }; }
+  }
+  async function notificationReadiness() {
+    try {
+      const raw = await call(RPC.notificationReadiness);
+      const ok = !!(isObject(raw) &&
+        raw.migration_id === 'CAP_NOTIFICATIONS_FOUNDATION_5B1_V1' &&
+        raw.protocol === 'CAP_PUSH_V1' && raw.engine_identity === 'cap-reminder-v1' &&
+        raw.digest_version === 'hmac-sha256-v1' && raw.foundation_ready === true &&
+        raw.background_enabled === false && raw.background_ready === false &&
+        raw.runtime_parked === true);
+      return { ok, raw, reason: ok ? null : 'NOTIFICATION_READINESS_NOT_VERIFIED' };
+    } catch (e) { return { ok: false, raw: null, reason: String(e?.message || e) }; }
+  }
   // Narrow, separate attestation for the update/delete rollout. It never widens
   // the main readiness contract, so Phase 6N stays independently deployable.
   async function transactionCapabilities() {
@@ -244,6 +354,7 @@
     RPC, ALLOWED, ENTITIES, READINESS_CHECKS, CONTRACTS, CONTENT,
     call, ready, readiness, notesContract, snapshot, snapshotRows,
     readNote, readNoteRecord, changeNote, createTransaction, updateTransaction, deleteTransaction,
+    notificationRegister, notificationInvalidate, notificationSummary, notificationReadiness,
     transactionCapabilities, unsupported, contentOf, lifecycleOf
   };
 })();

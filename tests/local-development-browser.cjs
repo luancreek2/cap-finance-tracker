@@ -69,7 +69,7 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     requests.length=0;await page.locator('#cap-auth-password').fill('test');await page.evaluate(()=>CapSupabase.signIn());
     await page.locator('#cap-auth').waitFor({state:'detached'});assert.equal(await page.evaluate(()=>CapSupabase.status().authenticated),true);
     assert.ok(requests.some(r=>r.path==='/auth/v1/token'&&r.method==='POST'));assert.ok(requests.some(r=>r.path==='/auth/v1/user'));
-    assert.ok(await page.locator('#app').isVisible());assert.ok(!requests.some(r=>r.path.startsWith('/rest/')));
+    assert.ok(await page.locator('#app').isVisible());assert.ok(!requests.some(r=>r.path.startsWith('/rest/')&&!r.path.startsWith('/rest/v1/rpc/cap_notifications_')));
     assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);
   });
   await test('Your Profile alone shows red Sign Out and a read-only email disclosure without extra requests',async()=>{
@@ -103,7 +103,7 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     await page.goto(origin);await page.waitForFunction(()=>window.CapSupabase?.status().authenticated===true);
     assert.equal(await page.evaluate(async()=>(await navigator.serviceWorker.getRegistrations()).length),0);
     assert.equal(await page.evaluate(()=>CapProductionSync.status().enabled),false);
-    assert.ok(!requests.some(r=>r.path.startsWith('/rest/')));
+    assert.ok(!requests.some(r=>r.path.startsWith('/rest/')&&!r.path.startsWith('/rest/v1/rpc/cap_notifications_')));
   });
   await test('production-selector host retains generated config and offline shell without a LOCAL badge',async()=>{
     requests.length=0;const prod=await context.newPage();
@@ -114,7 +114,7 @@ const json=(res,code,data)=>{res.writeHead(code,{'Content-Type':'application/jso
     await prod.evaluate(()=>navigator.serviceWorker.ready);await prod.reload();await prod.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await context.setOffline(true);await prod.reload();
     assert.equal(await prod.evaluate(()=>CapSupabase.configured()),true);assert.equal(await prod.locator('.cap-local-indicator').count(),0);
-    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v368')));
+    assert.ok(await prod.evaluate(async()=>(await caches.keys()).includes('cap-shell-v369')));
     assert.equal(await prod.evaluate(()=>typeof CapSmartLogParser?.parse),'function');
     await prod.waitForFunction(()=>window.StShell&&window.CapOverlays&&!window.capLaunchActive);
     const offlineSettings=await prod.evaluate(()=>{

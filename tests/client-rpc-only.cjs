@@ -10,7 +10,10 @@ const { webcrypto } = require('node:crypto');
 const LEGACY = ['cap_sync_note_put', 'cap_test_transaction_create', 'cap_verify_notes_rpc', 'cap_verify_transaction_rpc'];
 const PRODUCTION_RPCS = ['cap_verify_production_sync_v1', 'cap_sync_snapshot_v1',
   'cap_sync_transaction_create', 'cap_sync_transaction_update', 'cap_sync_transaction_delete',
-  'cap_verify_transaction_update_delete_v1', 'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle'];
+  'cap_verify_transaction_update_delete_v1', 'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle',
+  'cap_notifications_register_v1', 'cap_notifications_invalidate_v1',
+  'cap_notifications_summary_v1', 'cap_notifications_readiness_v1'];
+const NOTIFICATION_RPCS = PRODUCTION_RPCS.filter(n => n.startsWith('cap_notifications_'));
 const SYNCED_TABLES = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals', 'debts',
   'bills', 'account_statements', 'transactions', 'transfers', 'bill_payments', 'budgets', 'notes'];
 let passed = 0;
@@ -19,11 +22,12 @@ const test = async (label, fn) => {
   catch (e) { e.message = label + ': ' + e.message; throw e; }
 };
 
-function loadClient() {
+function loadClient(options) {
   const calls = [];
   const storage = new Map();
+  if (options?.session) storage.set('cap_supabase_session', JSON.stringify(options.session));
   const context = {
-    crypto: webcrypto, TextEncoder, URLSearchParams,
+    crypto: webcrypto, TextEncoder, URLSearchParams, URL,
     CAP_SUPABASE_CONFIG: { url: 'https://fixture.invalid', publishableKey: 'fixture-key' },
     navigator: { get onLine() { return true; } },
     location: { reload() {}, search: '' },
@@ -70,12 +74,14 @@ function loadClient() {
     }
   });
 
-  await test('the transport allows only auth and the nine production RPCs', async () => {
+  await test('the transport allows only auth and the thirteen production RPCs', async () => {
     const { context, calls } = loadClient();
     assert.deepEqual(Array.from(context.CapSupabase.productionRpcPaths).sort(),
       PRODUCTION_RPCS.map(n => '/rest/v1/rpc/' + n).sort());
+    assert.deepEqual(Array.from(context.CapSupabase.notificationRpcPaths).sort(),
+      NOTIFICATION_RPCS.map(n => '/rest/v1/rpc/' + n).sort());
     for (const path of ['/rest/v1/notes?select=*', '/rest/v1/accounts?select=*', '/rest/v1/transactions',
-      '/rest/v1/profiles', '/rest/v1/budgets?select=*']) {
+      '/rest/v1/profiles', '/rest/v1/budgets?select=*', '/rest/v1/rpc/cap_notifications_publish_v1']) {
       await assert.rejects(context.CapSupabase.syncRequest(path), /DIRECT_TABLE_ACCESS_DISABLED/);
     }
     for (const name of LEGACY) {
@@ -91,6 +97,101 @@ function loadClient() {
     await assert.rejects(context.CapProductionRpc.call('cap_sync_note_put', {}), /UNSUPPORTED_PRODUCTION_RPC/);
     await assert.rejects(context.CapProductionRpc.call('cap_test_transaction_create', {}), /UNSUPPORTED_PRODUCTION_RPC/);
     await assert.rejects(context.CapProductionRpc.call('anything_else', {}), /UNSUPPORTED_PRODUCTION_RPC/);
+  });
+
+  await test('the notification wrappers accept only the reviewed enrollment contract', async () => {
+    const { context } = loadClient();
+    const seen = [];
+    const installationId = '00000000-0000-4000-8000-0000000000a1';
+    const bindingId = '00000000-0000-4000-8000-0000000000a2';
+    const key = Buffer.alloc(65, 7).toString('base64url');
+    const auth = Buffer.alloc(16, 9).toString('base64url');
+    context.CapSupabase.syncRequest = async (url, options) => {
+      seen.push({ url, body: JSON.parse(options.body) });
+      if (url.endsWith('cap_notifications_register_v1')) {
+        return { binding_id: bindingId, installation_id: installationId, generation: 1,
+          schedule_revision: 0, state: 'pending' };
+      }
+      if (url.endsWith('cap_notifications_invalidate_v1')) {
+        return { binding_id: bindingId, installation_id: installationId, generation: 2,
+          schedule_revision: 0, state: 'disabled' };
+      }
+      if (url.endsWith('cap_notifications_summary_v1')) {
+        return { protocol: 'CAP_PUSH_V1', background_enabled: false, bindings: [{ binding_id: bindingId,
+          installation_id: installationId, generation: 1, schedule_revision: 0, preference_revision: 0,
+          state: 'pending', created_at: '2026-10-28T00:00:00Z', updated_at: '2026-10-28T00:00:00Z',
+          last_confirmed_at: null }] };
+      }
+      return { migration_id: 'CAP_NOTIFICATIONS_FOUNDATION_5B1_V1', protocol: 'CAP_PUSH_V1',
+        engine_identity: 'cap-reminder-v1', digest_version: 'hmac-sha256-v1', foundation_ready: true,
+        background_enabled: false, background_ready: false, runtime_parked: true };
+    };
+    const binding = await context.CapProductionRpc.notificationRegister({ installationId,
+      expectedGeneration: 0, endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: key,
+      auth, vapidKeyVersion: 'v1', browserExpiration: null });
+    assert.equal(binding.binding_id, bindingId);
+    assert.equal(seen[0].url, '/rest/v1/rpc/cap_notifications_register_v1');
+    assert.equal(seen[0].body.p_installation_id, installationId);
+    assert.equal(seen[0].body.p_expected_generation, 0);
+    assert.equal(seen[0].body.p_protocol, 'CAP_PUSH_V1');
+    assert.equal(seen[0].body.p_p256dh, key);
+    const invalidated = await context.CapProductionRpc.notificationInvalidate({ bindingId, generation: 1,
+      scheduleRevision: 0, disable: true });
+    assert.equal(invalidated.state, 'disabled');
+    assert.equal(seen[1].body.p_expected_revision, 0);
+    assert.equal(seen[1].body.p_disable, true);
+    assert.equal((await context.CapProductionRpc.notificationSummary()).ok, true);
+    assert.equal((await context.CapProductionRpc.notificationReadiness()).ok, true);
+    // Publish/schedule stays unreachable in this phase.
+    assert.equal(context.CapProductionRpc.ALLOWED.includes('cap_notifications_publish_v1'), false);
+    await assert.rejects(context.CapProductionRpc.call('cap_notifications_publish_v1', {}), /UNSUPPORTED_PRODUCTION_RPC/);
+  });
+
+  await test('notification wrappers reject malformed requests before the network', async () => {
+    const { context } = loadClient();
+    const calls = [];
+    context.CapSupabase.syncRequest = async (url, options) => { calls.push(url); return {}; };
+    const good = { installationId: '00000000-0000-4000-8000-0000000000b1', expectedGeneration: 0,
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'AAAA', auth: 'BBBB',
+      vapidKeyVersion: 'v1', browserExpiration: null };
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, installationId: 'x' }),
+      /INSTALLATION_ID_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, expectedGeneration: -1 }),
+      /NOTIFICATION_GENERATION_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, endpoint: 'http://x.invalid' }),
+      /NOTIFICATION_ENDPOINT_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, p256dh: 'AAAA=' }),
+      /NOTIFICATION_KEYS_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, vapidKeyVersion: '1' }),
+      /NOTIFICATION_VAPID_VERSION_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationRegister({ ...good, browserExpiration: 'later' }),
+      /NOTIFICATION_EXPIRATION_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationInvalidate({ bindingId: good.installationId,
+      generation: 1, scheduleRevision: 0, disable: false }), /NOTIFICATION_INVALIDATE_INVALID/);
+    assert.deepEqual(calls, []);
+  });
+
+  await test('notification and generic application 4xx never invalidate a verified session', async () => {
+    const { context } = loadClient({ session: { access_token: 'fixture', refresh_token: 'fixture-refresh',
+      user: { id: 'owner-fixture' } } });
+    await context.CapSupabase.boot();
+    assert.equal(context.CapSupabase.status().authenticated, true);
+    const reject4xx = async () => ({ ok: false, status: 400,
+      text: async () => JSON.stringify({ message: 'NOTIFICATION_BINDING_CONFLICT' }) });
+    context.fetch = reject4xx;
+    await assert.rejects(context.CapSupabase.syncRequest('/rest/v1/rpc/cap_notifications_register_v1',
+      { method: 'POST', body: '{}' }), /NOTIFICATION_BINDING_CONFLICT/);
+    assert.equal(context.CapSupabase.status().authenticated, true, 'notification 4xx is not auth evidence');
+    await assert.rejects(context.CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1',
+      { method: 'POST', body: '{}' }), /NOTIFICATION_BINDING_CONFLICT/);
+    assert.equal(context.CapSupabase.status().authenticated, true, 'generic application 4xx is not auth evidence');
+    context.fetch = async () => ({ ok: false, status: 401,
+      text: async () => JSON.stringify({ message: 'invalid jwt' }) });
+    await assert.rejects(context.CapSupabase.syncRequest('/rest/v1/rpc/cap_sync_snapshot_v1',
+      { method: 'POST', body: '{}' }), /invalid jwt/);
+    assert.equal(context.CapSupabase.status().authenticated, true, 'data-path 401 alone is not auth evidence');
+    await assert.rejects(context.CapSupabase.currentUser(), /invalid jwt/);
+    assert.equal(context.CapSupabase.status().authenticated, false, 'only the auth-path rejection invalidates');
   });
 
   await test('the notes contract and readiness checks require the exact server flags', async () => {
