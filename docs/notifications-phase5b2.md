@@ -10,7 +10,9 @@ happen in this phase.
 
 Phase 5B.2A1 V2 remains the frozen, production-applied server contract. This
 phase adds no DDL, DML, Edge Function, sender, cron job, `pg_cron` or `pg_net`.
-Publication and scheduling are deliberately deferred to Phase 5B.3.
+Bounded client schedule publication and schedule lifecycle are deliberately
+deferred to Phase 5B.4; sender dispatch belongs to Phase 5B.3 and automatic
+Cron/invocation belongs to Phase 5B.5.
 
 ## Files
 
@@ -296,17 +298,19 @@ Because VAPID ships dark, the expected production observation is the same on
 every platform: no background-reminder block, no permission prompt, and no
 push subscription.
 
-## Deferred to Phase 5B.3
+## Deferred to later phases
 
-* Provisioned VAPID public identity and key rotation.
-* Publication/scheduling (`cap_notifications_publish_v1`) and dispatch.
+* Phase 5B.3: provisioned VAPID public identity, key rotation and sender dispatch.
+* Phase 5B.4: bounded client schedule publication (`cap_notifications_publish_v1`)
+  and schedule lifecycle.
 * `browser_expiration` gating and sender integration. The browser's
   `expirationTime === null` is accepted and forwarded as `null`; the client
   never synthesizes an expiration. Deciding how publication treats a null
   expiration (and when it must be treated as non-publishable) is a Phase 5B.3
   gate.
-* Real-platform enrollment matrix and OS-level delivery verification.
-* Any Edge Function, `pg_cron`, `pg_net` or sender deployment.
+* Phase 5B.6: real-platform enrollment matrix and OS-level delivery verification.
+* Phase 5B.3: isolated sender Edge Function; Phase 5B.5: automatic Cron/invocation
+  mechanism, including any approved `pg_cron` / `pg_net` use.
 
 ## Rollback
 
