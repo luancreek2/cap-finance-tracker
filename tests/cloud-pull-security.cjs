@@ -37,7 +37,9 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'supabase_notifications_sender_5b3.sql',
   'tests/helpers/notification-sender-tests.ts','tests/helpers/sender-deno.cjs','tests/helpers/sender-pg.cjs',
   'tests/notification-sender-edge.cjs','tests/notification-sender.cjs','tests/notification-webpush.cjs','tests/notifications-sender-sql.cjs',
-  'supabase_notifications_scheduling_v2.sql','docs/notification-scheduling-amendment.md','tests/notifications-scheduling-sql.cjs'];
+  'supabase_notifications_scheduling_v2.sql','docs/notification-scheduling-amendment.md','tests/notifications-scheduling-sql.cjs',
+  'js/notification-schedule.js','js/notification-publisher.js','tests/notification-schedule.cjs','tests/notification-publisher.cjs',
+  'tests/notification-schedule-browser.cjs','docs/notification-phase2b.md'];
 const git=(...args)=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\r?\n/).filter(Boolean);
 const changed=[...new Set([...git('diff','--name-only','HEAD'),...git('ls-files','--others','--exclude-standard')])];
 assert.ok(changed.every(f=>allowed.includes(f)),'Unexpected files in proposed release');

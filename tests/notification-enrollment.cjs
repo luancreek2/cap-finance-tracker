@@ -314,7 +314,7 @@ function evidence(patch) {
     assert.equal(JSON.stringify(module.evidence()).includes('fcm.googleapis'), false);
   });
 
-  await test('A7 the production RPC allowlist is exactly thirteen and excludes publish', async () => {
+  await test('A7 the production RPC allowlist is exactly sixteen and excludes legacy publish', async () => {
     const context = { window: null, console };
     context.window = context;
     vm.createContext(context);
@@ -323,17 +323,21 @@ function evidence(patch) {
     const expected = ['cap_verify_production_sync_v1', 'cap_sync_snapshot_v1', 'cap_sync_transaction_create',
       'cap_sync_transaction_update', 'cap_sync_transaction_delete', 'cap_verify_transaction_update_delete_v1',
       'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle', 'cap_notifications_register_v1',
-      'cap_notifications_invalidate_v1', 'cap_notifications_summary_v1', 'cap_notifications_readiness_v1'];
+      'cap_notifications_invalidate_v1', 'cap_notifications_summary_v1', 'cap_notifications_readiness_v1',
+      'cap_notifications_readiness_v2', 'cap_notifications_publish_v2', 'cap_notifications_schedule_readback_v2'];
     assert.deepEqual(allowed, expected.slice().sort());
     assert.equal(allowed.includes('cap_notifications_publish_v1'), false);
+    assert.equal(allowed.includes('cap_notifications_publish_v2'), true);
     const source = read('js/production-rpc.js');
-    assert.equal(/notificationPublish|publishSchedule/.test(source), false);
+    assert.equal(/notificationPublish:\s*'cap_notifications_publish_v1'/.test(source), false);
+    assert.equal(/publishSchedule/.test(source), false);
     await assert.rejects(context.CapProductionRpc.call('cap_notifications_publish_v1', {}), /UNSUPPORTED_PRODUCTION_RPC/);
     const supabase = read('js/supabase.js');
     const paths = [...supabase.matchAll(/'(?:\.\/)?\/rest\/v1\/rpc\/(cap_[a-z0-9_]+)'/g)].map(m => m[1])
       .filter(name => name !== 'cap_notifications_');
-    assert.equal(new Set(paths).size, 13);
+    assert.equal(new Set(paths).size, 16);
     assert.equal(paths.includes('cap_notifications_publish_v1'), false);
+    assert.equal(paths.includes('cap_notifications_publish_v2'), true);
   });
 
   await test('A8 shell wiring: v369 precaches both modules, keeps no push listener, and never ships a private key', async () => {

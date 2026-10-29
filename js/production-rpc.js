@@ -27,7 +27,12 @@
     notificationRegister: 'cap_notifications_register_v1',
     notificationInvalidate: 'cap_notifications_invalidate_v1',
     notificationSummary: 'cap_notifications_summary_v1',
-    notificationReadiness: 'cap_notifications_readiness_v1'
+    notificationReadiness: 'cap_notifications_readiness_v1',
+    // Phase 2A Scheduling V2 surface. Wrappers exist from Phase 2B but no
+    // shipped startup path calls them; publication stays dark.
+    notificationReadinessV2: 'cap_notifications_readiness_v2',
+    notificationPublishV2: 'cap_notifications_publish_v2',
+    notificationReadbackV2: 'cap_notifications_schedule_readback_v2'
   };
   const ALLOWED = Object.keys(RPC).map(k => RPC[k]);
   const ENTITIES = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals',
@@ -337,6 +342,108 @@
       return { ok, raw, reason: ok ? null : 'NOTIFICATION_READINESS_NOT_VERIFIED' };
     } catch (e) { return { ok: false, raw: null, reason: String(e?.message || e) }; }
   }
+  // ---- Phase 2B Scheduling V2 wrappers ------------------------------------
+  // Exact Phase 2A contract signatures. These wrappers validate complete
+  // request/response shapes before and after the transport call. No wrapper
+  // reads a private table and none is invoked from startup.
+  const ENTRY_FIELDS = ['candidate_digest', 'eligible_local_date', 'expires_at', 'local_time',
+    'obligation_digest', 'send_after', 'time_basis', 'timezone'];
+  const DIGEST_RE = /^[0-9a-f]{64}$/;
+  const LOCAL_TIME_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+  const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const UTC_STAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.[0-9]{1,6})?Z$/;
+  const ZONE_RE = /^(UTC|[A-Za-z_]+(\/[A-Za-z0-9_+\-]+)+)$/;
+  const DELIVERY_STATES_V2 = ['queued', 'claimed', 'dispatch_started', 'retry_wait', 'accepted',
+    'unknown', 'retired', 'suppressed'];
+  function validZone(value) {
+    return typeof value === 'string' && ZONE_RE.test(value) && !/^(posix|right)\//.test(value);
+  }
+  function v2Entry(value) {
+    if (!isObject(value) || Object.keys(value).length !== ENTRY_FIELDS.length) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (ENTRY_FIELDS.some(k => !Object.prototype.hasOwnProperty.call(value, k))) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (ENTRY_FIELDS.some(k => typeof value[k] !== 'string')) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!DIGEST_RE.test(value.candidate_digest) || !DIGEST_RE.test(value.obligation_digest)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!LOCAL_DATE_RE.test(value.eligible_local_date)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!LOCAL_TIME_RE.test(value.local_time)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!['wall', 'absolute'].includes(value.time_basis)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!validZone(value.timezone)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!UTC_STAMP_RE.test(value.send_after) || !UTC_STAMP_RE.test(value.expires_at)) throw failure('NOTIFICATION_ENTRY_INVALID');
+    if (!(Date.parse(value.expires_at) > Date.parse(value.send_after))) throw failure('NOTIFICATION_ENTRY_INVALID');
+    const out = {};
+    for (const key of ENTRY_FIELDS) out[key] = value[key];
+    return out;
+  }
+  function v2Occurrence(value) {
+    if (!isObject(value) || !DIGEST_RE.test(String(value.candidate_digest))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!LOCAL_DATE_RE.test(String(value.eligible_local_date)) || !LOCAL_TIME_RE.test(String(value.local_time))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!validZone(String(value.timezone)) || !['wall', 'absolute'].includes(String(value.time_basis))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!UTC_STAMP_RE.test(String(value.send_after)) || !UTC_STAMP_RE.test(String(value.expires_at))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!DELIVERY_STATES_V2.includes(String(value.delivery_state))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    return value;
+  }
+  function v2Schedule(raw, bindingId, generation) {
+    if (!isObject(raw) || raw.binding_id !== bindingId) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!Number.isSafeInteger(raw.generation) || raw.generation !== generation) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!Number.isSafeInteger(raw.schedule_revision) || raw.schedule_revision < 0) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!Number.isSafeInteger(raw.preference_revision) || raw.preference_revision < 0) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!Array.isArray(raw.occurrences)) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    raw.occurrences.forEach(v2Occurrence);
+    return raw;
+  }
+  async function notificationReadinessV2() {
+    try {
+      const raw = await call(RPC.notificationReadinessV2);
+      const ok = !!(isObject(raw) && raw.migration_id === 'CAP_NOTIFICATIONS_SCHEDULING_V2' &&
+        raw.scheduling_contract === 2 && raw.protocol === 'CAP_PUSH_V1' &&
+        raw.engine_identity === 'cap-reminder-v1' && raw.digest_version === 'hmac-sha256-v1' &&
+        raw.scheduling_ready === true && raw.max_future_hours === 8760 && raw.max_delivery_hours === 24 &&
+        raw.local_midnight_ceiling === true && raw.gap_policy === 'reject' && raw.fold_policy === 'later' &&
+        raw.background_enabled === false && raw.background_ready === false &&
+        raw.runtime_parked === true && raw.dispatch_ready === false);
+      return { ok, raw: ok ? raw : null, reason: ok ? null : 'SCHEDULING_V2_NOT_READY' };
+    } catch (e) { return { ok: false, raw: null, reason: String(e?.message || e) }; }
+  }
+  async function notificationPublishV2(options) {
+    if (!uuid(options?.bindingId)) throw failure('NOTIFICATION_BINDING_ID_INVALID');
+    if (!Number.isSafeInteger(options?.generation) || options.generation < 1) throw failure('NOTIFICATION_GENERATION_INVALID');
+    if (!nonNegative(options?.expectedRevision)) throw failure('NOTIFICATION_REVISION_INVALID');
+    if (!Number.isSafeInteger(options?.preferenceRevision) || options.preferenceRevision < 0) throw failure('NOTIFICATION_PREFERENCE_REVISION_INVALID');
+    if (!validZone(options?.timezone)) throw failure('NOTIFICATION_TIMEZONE_INVALID');
+    if (!Array.isArray(options?.entries) || options.entries.length > 1000) throw failure('NOTIFICATION_ENTRIES_INVALID');
+    const entries = options.entries.map(v2Entry);
+    const raw = await call(RPC.notificationPublishV2, {
+      p_binding_id: options.bindingId,
+      p_generation: options.generation,
+      p_expected_revision: options.expectedRevision,
+      p_preference_revision: options.preferenceRevision,
+      p_protocol: 'CAP_PUSH_V1',
+      p_engine_identity: 'cap-reminder-v1',
+      p_digest_version: 'hmac-sha256-v1',
+      p_timezone: options.timezone,
+      p_entries: entries
+    });
+    if (!isObject(raw) || raw.scheduling_contract !== 2 || raw.dispatch_ready !== false) throw failure('NOTIFICATION_PUBLISH_UNVERIFIED');
+    if (typeof raw.accepted_at !== 'string' || Number.isNaN(Date.parse(raw.accepted_at))) throw failure('NOTIFICATION_PUBLISH_UNVERIFIED');
+    if (!Number.isSafeInteger(raw.entry_count) || raw.entry_count < 0) throw failure('NOTIFICATION_PUBLISH_UNVERIFIED');
+    if (!validZone(String(raw.notification_timezone || ''))) throw failure('NOTIFICATION_PUBLISH_UNVERIFIED');
+    v2Schedule(raw, options.bindingId, options.generation);
+    return { binding_id: raw.binding_id, generation: raw.generation, scheduling_contract: 2,
+      schedule_revision: raw.schedule_revision, preference_revision: raw.preference_revision,
+      notification_timezone: raw.notification_timezone, accepted_at: raw.accepted_at,
+      entry_count: raw.entry_count, occurrences: raw.occurrences, dispatch_ready: false };
+  }
+  async function notificationReadbackV2(options) {
+    if (!uuid(options?.bindingId)) throw failure('NOTIFICATION_BINDING_ID_INVALID');
+    if (!Number.isSafeInteger(options?.generation) || options.generation < 1) throw failure('NOTIFICATION_GENERATION_INVALID');
+    const raw = await call(RPC.notificationReadbackV2, {
+      p_binding_id: options.bindingId,
+      p_generation: options.generation
+    });
+    if (!isObject(raw) || raw.scheduling_contract !== 2 || raw.dispatch_ready !== false) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!['pending', 'disabled', 'retired'].includes(String(raw.state))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    if (!validZone(String(raw.notification_timezone || ''))) throw failure('NOTIFICATION_SCHEDULE_INVALID');
+    return v2Schedule(raw, options.bindingId, options.generation);
+  }
   // Narrow, separate attestation for the update/delete rollout. It never widens
   // the main readiness contract, so Phase 6N stays independently deployable.
   async function transactionCapabilities() {
@@ -355,6 +462,7 @@
     call, ready, readiness, notesContract, snapshot, snapshotRows,
     readNote, readNoteRecord, changeNote, createTransaction, updateTransaction, deleteTransaction,
     notificationRegister, notificationInvalidate, notificationSummary, notificationReadiness,
+    notificationReadinessV2, notificationPublishV2, notificationReadbackV2,
     transactionCapabilities, unsupported, contentOf, lifecycleOf
   };
 })();

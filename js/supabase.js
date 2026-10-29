@@ -14,7 +14,10 @@
     '/rest/v1/rpc/cap_notifications_register_v1',
     '/rest/v1/rpc/cap_notifications_invalidate_v1',
     '/rest/v1/rpc/cap_notifications_summary_v1',
-    '/rest/v1/rpc/cap_notifications_readiness_v1'];
+    '/rest/v1/rpc/cap_notifications_readiness_v1',
+    '/rest/v1/rpc/cap_notifications_readiness_v2',
+    '/rest/v1/rpc/cap_notifications_publish_v2',
+    '/rest/v1/rpc/cap_notifications_schedule_readback_v2'];
   // Notification application errors are not authentication evidence. A stale
   // binding, a foreign endpoint reservation or an enrollment 4xx must never
   // invalidate a previously verified session; only the fresh /auth/v1/user

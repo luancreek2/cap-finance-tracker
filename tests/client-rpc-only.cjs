@@ -12,7 +12,9 @@ const PRODUCTION_RPCS = ['cap_verify_production_sync_v1', 'cap_sync_snapshot_v1'
   'cap_sync_transaction_create', 'cap_sync_transaction_update', 'cap_sync_transaction_delete',
   'cap_verify_transaction_update_delete_v1', 'cap_notes_change', 'cap_notes_read', 'cap_verify_notes_lifecycle',
   'cap_notifications_register_v1', 'cap_notifications_invalidate_v1',
-  'cap_notifications_summary_v1', 'cap_notifications_readiness_v1'];
+  'cap_notifications_summary_v1', 'cap_notifications_readiness_v1',
+  'cap_notifications_readiness_v2', 'cap_notifications_publish_v2',
+  'cap_notifications_schedule_readback_v2'];
 const NOTIFICATION_RPCS = PRODUCTION_RPCS.filter(n => n.startsWith('cap_notifications_'));
 const SYNCED_TABLES = ['profiles', 'user_preferences', 'categories', 'accounts', 'goals', 'debts',
   'bills', 'account_statements', 'transactions', 'transfers', 'bill_payments', 'budgets', 'notes'];
@@ -74,7 +76,7 @@ function loadClient(options) {
     }
   });
 
-  await test('the transport allows only auth and the thirteen production RPCs', async () => {
+  await test('the transport allows only auth and the sixteen production RPCs', async () => {
     const { context, calls } = loadClient();
     assert.deepEqual(Array.from(context.CapSupabase.productionRpcPaths).sort(),
       PRODUCTION_RPCS.map(n => '/rest/v1/rpc/' + n).sort());
@@ -142,9 +144,13 @@ function loadClient(options) {
     assert.equal(seen[1].body.p_disable, true);
     assert.equal((await context.CapProductionRpc.notificationSummary()).ok, true);
     assert.equal((await context.CapProductionRpc.notificationReadiness()).ok, true);
-    // Publish/schedule stays unreachable in this phase.
+    // The legacy v1 publish entrypoint stays unreachable. The Phase 2A v2
+    // surface is wrapped but never driven by startup; the publisher is dark.
     assert.equal(context.CapProductionRpc.ALLOWED.includes('cap_notifications_publish_v1'), false);
     await assert.rejects(context.CapProductionRpc.call('cap_notifications_publish_v1', {}), /UNSUPPORTED_PRODUCTION_RPC/);
+    assert.equal(context.CapProductionRpc.ALLOWED.includes('cap_notifications_publish_v2'), true);
+    assert.equal(context.CapProductionRpc.ALLOWED.includes('cap_notifications_schedule_readback_v2'), true);
+    assert.equal(context.CapProductionRpc.ALLOWED.includes('cap_notifications_readiness_v2'), true);
   });
 
   await test('notification wrappers reject malformed requests before the network', async () => {
@@ -277,6 +283,58 @@ function loadClient(options) {
     assert.deepEqual(seen[0].body.p_expected_account, account);
     await assert.rejects(context.CapProductionRpc.createTransaction({ operationId: 'bad', transaction, expectedAccount: account }),
       /OPERATION_ID_REQUIRED/);
+  });
+
+  await test('the Scheduling V2 wrappers use the exact Phase 2A signatures and no financial fields', async () => {
+    const { context } = loadClient();
+    const seen = [];
+    const bindingId = '00000000-0000-4000-8000-0000000000f1';
+    const entry = { candidate_digest: 'a'.repeat(64), obligation_digest: 'b'.repeat(64),
+      time_basis: 'wall', eligible_local_date: '2026-11-01', local_time: '09:00',
+      timezone: 'Asia/Manila', send_after: '2026-11-01T01:00:00Z', expires_at: '2026-11-01T16:00:00Z' };
+    const occurrence = { ...entry, delivery_state: 'queued' };
+    context.CapSupabase.syncRequest = async (url, options) => {
+      seen.push({ url, body: JSON.parse(options.body) });
+      if (url.endsWith('cap_notifications_readiness_v2')) {
+        return { migration_id: 'CAP_NOTIFICATIONS_SCHEDULING_V2', scheduling_contract: 2, protocol: 'CAP_PUSH_V1',
+          engine_identity: 'cap-reminder-v1', digest_version: 'hmac-sha256-v1', scheduling_ready: true,
+          max_future_hours: 8760, max_delivery_hours: 24, local_midnight_ceiling: true,
+          gap_policy: 'reject', fold_policy: 'later', background_enabled: false, background_ready: false,
+          runtime_parked: true, dispatch_ready: false };
+      }
+      if (url.endsWith('cap_notifications_schedule_readback_v2')) {
+        return { binding_id: bindingId, generation: 1, scheduling_contract: 2, state: 'pending',
+          schedule_revision: 1, preference_revision: 1, notification_timezone: 'Asia/Manila',
+          occurrences: [occurrence], dispatch_ready: false };
+      }
+      return { binding_id: bindingId, generation: 1, scheduling_contract: 2, schedule_revision: 1,
+        preference_revision: 1, notification_timezone: 'Asia/Manila', accepted_at: '2026-10-30T00:00:00Z',
+        entry_count: 1, occurrences: [occurrence], dispatch_ready: false };
+    };
+    assert.equal((await context.CapProductionRpc.notificationReadinessV2()).ok, true);
+    const ack = await context.CapProductionRpc.notificationPublishV2({ bindingId, generation: 1,
+      expectedRevision: 0, preferenceRevision: 1, timezone: 'Asia/Manila', entries: [entry] });
+    assert.equal(ack.schedule_revision, 1);
+    assert.deepEqual(seen[1].body, {
+      p_binding_id: bindingId, p_generation: 1, p_expected_revision: 0, p_preference_revision: 1,
+      p_protocol: 'CAP_PUSH_V1', p_engine_identity: 'cap-reminder-v1', p_digest_version: 'hmac-sha256-v1',
+      p_timezone: 'Asia/Manila', p_entries: [entry] });
+    const serialized = JSON.stringify(seen[1].body);
+    for (const forbidden of ['merchant', 'amount', 'title', 'description', 'account', 'category', 'budget', 'notes']) {
+      assert.equal(serialized.includes(forbidden), false, 'no financial field in the payload: ' + forbidden);
+    }
+    assert.equal((await context.CapProductionRpc.notificationReadbackV2({ bindingId, generation: 1 })).schedule_revision, 1);
+    await assert.rejects(context.CapProductionRpc.notificationPublishV2({ bindingId, generation: 1,
+      expectedRevision: 0, preferenceRevision: 1, timezone: 'Asia/Manila',
+      entries: [{ ...entry, candidate_digest: 'not-hex' }] }), /NOTIFICATION_ENTRY_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationPublishV2({ bindingId, generation: 1,
+      expectedRevision: 0, preferenceRevision: 1, timezone: 'Asia/Manila',
+      entries: [{ ...entry, extra: 'x' }] }), /NOTIFICATION_ENTRY_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationPublishV2({ bindingId, generation: 1,
+      expectedRevision: 0, preferenceRevision: 1, timezone: 'Asia/Manila',
+      entries: [{ ...entry, time_basis: 'local' }] }), /NOTIFICATION_ENTRY_INVALID/);
+    await assert.rejects(context.CapProductionRpc.notificationPublishV2({ bindingId, generation: 0,
+      expectedRevision: 0, preferenceRevision: 1, timezone: 'Asia/Manila', entries: [entry] }), /NOTIFICATION_GENERATION_INVALID/);
   });
 
   await test('operations without a production adapter fail closed with a fixed code', async () => {
