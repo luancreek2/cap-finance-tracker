@@ -1,11 +1,22 @@
 ﻿/* Isolated notification UI/delivery checks. Browser APIs are mocked explicitly;
    actual capability gates, Web Locks, local state, worker caching and UI run. */
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http'),cp=require('node:child_process');
 if(!process.env.CAP_PLAYWRIGHT_PATH){console.log('SKIP Notifications browser: set CAP_PLAYWRIGHT_PATH');process.exit(0)}
-const {chromium}=require(process.env.CAP_PLAYWRIGHT_PATH),root=path.resolve(__dirname,'..');let server,browser,passed=0;
+const {chromium}=require(process.env.CAP_PLAYWRIGHT_PATH),root=path.resolve(__dirname,'..');let server,browser,passed=0,servePrevious=false;
 const test=async(n,f)=>{await f();passed++;console.log('PASS '+n)};
 (async()=>{
  server=http.createServer((req,res)=>{const u=new URL(req.url,'http://fixture.invalid');if(u.pathname==='/notification-peer'){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><div id="app"><div class="home-date">Peer fixture</div></div>'+['smart-log-merchants','smart-log-parser','financial-search-parser','financial-search-engine','notification-engine','notifications'].map(f=>'<script src="/js/'+f+'.js"></script>').join(''));}if(['/supabase-config.js','/supabase-config.local.js'].includes(u.pathname)){res.setHeader('Content-Type','text/javascript');return res.end('window.CAP_SUPABASE_CONFIG={};')}const file=path.resolve(root,'.'+decodeURIComponent(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end()}fs.readFile(file,(err,b)=>{res.writeHead(err?404:200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(err?'Missing':b)})});
+ const currentHandler=server.listeners('request')[0];server.removeAllListeners('request');
+ server.on('request',(req,res)=>{
+   if(servePrevious){
+     const pathname=new URL(req.url,'http://fixture.invalid').pathname;
+     const file=pathname==='/'?'index.html':pathname.slice(1);
+     if(/^(?:index\.html|service-worker\.js|(?:js|css)\/[\w.-]+\.(?:js|css))$/.test(file)){
+       try{const bytes=cp.execFileSync('git',['show','75ed83387790312accef4c5dcababecba885afbc:'+file],{cwd:root,stdio:['ignore','pipe','ignore']});res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html','Cache-Control':'no-store'});return res.end(bytes);}catch(_){}
+     }
+   }
+   currentHandler(req,res);
+ });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-proxy-server','--host-resolver-rules=MAP cap-notifications.localhost 127.0.0.1']});
  const context=await browser.newContext({viewport:{width:390,height:844}}),external=[],errors=[];
@@ -107,11 +118,32 @@ const test=async(n,f)=>{await f();passed++;console.log('PASS '+n)};
  await page.evaluate(()=>{const k=Object.keys(localStorage).find(k=>k.startsWith('cap_notifications_v1:')),d=JSON.parse(localStorage.getItem(k));for(const r of Object.values(d.history)){r.dismissed=false;r.seen=true;}localStorage.setItem(k,JSON.stringify(d));return CapNotifications.evaluate(false)});
  const shots=path.join(process.env.LOCALAPPDATA,'Temp','opencode','notifications-review');fs.mkdirSync(shots,{recursive:true});for(const width of [390,768,1440])for(const theme of ['light','dark','auto','apple','bluish-white']){await page.setViewportSize({width,height:844});await page.evaluate(t=>{localStorage.setItem('cap-appearance-theme',t);applyTheme()},theme);await open();await page.screenshot({path:path.join(shots,`${width}-${theme}-center.png`)});await close();await settings();await page.locator('#sheet').waitFor({state:'visible'});await page.locator('#sheet').evaluate(async e=>{await Promise.all(e.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))});await page.screenshot({path:path.join(shots,`${width}-${theme}-settings.png`)});await closeSettings();}
  await context.close();
-  await test('actual v375 worker caches notification assets and restores center/preferences offline',async()=>{
+  await test('actual v376 worker caches notification assets and restores center/preferences offline',async()=>{
   const offline=await browser.newContext({viewport:{width:390,height:844}}),url='http://cap-notifications.localhost:'+server.address().port,requests=[];await offline.route('**/*',r=>new URL(r.request().url()).origin===url?r.continue():(requests.push(r.request().url()),r.abort()));const p=await offline.newPage();
   await p.goto(url);await p.waitForFunction(()=>window.CapNotifications&&!window.capLaunchActive);await p.evaluate(()=>{localStorage.setItem('cap_whats_new_seen_version',APP_VERSION);if(document.querySelector('.whats-new-overlay'))closeWhatsNew();document.querySelector('#cap-auth')?.remove();S.accts=[];S.tx=[];S.pend=[];S.xfer=[];S.goals=[];S.debts=[];S.budgets={};S.bills=[{id:1,name:'Offline bill',amt:100,freq:'once',kind:'bill',start:CapSmartLogParser.localDate(new Date())}];tab='Home';render();stGo('appearance');setTheme('bluish-white');closeS()});await p.evaluate(()=>CapNotifications.setPreference('on',true));await p.waitForTimeout(1200);await p.evaluate(()=>navigator.serviceWorker.ready);await p.reload();await p.waitForFunction(()=>!!navigator.serviceWorker.controller&&!window.capLaunchActive);
-   assert.equal(await p.evaluate(async()=>{const c=await caches.open('cap-shell-v375');return (await Promise.all(['js/notification-engine.js','js/notifications.js','js/vapid-public.js','js/notification-enrollment.js','css/notifications.css'].map(f=>c.match(new URL(f,location.href).href)))).every(Boolean)}),true);
+    assert.equal(await p.evaluate(async()=>{const c=await caches.open('cap-shell-v376');return (await Promise.all(['js/notification-engine.js','js/notifications.js','js/vapid-public.js','js/notification-enrollment.js','js/notification-schedule.js','js/notification-publisher.js','js/notification-reminders.js','js/notification-reminder-ui.js','css/notifications.css'].map(f=>c.match(new URL(f,location.href).href)))).every(Boolean)}),true);
    await offline.setOffline(true);await p.reload();await p.waitForFunction(()=>window.CapNotifications&&!window.capLaunchActive);assert.equal(await p.evaluate(()=>CapNotifications.preferences().on),true);assert.equal(await p.evaluate(()=>appearanceTheme()),'bluish-white');await p.evaluate(()=>document.querySelector('#cap-auth')?.remove());const s=await p.evaluate(()=>JSON.stringify({S,pera:localStorage.getItem('pera')}));await p.locator('#cap-notification-bell').click();await p.locator('#cap-notifications').waitFor({state:'visible'});assert.equal(await p.locator('.cn-row').count(),1);assert.match(await p.locator('#cap-notifications').innerText(),/Offline bill/);await p.mouse.click(2,300);await p.locator('#cap-notifications').waitFor({state:'hidden'});assert.equal(await p.evaluate(()=>JSON.stringify({S,pera:localStorage.getItem('pera')})),s);assert.deepEqual(requests,[]);await offline.close();
  });
- console.log(`PASS: ${passed} Notifications browser checks`);
+  await test('installed v375 upgrades to v376, cleans old shell caches and boots new reminder UI offline without reload loops',async()=>{
+    servePrevious=true;
+    const upgrade=await browser.newContext(),url='http://cap-notifications.localhost:'+server.address().port,forbidden=[];
+    await upgrade.addInitScript(()=>{window.__releaseSubscriptions=0;if(window.PushManager)PushManager.prototype.subscribe=function(){window.__releaseSubscriptions++;throw Error('Release fixture forbids enrollment');};});
+    await upgrade.route('**/*',r=>{const target=new URL(r.request().url());if(/\/rpc\/cap_notifications_.*v2|\/functions\/v1\//.test(target.pathname)){forbidden.push(target.pathname);return r.abort();}return target.origin===url?r.continue():r.abort();});
+    const p=await upgrade.newPage();let loads=0;p.on('load',()=>loads++);
+    await p.goto(url);await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
+    assert.ok(await p.evaluate(async()=>(await caches.keys()).includes('cap-shell-v375')));
+    servePrevious=false;
+    await p.evaluate(async()=>{const registration=await navigator.serviceWorker.getRegistration();await new Promise(async(resolve,reject)=>{navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true});try{await registration.update();}catch(e){reject(e);}});});
+    await p.waitForFunction(async()=>{const keys=await caches.keys();return keys.includes('cap-shell-v376')&&!keys.includes('cap-shell-v375');});
+    assert.equal(loads,1,'activation must not force a reload loop');
+    await p.reload();await p.waitForFunction(()=>window.CapReminderUI&&window.CapNotificationPublisher&&!window.capLaunchActive);
+    await p.evaluate(()=>{localStorage.setItem('cap_whats_new_seen_version',APP_VERSION);if(document.querySelector('.whats-new-overlay'))closeWhatsNew();document.querySelector('#cap-auth')?.remove();});
+    await upgrade.setOffline(true);await p.reload();await p.waitForFunction(()=>window.CapReminderUI&&window.CapNotificationSchedule&&!window.capLaunchActive);
+    await p.evaluate(()=>{document.querySelector('#cap-auth')?.remove();if(document.querySelector('.whats-new-overlay'))closeWhatsNew();});
+    await p.evaluate(()=>CapReminderUI.settings());await p.getByRole('checkbox',{name:'Push Notifications',exact:true}).waitFor();
+    assert.match(await p.locator('#sb').innerText(),/Default Reminder Time/);
+    await p.evaluate(()=>closeS());await p.locator('#sheet').waitFor({state:'hidden'});await p.evaluate(()=>CapNotifications.open());await p.locator('#cap-notifications[open]').waitFor();
+    assert.equal(loads,3,'only the two explicit reloads occurred');assert.deepEqual(forbidden,[]);assert.equal(await p.evaluate(()=>__releaseSubscriptions),0);await upgrade.close();
+  });
+  console.log(`PASS: ${passed} Notifications browser checks`);
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{if(browser)await browser.close();if(server)await new Promise(r=>server.close(r))});

@@ -130,3 +130,65 @@ runs all 70 original delivery, storage, permission, worker, offline, responsive
 and financial-read-only checks. Historical v369/v375 assertions and the Phase 2A
 exact-byte allowlist comparison remain unchanged and documented. Frozen SQL is
 tested using the same isolated Phase 2A checkpoint method as Phase 2B.
+
+## Release packaging (v376)
+
+The separate release commit advances `cap-shell-v375` to `cap-shell-v376` and
+adds exactly four CORE scripts: `notification-schedule.js` (compiler/identity),
+`notification-publisher.js` (dark client), `notification-reminders.js` (local
+editor adapter), and `notification-reminder-ui.js` (settings/item UI). Each is
+loaded by index.html and required for a complete offline runtime. Existing
+index/CSS/notifications/production-RPC/Supabase assets were already CORE and
+receive refreshed bytes through the new cache namespace; no duplicate entries
+or media additions are needed.
+
+Architecture is unchanged: mandatory CORE fetches use cache reload at install,
+media remains best-effort, skipWaiting/clients.claim activate the completed
+cache, old cap-shell caches are deleted, navigation is network-first with a
+three-second cached-index fallback, and script/style/media requests use
+stale-while-revalidate. Same-origin GET scoping and API bypass remain intact.
+Localhost preview still unregisters and bypasses worker caching. Notification
+click behavior, background-sync page wakeup, and all runtime handlers are
+unchanged. There is no push receiver, subscription-change handler, scheduler,
+IndexedDB logic, VAPID logic or publication path in the worker.
+
+The v369 checks in Upcoming presentation, enrollment A8, and the sender test's
+shared TypeScript fixture all read the current checkout worker, not a frozen
+artifact. They are current-version assertions and now expect v376; sender
+production TypeScript is untouched. The same classification applies to the
+local-development browser and cloud-pull-shell checks discovered during the
+broad regression. No security checks were removed. The frozen Phase 2A SQL
+suite's v375 raw-byte/hash assertion remains historical and is NOT modified.
+
+The notification browser suite now exercises both fresh v376/offline loading
+and an actual v375-to-v376 upgrade using the origin checkpoint's old shell
+bytes. It checks controller takeover, old-cache removal, new-module boot,
+offline Settings/Center, and exactly two explicit reloads (no update loop).
+The old open document is not forcibly reloaded: this preserves Cap's existing
+lifecycle. The first explicit navigation after takeover boots the new shell.
+
+This release packages already-reviewed local clients only. Remote publication
+remains off, VAPID remains unconfigured, and SQL/sender/payload/financial/Cloud
+Sync/auth/RLS contracts are unchanged. Browser/API tests use isolated synthetic
+fixtures; local SQL uses disposable loopback databases, never production.
+
+The frozen Phase 2A scheduling certification was repeated at origin checkpoint
+`75ed833` with its exact original raw v375 worker bytes: all 38 checks passed
+on local PostgreSQL 17.6. No frozen tests/SQL were edited; the temporary detached
+worktree was removed. This is local certification, not production-minor
+compatibility certification or permission to activate the remote runtime.
+
+Release regression: adapter 17, Phase 2C browser 29, notification browser 71,
+engine 61, offline-auth 44, compiler 44, publisher 25, scheduling browser 14,
+RPC-only 14, release security 4, enrollment unit 11/browser 27, Web Push 5,
+sender Deno 7/Edge 1, Upcoming 20, shell cache 5, local development unit 15/
+browser 10, financial Search 60/Health 73, production sync 31/wiring 5/IDB 8,
+outbox 49, sync toggle 9, cloud pull 48/bootstrap 64, foundation SQL 69,
+enrollment SQL 21/real PG amendment 18, frozen scheduling SQL 38, sender SQL 31
+all passed. JavaScript syntax (142 files) and both JSON configs passed.
+Initial harness issues (missing external fake IndexedDB path, slow initdb,
+browser process timeout, missing explicit loopback database URL) were resolved
+outside product code. The sender SQL suite's known short-statement timeout
+under parallel load passed in isolation without changing SQL or assertions.
+The first Web Push run also completed successfully on isolated rerun. Current
+v369 cache expectations were updated, not treated as passing unchanged.

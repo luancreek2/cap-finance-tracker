@@ -162,10 +162,10 @@ Deno.test("sender driver configuration is execution-only max1 no prepare/pipelin
   assert.equal(Object.keys(PUBLIC_IDENTITIES).length,0);
 });
 
-Deno.test("sender remains dark: shell v369 has no push handlers and public VAPID current is empty",async()=>{
+Deno.test("sender remains dark: current shell v376 has no push handlers and public VAPID current is empty",async()=>{
   const root=new URL('../../',import.meta.url);
   const sw=await Deno.readTextFile(new URL('service-worker.js',root));
-  assert.match(sw,/const VERSION = "cap-shell-v369"/);
+  assert.match(sw,/const VERSION = "cap-shell-v376"/);
   assert.ok(!/addEventListener\(\s*["']push["']/.test(sw));
   assert.ok(!/pushsubscriptionchange/.test(sw));
   const w={} as {CapVapidPublic:{current:()=>Record<string,unknown>}};

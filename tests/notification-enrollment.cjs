@@ -340,9 +340,9 @@ function evidence(patch) {
     assert.equal(paths.includes('cap_notifications_publish_v2'), true);
   });
 
-  await test('A8 shell wiring: v369 precaches both modules, keeps no push listener, and never ships a private key', async () => {
+  await test('A8 current shell wiring: v376 precaches both modules, keeps no push listener, and never ships a private key', async () => {
     const worker = read('service-worker.js');
-    assert.match(worker, /const VERSION = "cap-shell-v369"/);
+    assert.match(worker, /const VERSION = "cap-shell-v376"/);
     assert.ok(worker.includes('"./js/vapid-public.js"'));
     assert.ok(worker.includes('"./js/notification-enrollment.js"'));
     assert.equal(/addEventListener\(\s*['"]push['"]/.test(worker), false, 'no push listener in this phase');

@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v375";
+const VERSION = "cap-shell-v376";
 const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",
@@ -54,6 +54,10 @@ const CORE = [
   "./js/notification-engine.js",
   "./js/notifications.js",
   "./js/notification-enrollment.js",
+  "./js/notification-schedule.js",
+  "./js/notification-publisher.js",
+  "./js/notification-reminders.js",
+  "./js/notification-reminder-ui.js",
 ];
 const MEDIA = [
   "./assets/icons/cap-16.png",

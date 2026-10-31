@@ -8,9 +8,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
     caches:{open:async name=>{cacheName=name;return cache;}},fetch:async()=>{throw Error('Offline');},
     self:{location:{origin:'https://synthetic.invalid'},skipWaiting:async()=>{},addEventListener:(n,fn)=>events.set(n,fn)}};
   vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(root,'service-worker.js'),'utf8'),c);
-  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v369');
+  events.get('install')({waitUntil:p=>{install=p;}});await install;assert.equal(cacheName,'cap-shell-v376');
   const html=stored.get('./index.html').toString();
-  for(const name of ['cloud-to-local','cloud-bootstrap','sync-production']){
+  for(const name of ['cloud-to-local','cloud-bootstrap','sync-production','notification-schedule','notification-publisher','notification-reminders','notification-reminder-ui']){
     const asset='./js/'+name+'.js';assert.ok(stored.has(asset));assert.ok(html.includes('src="'+asset.slice(2)+'"'));
     let response;events.get('fetch')({request:{method:'GET',url:'https://synthetic.invalid/'+asset.slice(2),destination:'script'},respondWith:p=>{response=p;}});
     const res=await response;assert.ok(res.ok);new vm.Script(await res.text(),{filename:asset});
