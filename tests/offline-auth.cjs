@@ -64,14 +64,32 @@ async function test(name, body) { await body(); passed++; }
     assert.equal(f.api.status().authenticated, false); assert.equal(f.api.status().userId, null); assert.equal(f.api.status().localAccess, true);
     assert.equal(f.api.status().verification, 'offline'); assert.equal(f.nodes.has('cap-local-auth-notice'), false); f.untouched();
   });
-  await test('local-only notice stays hidden offline and returns only while unverified online', async () => {
+  await test('local-only access stays silent online, offline and after reconnect without changing auth state', async () => {
     const f = fixture({ handler: () => { throw TypeError('network'); } }); await f.finish();
-    assert.equal(f.nodes.has('cap-local-auth-notice'), true, 'online unverified session warns');
+    assert.equal(f.nodes.has('cap-local-auth-notice'), false, 'online unverified access is silent');
+    assert.equal(f.api.status().authenticated, false);
     f.online = false; f.listeners.offline();
-    assert.equal(f.nodes.has('cap-local-auth-notice'), false, 'offline drops the floating warning');
+    assert.equal(f.nodes.has('cap-local-auth-notice'), false, 'offline remains silent');
     f.online = true; f.listeners.online();
-    assert.equal(f.nodes.has('cap-local-auth-notice'), true, 'reconnecting returns the warning');
+    assert.equal(f.nodes.has('cap-local-auth-notice'), false, 'reconnecting remains silent');
+    assert.equal(f.api.status().authenticated, false);
     f.untouched();
+  });
+  await test('Cloud Sync OFF and repeated unverified reloads never create an automatic notice', async () => {
+    for(let i=0;i<2;i++){
+      const f=fixture({handler:()=>response(503,{message:'unavailable'})});f.context.S={cloudSync:false};await f.finish();
+      assert.equal(f.context.S.cloudSync,false);assert.equal(f.nodes.has('cap-local-auth-notice'),false);
+      assert.equal(f.api.status().authenticated,false);assert.equal(f.session(),JSON.stringify(saved));f.untouched();
+    }
+  });
+  await test('unrelated Cap toasts still use the real toast presenter', async () => {
+    const f=fixture({online:false});await f.finish();const shown=[];
+    f.context.document.querySelectorAll=()=>[];
+    f.context.document.createElement=()=>({className:'',setAttribute(){},insertAdjacentHTML(){},appendChild(n){this.text=n.textContent;},classList:{add(){}},remove(){}});
+    f.context.document.createTextNode=text=>({textContent:text});
+    f.context.document.body.appendChild=n=>shown.push(n);
+    vm.runInContext(fs.readFileSync(`${__dirname}/../js/animations.js`,'utf8').split(/\r?\n/)[0],f.context);
+    f.context.toast('Reminder saved',true);assert.equal(shown.length,1);assert.equal(shown[0].text,'Reminder saved');assert.equal(shown[0].className,'toast');f.untouched();
   });
   await test('cached identity is never returned as currentUser', async () => {
     const f = fixture({ online: false }); await f.finish(); await assert.rejects(f.api.currentUser()); assert.equal(f.calls.length, 0); assert.equal(f.session(), JSON.stringify(saved)); f.untouched();
@@ -91,7 +109,7 @@ async function test(name, body) { await body(); passed++; }
   await test('network failure with navigator online preserves saved session', async () => {
     const f = fixture({ handler: () => { throw TypeError('Failed to fetch token-secret'); } }); await f.finish();
     assert.equal(f.session(), JSON.stringify(saved)); assert.equal(f.localVisible(), true); assert.equal(f.api.status().authenticated, false); assert.equal(f.calls.length, 1); assert.equal(f.writes.length, 0); f.untouched();
-    assert.ok(!f.nodes.get('cap-local-auth-notice').textContent.includes('token-secret'));
+    assert.equal(f.nodes.has('cap-local-auth-notice'),false);
   });
   for (const status of [429, 500, 502, 503]) await test(`transient user HTTP ${status} does not refresh or discard`, async () => {
     const f = fixture({ handler: () => response(status, { message: 'service unavailable' }) }); await f.finish();

@@ -34,12 +34,10 @@
     notesRpcReadyState=false;notesRpcVerifierResult=null;++notesRpcCheck;
   }
   function notice(){
-    const old=document.getElementById('cap-local-auth-notice');
-    /* Offline is expected local-only use, not a verification warning: keep the
-       screen clear and let the normal offline status speak for itself. */
-    if(offline()||!localAccess||verifiedUser){if(old)old.remove();return;}
-    if(old)return;
-    document.body.insertAdjacentHTML('beforeend','<div id="cap-local-auth-notice" class="cap-local-auth-notice" role="status">Local access only · Cloud authentication is not verified. Cloud Sync stays OFF. Reconnect and reload to verify your session.</div>');
+    // Presentation only: local/unverified access is silent in every state.
+    // Retain all callers and safety transitions; remove any stale notice left
+    // by an already-open older shell, without replacing it with another alert.
+    document.getElementById('cap-local-auth-notice')?.remove();
   }
   function writeSession(v){try{if(v)localStorage.setItem(KEY,JSON.stringify(v));else localStorage.removeItem(KEY)}catch(_){}session=v||null;++sessionRevision;localAccess=cachedLocal(session);invalidate(v?'unverified':'signed-out');if(!v)notice();window.CapProductionSync?.authChanged()}
   async function request(path,options={}){
