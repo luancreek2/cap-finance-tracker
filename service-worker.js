@@ -189,6 +189,91 @@ self.addEventListener("message", (e) => {
   if (e.data === "SKIP_WAITING") self.skipWaiting();
 });
 
+// Phase 5B.3C: financially blind, default-deny receiver. No enrollment, network,
+// scheduling, or storage migration. This does NOT authorize remote activation:
+// old open clients do not participate in the delivery-fence contract.
+const PUSH_FIELDS = ['protocol', 'type', 'version', 'installation_id', 'binding_id', 'generation', 'expires_at'];
+const PUSH_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PUSH_TAG = 'cap-background-reminder-v1';
+const pushExact = (v, fields) => !!v && typeof v === 'object' && !Array.isArray(v) &&
+  Object.keys(v).length === fields.length && fields.every(k => Object.prototype.hasOwnProperty.call(v, k));
+const pushDate = v => typeof v === 'string' && Number.isFinite(Date.parse(v));
+function pushPayload(event) {
+  if (!event.data) return null;
+  const bytes = event.data.arrayBuffer();
+  if (!bytes || bytes.byteLength === 0 || bytes.byteLength > 512) return null;
+  const p = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  return pushExact(p, PUSH_FIELDS) && p.protocol === 'CAP_PUSH_V1' && p.type === 'reminder' && p.version === 1 &&
+    typeof p.installation_id === 'string' && PUSH_UUID.test(p.installation_id) &&
+    typeof p.binding_id === 'string' && PUSH_UUID.test(p.binding_id) &&
+    Number.isSafeInteger(p.generation) && p.generation > 0 &&
+    Number.isSafeInteger(p.expires_at) && p.expires_at > 0 && p.expires_at <= 8640000000000 ? p : null;
+}
+function pushState() {
+  return new Promise((resolve, reject) => {
+    let db, tx, finished = false;
+    const finish = (error, value) => {
+      if (finished) return; finished = true; clearTimeout(timer);
+      if (db) db.close(); error ? reject(error) : resolve(value);
+    };
+    const timer = setTimeout(() => { if (tx) { try { tx.abort(); } catch (_) {} } finish(Error('NOTIFICATION_STATE_UNAVAILABLE')); }, 3000);
+    let request;
+    try { request = indexedDB.open('cap-notifications', 1); } catch (e) { finish(e); return; }
+    // A fresh/missing store never constitutes enrollment. Abort creation rather
+    // than manufacturing notification identities in response to remote input.
+    request.onupgradeneeded = () => { request.transaction.abort(); };
+    request.onerror = request.onblocked = () => finish(Error('NOTIFICATION_STATE_UNAVAILABLE'));
+    request.onsuccess = () => {
+      db = request.result;
+      if (finished) { db.close(); return; }
+      db.onversionchange = () => finish(Error('NOTIFICATION_STATE_CHANGED'));
+      try {
+        tx = db.transaction('state', 'readonly');
+        const result = {}, store = tx.objectStore('state');
+        for (const key of ['installation', 'binding', 'delivery-fence:v1']) {
+          const q = store.get(key); q.onsuccess = () => { result[key] = q.result; };
+        }
+        tx.oncomplete = () => finish(null, result);
+        tx.onerror = tx.onabort = () => finish(Error('NOTIFICATION_STATE_UNAVAILABLE'));
+      } catch (e) { finish(e); }
+    };
+  });
+}
+function pushAuthorized(p, state) {
+  const i = state.installation, b = state.binding, f = state['delivery-fence:v1'];
+  return pushExact(i, ['id', 'created_at', 'protocol']) && i.protocol === 'CAP_PUSH_V1' &&
+    typeof i.id === 'string' && PUSH_UUID.test(i.id) && pushDate(i.created_at) &&
+    pushExact(b, ['installation_id', 'binding_id', 'generation', 'schedule_revision', 'state', 'vapid_key_version', 'endpoint_sha256', 'updated_at']) &&
+    b.state === 'delivery_eligible' && Number.isSafeInteger(b.generation) && b.generation > 0 &&
+    Number.isSafeInteger(b.schedule_revision) && b.schedule_revision >= 0 &&
+    typeof b.vapid_key_version === 'string' && /^v[1-9][0-9]{0,2}$/.test(b.vapid_key_version) &&
+    typeof b.endpoint_sha256 === 'string' && /^[0-9a-f]{64}$/.test(b.endpoint_sha256) && pushDate(b.updated_at) &&
+    pushExact(f, ['version', 'enabled', 'installation_id', 'binding_id', 'generation']) && f.version === 1 && f.enabled === true &&
+    i.id === p.installation_id && b.installation_id === i.id && f.installation_id === i.id &&
+    b.binding_id === p.binding_id && f.binding_id === p.binding_id && b.generation === p.generation && f.generation === p.generation;
+}
+async function receivePush(event) {
+  try {
+    const p = pushPayload(event);
+    if (!p || Date.now() / 1000 >= p.expires_at || !self.navigator?.locks?.request) return;
+    await self.navigator.locks.request('cap-notifications-enrollment', { mode: 'exclusive' }, async () => {
+      if (!pushAuthorized(p, await pushState())) return;
+      // Coalesce only while an already-visible generic notification exists.
+      // No receipt ledger or exactly-once claim: the payload has no occurrence ID.
+      if (typeof self.registration.getNotifications === 'function' &&
+          (await self.registration.getNotifications({ tag: PUSH_TAG })).length) return;
+      if (Date.now() / 1000 >= p.expires_at) return;
+      await self.registration.showNotification('Cap reminder', {
+        body: 'Open Cap to review your reminders.', tag: PUSH_TAG, renotify: false,
+        icon: new URL('assets/icons/cap-192.png', self.registration.scope).href,
+        badge: new URL('assets/icons/cap-48.png', self.registration.scope).href,
+        data: { type: 'cap-reminder', version: 1 }
+      });
+    });
+  } catch (_) { /* Uncertain input/storage/coordination/presentation: drop. */ }
+}
+self.addEventListener('push', event => { event.waitUntil(receivePush(event)); });
+
 // Notification taps never execute financial actions or trust a supplied URL.
 // Phase 5A safely opens the in-app center, not a payment/deep accounting route.
 self.addEventListener("notificationclick", (e) => {

@@ -25,7 +25,9 @@
     'state', 'vapid_key_version', 'endpoint_sha256', 'updated_at'];
   const SYNC_FIELDS = ['in_flight', 'started_at', 'tab_id', 'last_error_code', 'last_attempt_at', 'retry_after'];
   const SERVER_STATES = ['pending', 'disabled', 'retired'];
-  const LOCAL_STATES = SERVER_STATES.concat(['disable_pending']);
+  const LOCAL_STATES = SERVER_STATES.concat(['disable_pending', 'delivery_eligible']);
+  const FENCE_KEY = 'delivery-fence:v1';
+  const DISABLED_FENCE = Object.freeze({ version: 1, enabled: false, installation_id: null, binding_id: null, generation: 0 });
   const STATES = Object.freeze([
     'unsupported-insecure', 'unsupported-browser', 'ios-install-required', 'signed-out',
     'unverified-session', 'foundation-unavailable', 'storage-unavailable', 'session-diverged',
@@ -40,7 +42,6 @@
   let lastState = Object.freeze({ state: 'signed-out', available: false, reason: null });
   let lastEvidence = null;
   let lastConflict = false;
-  let localTail = Promise.resolve();
 
   const code = reason => Object.assign(Error(reason), { code: reason });
   const iso = () => new Date().toISOString();
@@ -179,6 +180,48 @@
   }
   async function clearDisablePending() {
     await writeSync({ in_flight: false, started_at: null, last_error_code: null });
+  }
+
+  // Caller holds the cross-context enrollment lock. No asynchronous/network
+  // work inside this transaction; completion, not request success, commits it.
+  function deliveryTransition(ack, captured, disabledState = 'pending') {
+    return openDb().then(db => new Promise((resolve, reject) => {
+      let tx, failure;
+      try { tx = db.transaction(STORE, 'readwrite'); } catch (e) { db.close(); return reject(e); }
+      const store = tx.objectStore(STORE), keys = ['installation', 'binding', FENCE_KEY], values = {};
+      let remaining = keys.length;
+      for (const key of keys) {
+        const request = store.get(key);
+        request.onsuccess = () => {
+          values[key] = request.result;
+          if (--remaining) return;
+          try {
+            const installation = installationRecord(values.installation), binding = bindingRecord(values.binding);
+            if (!ack) {
+              if (!SERVER_STATES.includes(disabledState)) throw code('DELIVERY_AUTHORIZATION_FAILED');
+              if (values.binding?.state === 'delivery_eligible') store.put({ ...values.binding, state: disabledState, updated_at: iso() }, 'binding');
+              store.put({ ...DISABLED_FENCE }, FENCE_KEY);
+            } else {
+              const fence = values[FENCE_KEY];
+              if (!captured || sessionChanged(captured) || window.CapNotifications?.preferences?.().on === false || ack.state !== 'pending' ||
+                  !installation || !binding || binding.state !== 'pending' ||
+                  ack.installation_id !== installation.id || binding.installation_id !== installation.id ||
+                  ack.binding_id !== binding.binding_id || ack.generation !== binding.generation ||
+                  !exactFields(fence, Object.keys(DISABLED_FENCE)) ||
+                  Object.keys(DISABLED_FENCE).some(k => fence[k] !== DISABLED_FENCE[k])) throw code('DELIVERY_AUTHORIZATION_FAILED');
+              store.put({ ...binding, state: 'delivery_eligible' }, 'binding');
+              store.put({ version: 1, enabled: true, installation_id: installation.id,
+                binding_id: binding.binding_id, generation: binding.generation }, FENCE_KEY);
+            }
+          } catch (e) { failure = e; tx.abort(); }
+        };
+      }
+      tx.oncomplete = () => { db.close(); resolve(true); };
+      tx.onabort = tx.onerror = () => { db.close(); reject(failure || tx.error || code('STORAGE_WRITE_FAILED')); };
+    }));
+  }
+  function withDeliveryDisabled(work) {
+    return withLock(async () => { await deliveryTransition(); return work ? work() : { ok: true }; });
   }
 
   // ---- shared crypto/encoding helpers -------------------------------------
@@ -421,6 +464,16 @@
         const prefs = window.CapNotifications?.preferences?.();
         if (prefs && typeof prefs.on === 'boolean') masterEnabled = prefs.on;
       } catch (_) {}
+      if (local.binding?.state === 'delivery_eligible' &&
+          (masterEnabled === false || identity.diverged || caps.permission === 'denied' ||
+           (serverAttempted && serverOk && (!serverBinding || serverBinding.state !== 'pending' ||
+             serverBinding.binding_id !== local.binding.binding_id || serverBinding.generation !== local.binding.generation)))) {
+        await withLock(async () => {
+          const current = await readLocal();
+          if (current.binding?.binding_id === local.binding.binding_id && current.binding.generation === local.binding.generation) await deliveryTransition(null, null, ['disabled', 'retired'].includes(serverBinding?.state) ? serverBinding.state : 'pending');
+        });
+        local = await readLocal();
+      }
       evidence = {
         secureContext: caps.secureContext, serviceWorker: caps.serviceWorker,
         notificationApi: caps.notificationApi, pushApi: caps.pushApi, standalone: caps.standalone,
@@ -454,9 +507,7 @@
   // ---- lock + timeouts -----------------------------------------------------
   function withLock(fn) {
     if (navigator?.locks?.request) return navigator.locks.request(LOCK_NAME, { mode: 'exclusive' }, () => fn());
-    const run = localTail.then(() => fn());
-    localTail = run.catch(() => {});
-    return run;
+    return Promise.reject(code('COORDINATION_UNAVAILABLE'));
   }
   function withDeadline(promise, deadline) {
     const remaining = Math.max(0, deadline - now());
@@ -516,6 +567,8 @@
       const captured = { owner: identity.owner, sessionGeneration: identity.sessionGeneration };
       const result = await withLock(async () => {
         if (sessionChanged(captured)) return fail('SESSION_DIVERGED');
+        if (window.CapNotifications?.preferences?.().on === false) return fail('NOTIFICATIONS_DISABLED');
+        await deliveryTransition();
         let registration;
         try { registration = await activeRegistration(); } catch (error) { return fail('SERVICE_WORKER_UNAVAILABLE', error); }
         let permission = Notification.permission;
@@ -555,14 +608,19 @@
         if (!mode?.repair && local.binding && local.installation?.id === installation.id &&
             local.binding.endpoint_sha256 === endpointSha256 &&
             local.binding.vapid_key_version === vapid.version && local.binding.state === 'pending') {
+          let server = null;
           try {
             const summary = await window.CapProductionRpc.notificationSummary();
-            const server = summary?.ok ? bindingFromSummary(summary.raw, installation.id) : null;
-            if (server && server.binding_id === local.binding.binding_id &&
-                Number(server.generation) === Number(local.binding.generation)) {
-              return { ok: true, already: true, state: 'registered-pending', binding_id: local.binding.binding_id };
-            }
+            server = summary?.ok ? bindingFromSummary(summary.raw, installation.id) : null;
           } catch (_) {}
+          if (server && server.binding_id === local.binding.binding_id &&
+              Number(server.generation) === Number(local.binding.generation)) {
+            try {
+              responseBinding(server, installation.id);
+              await deliveryTransition(server, captured);
+              return { ok: true, already: true, state: 'registered-pending', binding_id: local.binding.binding_id };
+            } catch (error) { return fail('DELIVERY_AUTHORIZATION_FAILED', error); }
+          }
         }
         const expectedGeneration = local.binding && local.installation?.id === installation.id
           ? Number(local.binding.generation) : 0;
@@ -613,6 +671,7 @@
           await writeKey('binding', binding);
           await writeSync({ in_flight: false, started_at: null, last_error_code: null,
             last_attempt_at: now(), retry_after: null });
+          await deliveryTransition(response, captured);
         } catch (error) { return fail('STORAGE_WRITE_FAILED', error); }
         return { ok: true, state: 'registered-pending', binding_id: binding.binding_id };
       });
@@ -643,6 +702,8 @@
       const captured = { owner: identity.owner, sessionGeneration: identity.sessionGeneration };
       const result = await withLock(async () => {
         if (sessionChanged(captured)) return fail('SESSION_DIVERGED');
+        if (window.CapNotifications?.preferences?.().on === false) return fail('NOTIFICATIONS_DISABLED');
+        await deliveryTransition();
         let registration;
         try { registration = await activeRegistration(); } catch (error) { return fail('SERVICE_WORKER_UNAVAILABLE', error); }
         let existing = null;
@@ -695,6 +756,7 @@
     if (!binding) return fail('STORAGE_WRITE_FAILED');
     await writeKey('binding', binding);
     await writeSync({ in_flight: false, started_at: null, last_error_code: null, last_attempt_at: now(), retry_after: null });
+    await deliveryTransition(response, captured);
     return { ok: true, state: 'registered-pending', binding_id: binding.binding_id };
   }
 
@@ -760,6 +822,7 @@
       const captured = { owner: identity.owner, sessionGeneration: identity.sessionGeneration };
       const result = await withLock(async () => {
         if (sessionChanged(captured)) return fail('SESSION_DIVERGED');
+        await deliveryTransition();
         return removeEnrollment({ budget: 15000 });
       });
       await reconcile();
@@ -774,8 +837,9 @@
   // block sign-out permanently.
   async function beforeSignOut() {
     const started = now();
-    const work = (async () => {
+    const work = withLock(async () => {
       try {
+        await deliveryTransition();
         const local = await readLocal();
         const rs = await registrationAndSubscription();
         if (!local.binding && !rs.subscription) return { ok: true, state: 'signed-out' };
@@ -789,7 +853,7 @@
         }
         return { ok: invalidated.ok, state: invalidated.ok ? 'signed-out' : 'pending-disable' };
       } catch (_) { return { ok: false, state: 'pending-disable' }; }
-    })();
+    }).catch(() => ({ ok: false, state: 'pending-disable', reason: 'DELIVERY_FENCING_FAILED' }));
     const bounded = new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'SIGN_OUT_TIMEOUT', state: 'pending-disable' }), SIGN_OUT_BUDGET_MS));
     return Promise.race([work, bounded]);
   }
@@ -883,7 +947,7 @@
   window.CapNotificationEnrollment = Object.freeze({
     STATES, DB_NAME, DB_VERSION, STORE, PROTOCOL, LOCK_NAME,
     INSTALLATION_FIELDS, BINDING_FIELDS, SYNC_FIELDS,
-    capabilities, reconcile, onSessionVerified, beforeSignOut,
+    capabilities, reconcile, onSessionVerified, beforeSignOut, withDeliveryDisabled,
     enable: enroll, finishSetup, updateVapid, disable, retry, uiAction,
     settingsMarkup, state: () => lastState, evidence: () => lastEvidence,
     status: () => ({ ...lastState }),

@@ -41,7 +41,8 @@ const allowed=['index.html','js/cloud-to-local.js','js/cloud-bootstrap.js','js/p
   'js/notification-schedule.js','js/notification-publisher.js','tests/notification-schedule.cjs','tests/notification-publisher.cjs',
   'tests/notification-schedule-browser.cjs','docs/notification-phase2b.md',
   'js/notification-reminders.js','js/notification-reminder-ui.js','tests/notification-reminders.cjs',
-  'tests/notification-reminder-ui-browser.cjs','docs/notification-phase2c.md'];
+  'tests/notification-reminder-ui-browser.cjs','docs/notification-phase2c.md',
+  'tests/notification-delivery.cjs','tests/notification-delivery-browser.cjs','docs/notification-delivery-fence.md'];
 const git=(...args)=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split(/\r?\n/).filter(Boolean);
 const changed=[...new Set([...git('diff','--name-only','HEAD'),...git('ls-files','--others','--exclude-standard')])];
 assert.ok(changed.every(f=>allowed.includes(f)),'Unexpected files in proposed release');

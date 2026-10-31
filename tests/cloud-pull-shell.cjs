@@ -21,6 +21,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
   assert.ok(stored.has(vapid)&&stored.has(enrollment),'Phase 5B.2B modules must be precached');
   assert.ok(html.indexOf('src="js/vapid-public.js"')>0&&html.indexOf('src="js/vapid-public.js"')<html.indexOf('src="js/production-rpc.js"'));
   assert.ok(html.indexOf('src="js/notification-enrollment.js"')>html.indexOf('src="js/notifications.js"'));
-  assert.ok(!/addEventListener\(['"]push|pushsubscriptionchange/.test(fs.readFileSync(path.join(root,'service-worker.js'),'utf8')));
+  const worker=fs.readFileSync(path.join(root,'service-worker.js'),'utf8');
+  assert.match(worker,/addEventListener\(['"]push/);
+  assert.doesNotMatch(worker,/pushsubscriptionchange|requestPermission|\.subscribe\(/);
   console.log('PASS: 5 Phase 6O shell cache/load checks; actual worker handlers, synthetic offline transport');
 })().catch(e=>{console.error(e);process.exitCode=1;});

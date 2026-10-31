@@ -340,12 +340,13 @@ function evidence(patch) {
     assert.equal(paths.includes('cap_notifications_publish_v2'), true);
   });
 
-  await test('A8 current shell wiring: v376 precaches both modules, keeps no push listener, and never ships a private key', async () => {
+  await test('A8 current shell wiring: v376 precaches enrollment; reviewed receiver cannot enroll or ship private keys', async () => {
     const worker = read('service-worker.js');
     assert.match(worker, /const VERSION = "cap-shell-v376"/);
     assert.ok(worker.includes('"./js/vapid-public.js"'));
     assert.ok(worker.includes('"./js/notification-enrollment.js"'));
-    assert.equal(/addEventListener\(\s*['"]push['"]/.test(worker), false, 'no push listener in this phase');
+    assert.equal(/addEventListener\(\s*['"]push['"]/.test(worker), true, 'Phase 5B.3C receiver is present');
+    assert.doesNotMatch(worker, /requestPermission|\.subscribe\(/);
     assert.equal(/pushsubscriptionchange/.test(worker), false);
     const html = read('index.html');
     assert.ok(html.indexOf('js/vapid-public.js') > 0);

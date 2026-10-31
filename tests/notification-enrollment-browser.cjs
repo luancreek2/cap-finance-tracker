@@ -275,7 +275,7 @@ async function localState(page) {
       request.onerror = () => reject(request.error);
     });
     const result = { installation: await get('installation'), binding: await get('binding'),
-      sync: await get('sync'), keys, stores: Array.from(db.objectStoreNames) };
+      sync: await get('sync'), fence: await get('delivery-fence:v1'), keys, stores: Array.from(db.objectStoreNames) };
     db.close();
     return result;
   });
@@ -491,6 +491,8 @@ async function test(label, fn) {
     assert.deepEqual(local.stores, ['state']);
     assert.equal(local.installation.id, payload.installationId);
     assert.equal(local.binding.binding_id, KEYS.bindingId);
+    assert.equal(local.binding.state, 'delivery_eligible');
+    assert.deepEqual(local.fence,{version:1,enabled:true,installation_id:local.installation.id,binding_id:local.binding.binding_id,generation:local.binding.generation});
     assert.equal(local.binding.endpoint_sha256, await sha256(KEYS.endpoint));
     assert.equal(JSON.stringify(local).includes(KEYS.endpoint), false, 'raw endpoint never persisted');
     assert.equal(JSON.stringify(local).includes(payload.p256dh), false, 'raw p256dh never persisted');
