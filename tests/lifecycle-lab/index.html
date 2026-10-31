@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Isolated lifecycle certification lab</title><link rel="manifest" href="/lab/manifest.json">
+<link rel="icon" href="/lab/icon.svg"><link rel="apple-touch-icon" href="/lab/icon.svg">
+<script src="/lab/guards.js" defer></script><script src="/lab/isolation.js" defer></script><script src="/lab/core.js" defer></script><script src="/lab/page.js" defer></script></head>
+<body><h1>Lifecycle lab — delivery permanently blocked</h1>
+<p>Dedicated origin only. Only versioned lab provenance markers persist; no production storage, subscriptions, RPCs or notification presentation. All lifecycle actions are diagnostic fixtures.</p>
+<p id="status">Checking isolation…</p>
+<fieldset disabled id="controls"><legend>Worker experiments</legend>
+<button id="register">Register fresh UUID worker</button> <button id="bare">Register bare legacy URL</button>
+<button id="update">Update active registration</button> <button id="unregister">Unregister lab worker</button>
+<label><input type="checkbox" id="skip"> Lab skipWaiting</label> <label><input type="checkbox" id="claim"> Lab clients.claim</label>
+<button id="revision">Change served revision</button> <button id="probe">Probe / census</button>
+<button id="challenge">Diagnostic challenge</button>
+<p><label>Fixture behavior <select id="mode"><option>compatible</option><option>legacy</option><option>malformed</option><option>missing</option><option>duplicate</option><option>navigate</option><option>disappear</option></select></label>
+<button id="legacy">Execute synthetic old lifecycle action</button></p>
+<p><label>Race boundary <select id="phase"><option>before-census</option><option>during-census</option><option>after-final-census</option><option>boundary</option><option>after-boundary</option></select></label>
+<button id="race">Race a pre-opened legacy navigation</button> (allow this lab's popups)</p>
+<p><a href="/lab/?mode=legacy" target="_blank" rel="noopener">Open legacy fixture</a> · <a href="/lab/?mode=compatible" target="_blank" rel="noopener">Open compatible fixture</a> · <a href="/away">Leave worker scope / BFCache</a></p>
+<p><label>Manual observation <input id="note" maxlength="500" placeholder="backgrounding / force quit / relaunch…"></label><button id="mark">Record observation</button></p>
+<button id="export">Export JSON</button> <button id="copy">Copy report</button>
+</fieldset>
+<h2>Diagnostics (not certification)</h2><pre id="output"></pre>
+</body></html>
