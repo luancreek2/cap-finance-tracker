@@ -92,10 +92,10 @@ async function test(name,fn){await fn();console.log('PASS '+name);passed++;}
     assert.equal(await page.locator('#tabs .nav-house').getAttribute('d'),'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z');
   });
   await page.emulateMedia({reducedMotion:'no-preference'});
-  for(const width of [320,390,768])await test(width+'px compact previews fit and retain all four choices',async()=>{
+  for(const width of [320,390,768])await test(width+'px compact previews fit and retain all five choices',async()=>{
     await page.setViewportSize({width,height:844});await page.evaluate(()=>stGo('appearance'));await page.waitForTimeout(400);
     const a=await page.locator('.theme-choice').evaluateAll(es=>es.map(e=>({r:e.getBoundingClientRect().toJSON(),height:parseFloat(getComputedStyle(e.querySelector('.theme-preview')).height),padding:getComputedStyle(e).padding,font:getComputedStyle(e.querySelector('.theme-choice-name')).fontSize})));
-    assert.equal(a.length,4);for(const c of a){assert.equal(c.height,64);assert.equal(c.padding,'6px');assert.equal(c.font,'13px');assert.ok(c.r.left>=0&&c.r.right<=width);}
+    assert.equal(a.length,5);for(const c of a){assert.equal(c.height,64);assert.equal(c.padding,'6px');assert.equal(c.font,'13px');assert.ok(c.r.left>=0&&c.r.right<=width);}
     await page.evaluate(()=>closeS());await page.waitForTimeout(300);
   });
   await context.close();console.log('PASS: '+passed+' nav animation / compact appearance checks');

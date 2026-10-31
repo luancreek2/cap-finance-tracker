@@ -12,20 +12,26 @@
 /* year dropdown — also the active scope in whole-year mode */
 .spend-year-wrap{position:relative;flex:none}
 .spend-year-btn{
-  display:flex;align-items:center;gap:6px;height:32px;padding:0 11px;
+  position:relative;display:flex;align-items:center;gap:6px;height:32px;padding:0 11px;
   border:1px solid var(--line);border-radius:11px;
   background:color-mix(in srgb,var(--card) 80%,transparent);
   color:var(--tx);font:inherit;font-size:13px;font-weight:700;letter-spacing:.01em;
   font-variant-numeric:tabular-nums;cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:border-color .22s ease,background .22s ease,box-shadow .22s ease;
 }
+/* The visible control stays 32px; the transparent vertical extension gives it a
+   full 44px touch target inside the existing 44px row. */
+.spend-year-btn::after,.spend-month-tab::after{
+  content:"";position:absolute;left:0;right:0;top:-6px;bottom:-6px;
+}
 .spend-year-btn.on,
 .spend-year-btn[aria-expanded=true]{
-  border-color:color-mix(in srgb,var(--g) 45%,var(--line));
-  background:color-mix(in srgb,var(--g) 14%,var(--card));
-  box-shadow:0 6px 16px color-mix(in srgb,var(--g) 18%,transparent);
+  color:var(--ac-t);
+  border-color:transparent;
+  background:var(--selection-fill);
+  box-shadow:none;
 }
-.spend-year-btn:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.spend-year-btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .spend-caret{width:9px;height:5.4px;opacity:.65;transition:transform .22s ease}
 .spend-year-btn[aria-expanded=true] .spend-caret{transform:rotate(180deg)}
 .spend-year-menu{
@@ -38,14 +44,14 @@
 }
 .spend-year-menu.open{opacity:1;pointer-events:auto;transform:none}
 .spend-year-opt{
-  display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:44px;
   padding:8px 10px;border:0;border-radius:9px;background:none;color:var(--tx);
   font:inherit;font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;
 }
 @media(hover:hover){.spend-year-opt:hover{background:var(--line)}}
-.spend-year-opt:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+.spend-year-opt:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
 .spend-year-opt.on{font-weight:700}
-.spend-tick{width:12px;height:10px;color:var(--g);opacity:0;transition:opacity .16s ease}
+.spend-tick{width:12px;height:10px;color:currentColor;opacity:0;transition:opacity .16s ease}
 .spend-year-opt.on .spend-tick{opacity:1}
 
 /* infinite month reel — clipped at both edges, scrollbar hidden, no CSS snap
@@ -67,7 +73,7 @@
   position:relative;flex:none;display:inline-flex;align-items:center;height:32px;
   padding:0 12px;border:1px solid var(--line);border-radius:11px;
   background:color-mix(in srgb,var(--card) 80%,transparent);
-  color:var(--mut);font:inherit;font-size:12px;font-weight:600;letter-spacing:.01em;
+  color:var(--secondary);font:inherit;font-size:12px;font-weight:600;letter-spacing:.01em;
   white-space:nowrap;cursor:pointer;
   -webkit-tap-highlight-color:transparent;
   transition:color .22s ease,background .22s ease,border-color .22s ease,box-shadow .22s ease,opacity .22s ease;
@@ -75,29 +81,30 @@
 @media(hover:hover){.spend-month-tab:hover{color:var(--tx)}}
 .spend-month-tab:active{transform:scale(.96)}
 .spend-month-tab.on{
-  color:var(--tx);
-  background:color-mix(in srgb,var(--g) 16%,var(--card));
-  border-color:color-mix(in srgb,var(--g) 38%,var(--line));
-  box-shadow:0 6px 16px color-mix(in srgb,var(--g) 18%,transparent);
+  color:var(--ac-t);
+  background:var(--selection-fill);
+  border-color:transparent;
+  box-shadow:none;
 }
-.spend-month-tab.dim{opacity:.4}
-@media(hover:hover){.spend-month-tab.dim:hover{opacity:.72}}
-.spend-month-tab:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.spend-month-tab.dim:not(.on){color:var(--mut)}
+.spend-month-tab:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 
 .spend-months-ink{
+  /* Keep the positioning hook for the reel, but do not paint a second selection. */
+  visibility:hidden;
   position:absolute;left:0;bottom:2px;width:0;height:3px;border-radius:3px;
-  background:linear-gradient(90deg,var(--g),color-mix(in srgb,var(--g) 45%,#8ff0c0));
-  box-shadow:0 0 12px color-mix(in srgb,var(--g) 45%,transparent);
+  background:none;
+  box-shadow:none;
   will-change:transform,width;pointer-events:none;opacity:1;
   transition:opacity .18s ease;
 }
 .spend-months-ink.off{opacity:0}
 
 /* ---- spending card ---- */
-.spend-card{padding:15px 16px;margin-bottom:10px;container-type:inline-size}
-.spend-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.spend-card{padding:16px;margin-bottom:12px;container-type:inline-size}
+.spend-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px}
 .spend-card h2{font-size:17px;margin:0;letter-spacing:-.01em}
-.spend-meta{font-size:11.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.spend-meta{font-size:11.5px;color:var(--secondary);white-space:nowrap;font-variant-numeric:tabular-nums}
 .spend-empty{margin:0;font-size:12.5px}
 
 /* Two columns only when this card itself is wide enough. A viewport query caused

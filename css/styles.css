@@ -9,9 +9,11 @@
         --bg: #f3f3f7;
         --card: #fff;
         --tx: #111;
-        --mut: #777;
+        --mut: #6c6c70;
+        --secondary: color-mix(in srgb, var(--tx) 76%, var(--card));
+        --selection-fill: var(--color-primary-strong, var(--ac));
         --line: #e6e6ec;
-        --g: #16a34a;
+        --g: #187c32;
         --r: #e11d48;
         --ac: #111;
         --ac-t: #fff;
@@ -1074,7 +1076,8 @@
           min-height: 72px;
         }
         .ap {
-          font-size: 8.5px;
+          font-size: 11px;
+          line-height: 1.35;
           padding: 0 3px;
         }
       }
@@ -1203,9 +1206,10 @@
         display: flex;
         justify-content: space-between;
         gap: 2px;
-        margin: 10px 0 6px;
+        margin: 8px 0;
       }
       .rt {
+        position: relative;
         flex: 1;
         border: 0;
         background: none;
@@ -1215,6 +1219,16 @@
         padding: 6px 0;
         border-radius: 99px;
         cursor: pointer;
+      }
+      /* 30px of visible label, 44px of vertical hit area. The controls are
+         side by side, so this extension never overlaps a neighbour. */
+      .rt::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -7px;
+        bottom: -7px;
       }
       .rt.on {
         background: var(--gon);
@@ -1433,7 +1447,7 @@
         align-items: center;
         gap: 8px;
         min-width: 0;
-         padding: 4.5px 0;
+         padding: 6px 0;
         border-bottom: 1px solid var(--line);
         font-size: 12px;
       }
@@ -1468,8 +1482,8 @@
         border: 1px solid var(--line);
         background: color-mix(in srgb, var(--g) 10%, var(--card));
         border-color: color-mix(in srgb, var(--g) 24%, var(--line));
-        border-radius: 14px;
-        padding: 9px 12px;
+        border-radius: 12px;
+        padding: 12px;
         margin: 8px 0;
         display: flex;
         align-items: center;
@@ -1509,7 +1523,7 @@
         white-space: nowrap;
       }
       .spend-total-label {
-        font-size: 10px;
+        font-size: 11px;
         color: var(--mut);
         white-space: nowrap;
       }
@@ -1579,14 +1593,42 @@
         }
         .spend-legend {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          column-gap: 14px;
+          grid-template-columns: minmax(0, 1fr);
         }
         .spend-legend-row {
+          display: grid;
+          grid-template-columns: 9px minmax(0, 1fr) minmax(0, auto);
+          grid-template-areas: "dot name amount" ". percent amount";
+          gap: 2px 8px;
+          padding: 8px 0;
+          font-size: 12px;
+        }
+        .spend-legend-row .spend-dot {
+          grid-area: dot;
+        }
+        .spend-legend-row .spend-legend-name {
+          grid-area: name;
+          font-size: 12px;
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
+        .spend-legend-pct {
+          grid-area: percent;
+          min-width: 0;
+          text-align: left;
           font-size: 11px;
+          font-weight: 400;
+          color: var(--secondary);
         }
         .spend-legend-amt {
-          display: none;
+          grid-area: amount;
+          display: block;
+          min-width: 0;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--tx);
+          font-variant-numeric: tabular-nums;
+          overflow-wrap: anywhere;
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -2056,13 +2098,13 @@ img,svg{-webkit-user-drag:none;user-drag:none}
    -webkit-text-fill-color so the element keeps its colour, which the dots
    inherit through currentColor.
    ========================================================================== */
-.bv{position:relative}
-.bv::after{content:"••••••";position:absolute;inset:0;text-align:inherit;opacity:0;
+.bv,.spend-legend-amt{position:relative}
+.bv::after,.spend-legend-amt::after{content:"••••••";position:absolute;inset:0;text-align:inherit;opacity:0;
   transform:scale(.96);pointer-events:none;-webkit-text-fill-color:currentColor;
   transition:opacity .2s ease,transform .2s ease}
-html.bvhide .bv{-webkit-text-fill-color:transparent;text-shadow:none!important;
+html.bvhide :is(.bv,.spend-legend-amt){-webkit-text-fill-color:transparent;text-shadow:none!important;
   transition:-webkit-text-fill-color .2s ease}
-html.bvhide .bv::after{opacity:1;transform:none}
+html.bvhide :is(.bv,.spend-legend-amt)::after{opacity:1;transform:none}
 /* the eye control: a real button, small icon, generous tap target, no chrome */
 .bve{display:inline-grid;place-items:center;width:44px;height:44px;flex:none;padding:0;margin:0 0 0 2px;
   border:0;background:none;color:var(--mut);cursor:pointer;border-radius:50%;vertical-align:middle;
@@ -2076,10 +2118,10 @@ html.bvhide .bv::after{opacity:1;transform:none}
 .bvi .i2{opacity:0;transform:scale(.72) rotate(-14deg)}
 html.bvhide .bvi .i1{opacity:0;transform:scale(.72) rotate(14deg)}
 html.bvhide .bvi .i2{opacity:1;transform:none}
-html.noanim .bv::after,html.noanim .bv,html.noanim .bvi svg,html.noanim .bve{transition:none!important}
-html.rm .bv::after,html.rm .bv,html.rm .bvi svg{transition-duration:.001ms!important}
+html.noanim :is(.bv,.spend-legend-amt)::after,html.noanim :is(.bv,.spend-legend-amt),html.noanim .bvi svg,html.noanim .bve{transition:none!important}
+html.rm :is(.bv,.spend-legend-amt)::after,html.rm :is(.bv,.spend-legend-amt),html.rm .bvi svg{transition-duration:.001ms!important}
 @media (prefers-reduced-motion:reduce){
-  .bv::after,html.bvhide .bv,.bvi svg{transition-duration:.001ms}
+  :is(.bv,.spend-legend-amt)::after,html.bvhide :is(.bv,.spend-legend-amt),.bvi svg{transition-duration:.001ms}
 }
 
 /* ==========================================================================
@@ -2497,28 +2539,28 @@ nav>div#tabs::before {
 :root[data-theme="apple"] #sb :is(.ps-pop,.menu,.account-options-menu) { -webkit-backdrop-filter:none; backdrop-filter:none; }
 /* The previews illustrate materials with paint only: no extra backdrop filters. */
 .appearance-themes { gap:8px; padding:4px; }
-.theme-choice { display:flex; flex-direction:column; gap:7px; min-width:0; padding:6px; border:1px solid var(--line); border-radius:18px; background:var(--card); color:var(--tx); font:inherit; cursor:pointer; text-align:left; }
+.theme-choice { display:flex; flex-direction:column; gap:8px; min-width:0; padding:6px; border:1px solid var(--line); border-radius:16px; background:var(--card); color:var(--tx); font:inherit; cursor:pointer; text-align:left; }
 .theme-choice.on { outline:2px solid #007aff; outline-offset:2px; }
 .theme-choice:focus-visible { outline:3px solid #007aff; outline-offset:3px; }
 .theme-choice-name { display:flex; align-items:center; justify-content:space-between; width:100%; gap:4px; font-weight:600; font-size:13px; }
 .theme-choice small { color:var(--mut); font-size:11px; }
 .theme-choice-check { display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#007aff; color:#fff; font-size:13px; visibility:hidden; }
 .theme-choice.on .theme-choice-check { visibility:visible; }
-.theme-preview { position:relative; display:block; width:100%; height:64px; overflow:hidden; border-radius:12px; background:#f4f4f7; --preview-card:#fff; --preview-ink:#1c1c1e; }
-.preview-dark { background:#101012; --preview-card:#29292c; --preview-ink:#f5f5f7; }
-.preview-auto { background:linear-gradient(90deg,#f4f4f7 50%,#101012 50%); --preview-card:linear-gradient(90deg,#fff 50%,#29292c 50%); --preview-ink:#8e8e93; }
-.preview-apple { background:radial-gradient(ellipse at 15% 75%,#34c75966,transparent 60%),radial-gradient(ellipse at 85% 25%,#007aff88,transparent 65%),linear-gradient(110deg,#e5e5ea 50%,#1c1c1e 50%); --preview-card:linear-gradient(100deg,#fff9,#3a3a3c99); --preview-ink:#8e8e93; }
+/* Miniature theme previews paint the real surface roles, not decorative color
+   washes: page, card, primary/secondary ink, accent and dock selection. */
+.theme-preview { position:relative; display:block; width:100%; height:64px; overflow:hidden; border-radius:12px; background:var(--preview-bg,#f3f3f7); --preview-card:#fff; --preview-ink:#111; --preview-secondary:#6c6c70; --preview-accent:#111; --preview-line:#e6e6ec; --preview-nav:#fff; --preview-nav-line:#e6e6ec; --preview-selection:#111; }
+.preview-light { --preview-bg:#f3f3f7; --preview-card:#fff; --preview-ink:#111; --preview-secondary:#6c6c70; --preview-accent:#111; --preview-line:#e6e6ec; --preview-nav:#fff; --preview-nav-line:#e6e6ec; --preview-selection:#111; }
+.preview-dark { --preview-bg:#0a0a0c; --preview-card:#17171b; --preview-ink:#f5f5f7; --preview-secondary:#9a9aa3; --preview-accent:#fff; --preview-line:#26262c; --preview-nav:#17171b; --preview-nav-line:#26262c; --preview-selection:#fff; }
+.preview-auto { --preview-bg:linear-gradient(90deg,#f3f3f7 0 50%,#0a0a0c 50% 100%); --preview-card:linear-gradient(90deg,#fff 0 50%,#17171b 50% 100%); --preview-ink:linear-gradient(90deg,#111 0 50%,#f5f5f7 50% 100%); --preview-secondary:linear-gradient(90deg,#6c6c70 0 50%,#9a9aa3 50% 100%); --preview-accent:linear-gradient(90deg,#111 0 50%,#fff 50% 100%); --preview-line:#8e8e9344; --preview-nav:linear-gradient(90deg,#fff 0 50%,#17171b 50% 100%); --preview-nav-line:#8e8e9344; --preview-selection:linear-gradient(90deg,#111 0 50%,#fff 50% 100%); }
+.preview-apple { --preview-bg:#f5f5f7; --preview-card:#fff; --preview-ink:#1c1c1e; --preview-secondary:#606064; --preview-accent:#005cc8; --preview-line:#e5e5ea; --preview-nav:#ffffffd9; --preview-nav-line:#ffffff; --preview-selection:rgba(28,28,30,.94); }
+.preview-bluish-white { --preview-bg:#f5f8fc; --preview-card:#fff; --preview-ink:#172033; --preview-secondary:#657287; --preview-accent:#3977f6; --preview-line:#e2e9f3; --preview-nav:#fff; --preview-nav-line:#e2e9f3; --preview-selection:#e9f0ff; }
 .theme-preview>i { display:block; position:absolute; border-radius:5px; }
-.preview-heading { left:8px; top:7px; width:35%; height:3px; background:var(--preview-ink); opacity:.5; }
+.preview-heading { left:8px; top:7px; width:35%; height:3px; background:var(--preview-secondary); opacity:.85; }
 .preview-balance { left:8px; top:15px; width:50%; height:7px; background:var(--preview-ink); }
-.preview-card { left:8px; right:8px; top:28px; height:13px; background:var(--preview-card); border:1px solid #8e8e9322; }
-.preview-row { left:12px; width:26%; top:33px; height:3px; background:#34c759; }
-.theme-preview>.preview-nav { left:12px; right:12px; bottom:5px; height:13px; border-radius:99px; background:var(--preview-card); border:1px solid #8e8e9344; }
-.preview-nav b { display:block; width:30%; height:7px; margin:2px 4px; border-radius:99px; background:var(--preview-ink); }
-.preview-apple .preview-nav { background:linear-gradient(90deg,#ffffff70,#ffffff22); border-color:#ffffff80; box-shadow:inset 0 1px 0 #fff7; }
-.preview-apple .preview-nav b { background:#007aff; }
-.preview-bluish-white { background:radial-gradient(ellipse at 10% 0%,#3977f61f,transparent 70%),#f5f8fc; --preview-card:#fff; --preview-ink:#172033; }
-.preview-bluish-white .preview-nav b { background:#3977f6; }
+.preview-card { left:8px; right:8px; top:27px; height:14px; background:var(--preview-card); border:1px solid var(--preview-line); }
+.preview-row { left:12px; width:22%; top:32px; height:3px; background:var(--preview-accent); }
+.theme-preview>.preview-nav { left:12px; right:12px; bottom:5px; height:13px; border-radius:99px; background:var(--preview-nav); border:1px solid var(--preview-nav-line); }
+.preview-nav b { display:block; width:30%; height:7px; margin:2px 4px; border-radius:99px; background:var(--preview-selection); }
 .activity-action-menu { display:grid; gap:9px; }
 .activity-action-menu button { margin:0; min-height:44px; text-align:left; }
 .row[data-tx]>.activity-actions,.row[data-xfer]>.activity-actions { width:44px; height:44px; min-width:44px; min-height:44px; margin-left:4px; }

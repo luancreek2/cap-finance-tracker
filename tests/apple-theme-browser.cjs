@@ -140,7 +140,7 @@ async function ready(page){
   await page.reload();await ready(page);
   await test('existing light/dark/auto colors remain available',async()=>{
     // Final cascade in the pre-Apple stylesheet, not its superseded first :root.
-    const light={'--bg':'#fff','--card':'#f5f5f7','--tx':'#111','--mut':'#777','--line':'#e4e4e7','--g':'#16a34a','--r':'#e11d48','--ac':'#111','--ac-t':'#fff','--gl':'#f5f5f7','--bgi':'#fff'};
+    const light={'--bg':'#fff','--card':'#f5f5f7','--tx':'#111','--mut':'#6c6c70','--line':'#e4e4e7','--g':'#187c32','--r':'#e11d48','--ac':'#111','--ac-t':'#fff','--gl':'#f5f5f7','--bgi':'#fff'};
     const dark={'--bg':'#000','--card':'#121215','--tx':'#f5f5f7','--mut':'#9a9aa3','--line':'#26262b','--g':'#4ade80','--r':'#fb7185','--ac':'#fff','--ac-t':'#111','--gl':'linear-gradient(160deg, #1a1a1f, #0e0e10)','--bgi':'radial-gradient(90% 55% at 50% 0%, #222228, #000 75%)'};
     for(const t of ['light','dark','auto']){
       await page.evaluate(t=>setTheme(t),t);

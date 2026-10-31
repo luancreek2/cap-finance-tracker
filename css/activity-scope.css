@@ -25,14 +25,14 @@
   border-color:color-mix(in srgb,var(--tx) 16%,var(--line));
   font-size:19px;font-weight:800;letter-spacing:1px;
 }
-/* .pill.on sets color:var(--ac-t), which is dark-on-dark here because the
-   background below is a green tint rather than the solid accent. Pin the dots
-   to the text colour so the control stays legible in both themes. */
+/* Scope selection uses the same theme accent as the existing filter controls. */
 .as-pills .account-options-button.on{
-  background:color-mix(in srgb,var(--g) 22%,transparent);
-  border-color:color-mix(in srgb,var(--g) 60%,var(--line));
-  color:var(--tx);
+  background:var(--selection-fill);
+  border-color:transparent;
+  color:var(--ac-t);
 }
+.as-pills .account-options-button:focus-visible,
+#activity-options-menu button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 
 /* ---- the period caption: one slim line above the list ---- */
 .as-head{margin:0 4px;min-height:18px}
@@ -45,7 +45,7 @@
 }
 .as-cur b{font-weight:600}
 .as-cur small{margin-left:7px;color:var(--mut);font-size:12px;font-weight:500}
-.as-cur.on b{color:var(--g)}
+.as-cur.on b{color:var(--tx)}
 
 /* ---- the popup body ---- */
 /* JS anchors this popover to the ••• trigger; fixed lets it re-anchor on
@@ -74,14 +74,14 @@
   transition:background .2s ease,border-color .2s ease;
 }
 @media(hover:hover){
-  #activity-options-menu .ao-arrow:hover{border-color:color-mix(in srgb,var(--g) 42%,var(--line))}
+  #activity-options-menu .ao-arrow:hover{border-color:var(--ac)}
 }
 #activity-options-menu .ao-arrow svg{width:15px;height:15px;display:block}
 
 /* day + year/month tiles */
 #activity-options-menu .ao-dow{
   display:grid;grid-template-columns:repeat(7,1fr);gap:2px;
-  padding:0 2px 3px;color:var(--mut);font-size:10.5px;text-align:center;
+  padding:0 2px 3px;color:var(--secondary);font-size:11px;text-align:center;
 }
 #activity-options-menu .ao-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 2px 2px}
 #activity-options-menu .ao-d{
@@ -91,8 +91,8 @@
   transition:background .16s ease,color .16s ease;
 }
 #activity-options-menu .ao-d.x{color:var(--mut);opacity:.5}
-#activity-options-menu .ao-d.t{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--g) 55%,transparent)}
-#activity-options-menu .ao-d.on{background:var(--ac);color:var(--ac-t);font-weight:700;box-shadow:none}
+#activity-options-menu .ao-d.t{box-shadow:inset 0 0 0 1px var(--mut)}
+#activity-options-menu .ao-d.on{background:var(--selection-fill);color:var(--ac-t);font-weight:700;box-shadow:none}
 @media(hover:hover){
   #activity-options-menu .ao-d:not(.on):hover{background:color-mix(in srgb,var(--tx) 8%,transparent)}
 }
@@ -104,17 +104,17 @@
   font-variant-numeric:tabular-nums;cursor:pointer;
   transition:background .18s ease,border-color .18s ease,transform .16s ease;
 }
-#activity-options-menu .ao-tile.on{background:var(--ac);color:var(--ac-t);border-color:transparent}
+#activity-options-menu .ao-tile.on{background:var(--selection-fill);color:var(--ac-t);border-color:transparent}
 #activity-options-menu .ao-tile:active{transform:scale(.97)}
 @media(hover:hover){
   #activity-options-menu .ao-tile:not(.on):hover{
-    border-color:color-mix(in srgb,var(--g) 42%,var(--line));
-    background:color-mix(in srgb,var(--g) 10%,var(--card));
+    border-color:var(--line);
+    background:color-mix(in srgb,var(--tx) 8%,var(--card));
   }
 }
 #activity-options-menu .ao-list button{font-variant-numeric:tabular-nums}
 #activity-options-menu .ao-tag{
-  margin-left:8px;color:var(--mut);font-size:10.5px;font-weight:600;
+  margin-left:8px;color:var(--mut);font-size:11px;font-weight:600;
   letter-spacing:.04em;text-transform:uppercase;
 }
 
@@ -122,14 +122,14 @@
 /* week: the seven days that are actually in view */
 .acal .dc.rng::before{
   opacity:1;transform:none;
-  background:color-mix(in srgb,var(--g) 11%,transparent);
-  box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--g) 30%,transparent);
+  background:color-mix(in srgb,var(--tx) 10%,var(--bg));
+  box-shadow:none;
 }
 /* day: the app's own raised surface, warmed a touch so the picked day reads.
    No ring and no glow — the selection is the surface plus the motion. */
 .acal .dc.sel::before{
   opacity:1;transform:none;
-  background:color-mix(in srgb,var(--g) 15%,var(--bg));
+  background:color-mix(in srgb,var(--tx) 14%,var(--bg));
 }
 /* days outside the period keep their date but give up their entries */
 .acal .dc.off .n{opacity:.45}
@@ -198,16 +198,16 @@
   transition:background .2s ease,border-color .2s ease,transform .16s ease;
 }
 .as-ym:active{transform:scale(.97)}
-.as-ym:focus-visible{outline:2px solid var(--g);outline-offset:1px}
+.as-ym:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
 @media(hover:hover){
   .as-ym:hover{
-    border-color:color-mix(in srgb,var(--g) 42%,var(--line));
-    background:color-mix(in srgb,var(--g) 10%,var(--card));
+    border-color:var(--line);
+    background:color-mix(in srgb,var(--tx) 8%,var(--card));
   }
 }
 .as-ym b{font-size:12.5px;font-weight:700;letter-spacing:.01em}
 .as-ym small{color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
-.as-ym-n{position:absolute;top:8px;right:9px;font-size:10px;color:var(--mut);opacity:.75}
+.as-ym-n{position:absolute;top:8px;right:9px;font-size:11px;color:var(--mut)}
 
 /* ---- vertical month stage ------------------------------------------------
    Two live month pages share one clipped viewport. The outgoing page and the
