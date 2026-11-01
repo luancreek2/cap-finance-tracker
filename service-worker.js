@@ -1,6 +1,6 @@
 /* Cap service worker — offline app shell.
    Bump VERSION whenever index.html or other shell files change. */
-const VERSION = "cap-shell-v376";
+const VERSION = "cap-shell-v377";
 const LOCAL_PREVIEW = ['localhost','127.0.0.1','[::1]'].includes(new URL(self.location.origin).hostname);
 const CORE = [
   "./index.html",
@@ -41,6 +41,8 @@ const CORE = [
   "./js/calendar-popup.js",
   "./js/credit.js",
   "./js/animations.js",
+  "./js/cap-motion.js",
+  "./assets/vendor/animejs/anime.esm.min.js",
   "./js/settings-shell.js",
   "./js/command-bar.js",
   "./js/smart-log-merchants.js",

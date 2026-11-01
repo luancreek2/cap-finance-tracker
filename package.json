@@ -1,0 +1,10 @@
+{
+  "name": "cap-finance-pwa",
+  "private": true,
+  "scripts": {
+    "vendor:anime": "node scripts/vendor-anime.cjs"
+  },
+  "dependencies": {
+    "animejs": "4.5.0"
+  }
+}

@@ -7,3 +7,6 @@ supabase-config.local.js
 
 # Local editor/backup files
 *.bak
+
+# Installed packages; the pinned browser module is vendored for static/offline use
+node_modules/

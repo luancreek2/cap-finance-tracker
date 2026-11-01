@@ -1,0 +1,26 @@
+/* Dependency/offline boundary checks; no financial or network execution. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const root=path.resolve(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const pkg=JSON.parse(read('package.json')),lock=JSON.parse(read('package-lock.json'));
+assert.equal(pkg.dependencies.animejs,'4.5.0');
+assert.equal(lock.packages['node_modules/animejs'].version,pkg.dependencies.animejs);
+assert.deepEqual(fs.readFileSync(path.join(root,'assets/vendor/animejs/anime.esm.min.js')),fs.readFileSync(path.join(root,'node_modules/animejs/dist/bundles/anime.esm.min.js')));
+assert.match(read('assets/vendor/animejs/LICENSE.md'),/MIT/);
+const source=read('js/cap-motion.js');
+assert.doesNotMatch(source,/\bS\s*[.\[]|localStorage|indexedDB|\bfetch\s*\(|saveTx|CapSupabase|CapProductionSync/);
+assert.equal((source.match(/\bimport\(/g)||[]).length,1);
+assert.match(source,/onComplete/);assert.match(source,/revert\(\)/);
+const sw=read('service-worker.js');
+for(const p of ['js/cap-motion.js','assets/vendor/animejs/anime.esm.min.js'])assert.ok(sw.includes('./'+p));
+const paths=vm.runInNewContext(sw.slice(sw.indexOf('const CORE = '),sw.indexOf('const MEDIA = '))+';CORE');
+for(const p of paths)assert.ok(fs.existsSync(path.join(root,p)),'Missing shell file '+p);
+assert.equal((read('index.html').match(/js\/cap-motion.js/g)||[]).length,1);
+assert.match(read('.opencode/skills/cap-animation/SKILL.md'),/description:.*Audit/);
+const app=read('js/app.js'),nav=app.slice(app.indexOf('function navS('),app.indexOf('function billKind('));
+const closing=vm.createContext({window:{}});
+closing.$=selector=>selector==='#sheet'?{classList:{contains:name=>['open','closing'].includes(name)}}:{};
+closing.openS=html=>{closing.opened=html};
+vm.runInContext(nav,closing);closing.navS('<b>latest</b>','latest-view');
+assert.equal(closing.opened,'<b>latest</b>');assert.equal(closing.window._svKey,'latest-view');
+console.log('PASS pinned vendor integrity, single optional import, presentation-only boundary, offline CORE and discoverable skill');
+console.log('PASS navigation into a closing sheet reopens instead of cancelling its exit and stranding it');

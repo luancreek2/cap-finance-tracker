@@ -173,7 +173,7 @@
     preview(p.querySelector('.on')||p.querySelector('.candidate')||p.querySelector('[role=option]'));
   }
   function dismissPicker(){closePicker(false);}
-  function hide(){++reviewRevision;dismissPicker();panel.hidden=true;sourceText='';}
+  function hide(){++reviewRevision;dismissPicker();window.CapMotion?.cancel(panel);panel.hidden=true;sourceText='';}
   function invalidate(){hide();draft=null;}
   function options(items,current,placeholder){return '<option value=""'+(!items.some(([id])=>String(id)===String(current))?' selected':'')+'>'+esc(placeholder)+'</option>'+items.map(([id,label])=>`<option value="${esc(id)}"${String(id)===String(current)?' selected':''}>${esc(label)}</option>`).join('');}
   function control(key,label,kind='text',items){
@@ -185,6 +185,7 @@
   }
   function render(){
     if(!draft)return;
+    window.CapMotion?.cancel(panel);
     dismissPicker();
     const d=data(),f=draft.fields;
     if(draft.kind!=='draft'){
@@ -215,10 +216,9 @@
     panel.querySelectorAll('[data-sl-field]').forEach(e=>{const f=draft.fields[e.dataset.slField];e.setAttribute('aria-invalid',String(e.dataset.slField!=='description'&&(f.value==null||f.value===''||f.state==='ambiguous')));const hint=e.parentElement.querySelector('small');if(hint){hint.textContent=f.reason||'';hint.hidden=!f.reason}});
     panel.querySelectorAll('[data-sl-pick]').forEach(b=>{const f=draft.fields[b.dataset.slPick];b.setAttribute('aria-invalid',String(f.value==null||f.value===''));const hint=b.parentElement.querySelector('small');if(hint){hint.textContent=f.reason||'';hint.hidden=!f.reason}});
   }
-  function reduceMotion(){return matchMedia('(prefers-reduced-motion:reduce)').matches||document.documentElement.classList.contains('rm')||document.documentElement.classList.contains('noanim')}
   function animateSwap(){
-    if(reduceMotion())return;
-    try{panel.animate([{opacity:.72,transform:'translateY(5px)'},{opacity:1,transform:'none'}],{duration:180,easing:'cubic-bezier(.22,.75,.28,1)'})}catch(_){}
+    // The preview shell keeps its CSS entrance; Anime owns only the new content.
+    window.CapMotion?.reveal(panel.querySelector('.sl-summary,.sl-fields,.sl-heading'));
   }
   async function submitText(text){
     if(!active()||busy)return;
@@ -226,6 +226,7 @@
     sourceText=text;draft=parser.parse(text,data());editing=false;dismissPicker();panel.hidden=true;
     if(!await bar.dismissKeyboard()||token!==reviewRevision||!active())return;
     render();
+    animateSwap();
     // Focus the preview, not a keyboard field that could cover it on mobile.
     panel.querySelector('h3')?.focus({preventScroll:true});
   }

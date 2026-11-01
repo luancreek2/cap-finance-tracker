@@ -386,7 +386,45 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
       function setupDateValue(day){if(!day)return'';const n=new Date(),d=Math.min(+day,new Date(n.getFullYear(),n.getMonth()+1,0).getDate());return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
        function setupBackMarkup(card){const typ=card.img=='cash'?'CASH':card.type=='credit'?'CREDIT':card.type=='ewallet'?'E-WALLET':'DEBIT',owner=esc(String(S.name||'Your name').trim()||'Your name'),bank=esc(card.bank||''),name=esc(card.name||'Your card'),colors=card.g||['#1b2b47','#111827'];return`<div class="acct-setup-back" style="--setup-card-a:${colors[0]};--setup-card-b:${colors[1]}"><div class="setup-back-mark">${owner}</div><div class="setup-back-stripe"></div><div class="setup-back-chip"><i></i><i></i><i></i><i></i></div><div class="setup-back-label"><b>${typ}</b><span>${bank?bank+' · ':''}${name}</span></div></div>`}
       function setupFormMarkup(card){const credit=card.type=='credit',debit=card.type=='debit'&&card.img!='cash',bank=esc(card.bank||''),name=esc(card.name||''),creditRates=credit?`<div class="setup-form-section"><div class="eyebrow">Card rates</div><label for="setup-finance">Finance charge (% / month)</label><input id="setup-finance" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="3"><label for="setup-cash-rate">Cash advance rate (% / month)</label><input id="setup-cash-rate" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="3"><label for="setup-min-percent">Minimum payment (%)</label><input id="setup-min-percent" type="number" min="0" max="100" step="0.1" inputmode="decimal" value="5"><label for="setup-min-fixed">Minimum fixed amount (${CS()})</label><input id="setup-min-fixed" type="number" min="0" step="0.01" inputmode="decimal" value="500"><small>Additional fees can be configured in Card Fees after setup.</small></div>`:'';return`<div id="acct-setup-form" class="acct-setup-form" role="dialog" aria-modal="true" aria-labelledby="setup-title"><div class="setup-form-head"><div><div class="eyebrow">${card.img=='cash'?'CASH':credit?'CREDIT CARD':debit?'DEBIT CARD':'E-WALLET'} SETUP</div><h2 id="setup-title">Finish setting up your card</h2><p class="m">Your details stay on this device unless you enable sync.</p><small class="setup-required-note"><b>*</b> indicates a required field.</small></div><button type="button" class="pill" aria-label="Cancel setup" onclick="cancelAccountSetup()">×</button></div><label for="setup-bank">${card.img=='cash'?'Cash account label':'Bank / issuer'} <em aria-hidden="true">*</em></label><input id="setup-bank" maxlength="60" required value="${bank}" placeholder="${card.img=='cash'?'Cash':'Bank or issuer name'}" autocomplete="organization"><label for="setup-name">Account / card name <em aria-hidden="true">*</em></label><input id="setup-name" maxlength="60" required value="${name}" placeholder="e.g. Everyday Debit" autocomplete="off"><label for="setup-balance">Current balance (${CS()}) <em aria-hidden="true">*</em></label><input id="setup-balance" type="number" required min="0" step="0.01" inputmode="decimal" value="" placeholder="0.00"><small class="setup-help">Enter 0 if this account currently has no balance.</small><label for="setup-last4">Last 4 digits <span>optional</span></label><input id="setup-last4" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{0,4}" placeholder="Optional"><div id="setup-credit-fields" class="setup-form-section" ${credit?'':'hidden'}><div class="eyebrow">Credit card billing</div><label for="setup-limit">Credit limit (${CS()}) <em aria-hidden="true">*</em></label><input id="setup-limit" type="number" required min="0.01" step="0.01" inputmode="decimal" placeholder="0.00"><label for="setup-statement">Monthly statement cut-off <em aria-hidden="true">*</em></label><input id="setup-statement" type="date" required aria-label="Choose monthly statement cut-off date"><small class="setup-help">Select a date; Cap repeats that day each month.</small><label for="setup-due">Payment due date <em aria-hidden="true">*</em></label><input id="setup-due" type="date" required aria-label="Choose monthly payment due date"><small class="setup-help">Select a date; Cap repeats that day each month.</small></div>${debit?interestSettingsMarkup(null,'setup-si'):''}${creditRates}<p id="setup-error" class="setup-error" role="alert" hidden></p><div class="setup-form-actions"><button type="button" class="btn s" onclick="cancelAccountSetup()">Cancel</button><button type="button" id="setup-save" class="btn" onclick="setupAccountSave()">Add Account</button></div></div>`}
-      function beginAccountSetup(card,source,sourceRect){if(!card||ACCT_SETUP?.busy)return;const element=source&&source.querySelector?source.querySelector('.cc')||source:source,rect=sourceRect||element?.getBoundingClientRect?.()||{left:innerWidth/2-90,top:100,width:180,height:114},reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;ACCT_SETUP={card:{...card},rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},busy:false,reduce};const front=cardH({...card,l4:''},0);document.body.insertAdjacentHTML('beforeend',`<div id="acct-setup-overlay" class="acct-setup-overlay" aria-label="Card setup"><div id="acct-setup-stage" class="acct-setup-stage"><div id="acct-setup-flip" class="acct-setup-flip"><div class="acct-setup-face acct-setup-front">${front}</div><div class="acct-setup-face acct-setup-backface">${setupBackMarkup(card)}</div></div></div><div id="acct-setup-panel" class="acct-setup-panel" hidden>${setupFormMarkup(card)}</div></div>`);const overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),panel=$('#acct-setup-panel'),cardWidth=Math.min(340,innerWidth-40),cardHeight=cardWidth/1.586,top=Math.max(18,parseFloat(getComputedStyle(overlay).paddingTop)||18),left=(innerWidth-cardWidth)/2;ACCT_SETUP.target={left,top,width:cardWidth,height:cardHeight,formTop:top+cardHeight+16};stage.style.cssText=`left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;const clone=stage.querySelector('.acct-setup-front .cc');if(clone){clone.classList.remove('sel','pop');clone.removeAttribute('onclick');clone.removeAttribute('role');clone.style.width='100%';clone.style.height='100%'}panel.style.top=`${ACCT_SETUP.target.formTop}px`;panel.style.maxHeight=`calc(100dvh - ${ACCT_SETUP.target.formTop+14}px)`;overlay.addEventListener('click',e=>{if(e.target===overlay)cancelAccountSetup()});overlay._setupEsc=e=>{if(e.key=='Escape'){e.preventDefault();cancelAccountSetup();return}if(e.key=='Tab'&&!panel.hidden){const f=[...panel.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled)')].filter(x=>x.offsetParent!==null);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};document.addEventListener('keydown',overlay._setupEsc);requestAnimationFrame(()=>{overlay.classList.add('visible');stage.classList.add('moving');stage.style.left=`${left}px`;stage.style.top=`${top}px`;stage.style.width=`${cardWidth}px`;stage.style.height=`${cardHeight}px`});const flipDelay=reduce?60:290,formDelay=reduce?100:650;setTimeout(()=>{if(!ACCT_SETUP)return;$('#acct-setup-flip')?.classList.add('flipped')},flipDelay);setTimeout(()=>{if(!ACCT_SETUP)return;panel.hidden=false;setupWireForm();requestAnimationFrame(()=>panel.classList.add('visible'));setTimeout(()=>$('#setup-name')?.focus({preventScroll:true}),80)},formDelay)}
+      function beginAccountSetup(card,source,sourceRect){
+        if(!card||ACCT_SETUP)return;
+        const element=source&&source.querySelector?source.querySelector('.cc')||source:source,
+          rect=sourceRect||element?.getBoundingClientRect?.()||{left:innerWidth/2-90,top:100,width:180,height:114},
+          reduce=document.documentElement.matches('.rm,.noanim')||matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const state=ACCT_SETUP={card:{...card},rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},busy:false,reduce};
+        const front=cardH({...card,l4:''},0);
+        document.body.insertAdjacentHTML('beforeend',`<div id="acct-setup-overlay" class="acct-setup-overlay" aria-label="Card setup"><div id="acct-setup-stage" class="acct-setup-stage"><div id="acct-setup-flip" class="acct-setup-flip"><div class="acct-setup-face acct-setup-front">${front}</div><div class="acct-setup-face acct-setup-backface">${setupBackMarkup(card)}</div></div></div><div id="acct-setup-panel" class="acct-setup-panel" hidden>${setupFormMarkup(card)}</div></div>`);
+        const overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),panel=$('#acct-setup-panel'),
+          cardWidth=Math.min(340,innerWidth-40),cardHeight=cardWidth/1.586,
+          top=Math.max(18,parseFloat(getComputedStyle(overlay).paddingTop)||18),left=(innerWidth-cardWidth)/2;
+        const live=()=>ACCT_SETUP===state&&!state.closing&&overlay.isConnected;
+        state.target={left,top,width:cardWidth,height:cardHeight,formTop:top+cardHeight+16};
+        stage.style.cssText=`left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+        const clone=stage.querySelector('.acct-setup-front .cc');
+        if(clone){clone.classList.remove('sel','pop');clone.removeAttribute('onclick');clone.removeAttribute('role');clone.style.width='100%';clone.style.height='100%'}
+        panel.style.top=`${state.target.formTop}px`;panel.style.maxHeight=`calc(100dvh - ${state.target.formTop+14}px)`;
+        overlay.addEventListener('click',e=>{if(e.target===overlay)cancelAccountSetup()});
+        overlay._setupEsc=e=>{
+          if(e.key=='Escape'){e.preventDefault();cancelAccountSetup();return}
+          if(e.key=='Tab'&&!panel.hidden){
+            const f=[...panel.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled)')].filter(x=>x.offsetParent!==null);
+            if(!f.length)return;const first=f[0],last=f[f.length-1];
+            if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+            else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+          }
+        };
+        document.addEventListener('keydown',overlay._setupEsc);
+        state.openFrame=requestAnimationFrame(()=>{
+          if(!live())return;
+          overlay.classList.add('visible');stage.classList.add('moving');stage.style.left=`${left}px`;stage.style.top=`${top}px`;stage.style.width=`${cardWidth}px`;stage.style.height=`${cardHeight}px`;
+        });
+        state.flipTimer=setTimeout(()=>{if(live())overlay.querySelector('#acct-setup-flip')?.classList.add('flipped')},reduce?60:290);
+        state.formTimer=setTimeout(()=>{
+          if(!live())return;panel.hidden=false;setupWireForm();
+          state.formFrame=requestAnimationFrame(()=>{if(live())panel.classList.add('visible')});
+          state.focusTimer=setTimeout(()=>{if(live())panel.querySelector('#setup-name')?.focus({preventScroll:true})},80);
+        },reduce?100:650);
+      }
       function beginCustomCard(source){if(ACCT_SETUP?.busy)return;const rect=source.getBoundingClientRect();ACCT_CUSTOM={rect};const old=$('#custom-card-dialog');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div id="custom-card-dialog" class="custom-card-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-card-title"><div class="custom-card-dialog-box"><button type="button" class="pill custom-dialog-close" aria-label="Close" onclick="closeCustomCard()">×</button><h2 id="custom-card-title">Use your own card photo</h2><p class="m">Choose the account type, then select a photo. It will be fitted to the card design.</p><label for="custom-card-type">Account type</label><select id="custom-card-type"><option value="debit">Debit</option><option value="credit">Credit</option><option value="ewallet">E-wallet</option></select><input id="custom-card-file" type="file" accept="image/*" hidden onchange="customCardFile(this)"><button type="button" class="btn" style="width:100%;margin-top:14px" onclick="$('#custom-card-file').click()">Choose card photo</button><button type="button" class="btn s" style="width:100%;margin-top:8px" onclick="closeCustomCard()">Cancel</button></div></div>`)}
       function closeCustomCard(){const d=$('#custom-card-dialog');if(d)d.remove();ACCT_CUSTOM=null}
       function customCardFile(input){const file=input.files&&input.files[0];if(!file)return;const type=$('#custom-card-type').value,rect=ACCT_CUSTOM?.rect;imgPick(input,1100,'jpg',photo=>{const card={bank:'',name:'',type,net:'visa',g:['#1d3557','#101820'],photo};closeCustomCard();beginAccountSetup(card,null,rect)})}
@@ -398,7 +436,18 @@ ${grp(["debit", "ewallet"], "Cash, bank & e-wallets")}${grp(["credit"], "Credit"
        function setupWireForm(){const panel=$('#acct-setup-panel');if(!panel)return;panel.addEventListener('input',setupInputChanged);panel.addEventListener('change',setupInputChanged);setupToggleSave()}
        function setupShowErrors(errors){document.querySelectorAll('#acct-setup-form .setup-invalid').forEach(setupClearFieldError);errors.forEach(e=>setupFieldError(e.id,e.message));const summary=$('#setup-error');if(summary){summary.textContent='Please complete the highlighted required fields.';summary.hidden=false}const first=errors.length&&$('#'+errors[0].id),reduce=ACCT_SETUP?.reduce;if(first){first.scrollIntoView({block:'center',behavior:reduce?'auto':'smooth'});setTimeout(()=>first.focus({preventScroll:true}),reduce?0:320)}}
        function setupError(message){const el=$('#setup-error');if(el){el.textContent=message;el.hidden=false}}
-      function cancelAccountSetup(){if(!ACCT_SETUP||ACCT_SETUP.busy)return;const state=ACCT_SETUP,overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),flip=$('#acct-setup-flip');if(!overlay||!stage){ACCT_SETUP=null;return}$('#acct-setup-panel')?.classList.remove('visible');flip?.classList.remove('flipped');const r=state.rect;overlay.classList.remove('visible');stage.style.left=`${r.left}px`;stage.style.top=`${r.top}px`;stage.style.width=`${r.width}px`;stage.style.height=`${r.height}px`;setTimeout(()=>{if(overlay._setupEsc)document.removeEventListener('keydown',overlay._setupEsc);overlay.remove();ACCT_SETUP=null},state.reduce?0:440)}
+      function cancelAccountSetup(){
+        if(!ACCT_SETUP||ACCT_SETUP.busy||ACCT_SETUP.closing)return;
+        const state=ACCT_SETUP,overlay=$('#acct-setup-overlay'),stage=$('#acct-setup-stage'),flip=$('#acct-setup-flip');
+        if(!overlay||!stage){ACCT_SETUP=null;return}
+        state.closing=true;
+        [state.flipTimer,state.formTimer,state.focusTimer].forEach(clearTimeout);
+        [state.openFrame,state.formFrame].forEach(cancelAnimationFrame);
+        if(overlay._setupEsc)document.removeEventListener('keydown',overlay._setupEsc);
+        overlay.inert=true;$('#acct-setup-panel')?.classList.remove('visible');flip?.classList.remove('flipped');
+        const r=state.rect;overlay.classList.remove('visible');stage.style.left=`${r.left}px`;stage.style.top=`${r.top}px`;stage.style.width=`${r.width}px`;stage.style.height=`${r.height}px`;
+        setTimeout(()=>{overlay.remove();if(ACCT_SETUP===state)ACCT_SETUP=null},state.reduce?0:440);
+      }
        function setupAccountSave(){
          const state=ACCT_SETUP;if(!state||state.busy)return;
          const card=state.card,type=card.type,bank=$('#setup-bank').value.trim(),name=$('#setup-name').value.trim(),balanceText=$('#setup-balance').value,balance=Number(balanceText),last4=$('#setup-last4').value.replace(/\D/g,''),credit=type=='credit',errors=[];
@@ -1094,7 +1143,7 @@ function initCardAnimations() {
       if(ch===card)return;
       ch.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:340,delay:180+Math.min(i,6)*40,easing:OUT,fill:'backwards'});
     });
-    const done=function(){card.style.visibility='';sb.style.pointerEvents='';f.root.remove();if(f.ghost)f.ghost.remove();busy=false;phase='';if(pend){pend=false;window.closeS();}};
+     const done=function(){const owns=sb.querySelector('.cc.detail')===card;card.style.visibility='';if(owns)sb.style.pointerEvents='';f.root.remove();if(f.ghost)f.ghost.remove();busy=false;phase='';if(!owns){plain();clearHide();sb.style.pointerEvents='';pend=false;}else if(pend){pend=false;window.closeS();}};
     try{fly(f,src,from,to,true,card).then(done,done)}catch(_){done()}
   };
   function plain(){$1('#sheet').classList.remove('cardfx');fx=null;}
@@ -1112,14 +1161,18 @@ function initCardAnimations() {
     $1('#sb').style.pointerEvents='none';
     card.style.visibility='hidden';
     sheet.classList.add('closing');
-    $1('#sb').animate([{opacity:1},{opacity:0}],{duration:240,easing:'ease-in',fill:'forwards'});
-    const done=function(){
-      clearHide();card.style.visibility='';f.root.remove();if(f.ghost)f.ghost.remove();
-      sheet.classList.remove('open','closing','cardfx');document.body.classList.remove('sheet-open');
-      $1('#sb').getAnimations().forEach(function(a){a.cancel()});
+     const closeFade=$1('#sb').animate([{opacity:1},{opacity:0}],{duration:240,easing:'ease-in',fill:'forwards'});
+     $1('#sb')._cardCloseFade=closeFade;
+     const done=function(){
+       clearHide();card.style.visibility='';f.root.remove();if(f.ghost)f.ghost.remove();
+       const sb=$1('#sb'),owns=sb.querySelector('.cc.detail')===card;
+       if(owns){sheet.classList.remove('open','closing','cardfx');document.body.classList.remove('sheet-open');}
+       else sheet.classList.remove('cardfx');
+       closeFade.cancel();
+       if(sb._cardCloseFade===closeFade)sb._cardCloseFade=null;
       $1('#sb').style.pointerEvents='';
       fx=null;busy=false;phase='';};
-    try{fly(f,src,to,from,false,card).then(done,done)}catch(_){done()}
+     try{fly(f,src,to,from,false,card).then(done,done)}catch(_){done()}
   };
   new MutationObserver(function(){const s=$1('#sheet');if(hid!=null&&!busy&&!s.classList.contains('open')){settle();clearHide();}})
     .observe($1('#sheet'),{attributes:true,attributeFilter:['class']});

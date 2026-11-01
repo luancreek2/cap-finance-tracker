@@ -2608,8 +2608,10 @@ function billStatusChip(b){
 function navS(html,key,opts){
   opts=opts||{};
   const sheet=$('#sheet'),sb=$('#sb');
-  if(!sheet||!sb||!sheet.classList.contains('open')){window._svKey=key||'';openS(html);return}
+  if(!sheet||!sb||!sheet.classList.contains('open')||sheet.classList.contains('closing')){window._svKey=key||'';openS(html);return}
   clearTimeout(window._cl);clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;
+  const revision=window._svRevision=(window._svRevision||0)+1;
+  const live=()=>revision===window._svRevision&&sb.isConnected&&sheet.classList.contains('open')&&!sheet.classList.contains('closing');
   const busy=!!window._navBusy;window._navBusy=0;
   const dir=opts.dir||((key==='set-home'||String(key||'').includes('back'))?'back':'forward');
   if(SVKEY)SVSC[SVKEY]=sb.scrollTop;                    /* remember where we left the old screen */
@@ -2618,9 +2620,10 @@ function navS(html,key,opts){
   const want=SVKEEP[SVKEY]?(SVSC[SVKEY]||0):0;          /* only restored screens keep their place */
   const sv=sb.firstElementChild;
   const sync=()=>{if(window.psEnhance)window.psEnhance()};
-  const settle=()=>{clearTimeout(window._nt);window._navBusy=0;sb.classList.remove('sv-forward','sv-back','sv-transitioning');svSettle(sb);sb.scrollTop=want};
+  const settle=()=>{if(!live())return;clearTimeout(window._nt);window._navBusy=0;sb.classList.remove('sv-forward','sv-back','sv-transitioning');svSettle(sb);sb.scrollTop=want};
   if(!sv){sb.innerHTML='<div id="sv">'+html+'</div>';sync();svSettle(sb);sb.scrollTop=want;return}
   const commit=()=>{
+    if(!live())return;
     clearTimeout(window._nt);window._navBusy=0;
     sv.innerHTML=html;sync();
     sb.scrollTop=want;
@@ -2632,15 +2635,15 @@ function navS(html,key,opts){
     sb.style.transition='height '+SV_MS+'ms '+SV_EASE;
     sv.style.transition='opacity 290ms cubic-bezier(.22,.75,.2,1),transform 320ms cubic-bezier(.22,.75,.2,1)';
     sb.style.height=target+'px';
-    requestAnimationFrame(()=>{sv.style.opacity='1';sv.style.transform='none'});
+    requestAnimationFrame(()=>{if(live()){sv.style.opacity='1';sv.style.transform='none'}});
     svHold(want,SV_MS);
     window._nt=setTimeout(settle,SV_MS+160);
   };
   const h0=Math.round(sb.offsetHeight);
-  if(busy)return commit();
-  if(matchMedia('(prefers-reduced-motion:reduce)').matches){
-    sv.innerHTML=html;sync();svSettle(sb);sb.scrollTop=want;return;
+  if(document.documentElement.matches('.rm,.noanim')||matchMedia('(prefers-reduced-motion:reduce)').matches){
+    sv.innerHTML=html;sync();sb.classList.remove('sv-forward','sv-back','sv-transitioning');svSettle(sb);sb.scrollTop=want;return;
   }
+  if(busy)return commit();
   /* keep the shell's size while the old view leaves, then hand over */
    sb.classList.remove('sv-forward','sv-back');sb.classList.add(dir==='back'?'sv-back':'sv-forward','sv-transitioning');
    sb.style.transition='none';

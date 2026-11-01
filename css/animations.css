@@ -178,16 +178,16 @@ html.noanim .pd-timing-arrow,html.rm .pd-timing-arrow,html.noanim .pd-timing::be
 .toast{animation:toastIn .25s ease;transition:opacity .3s ease}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}}
 .spin{animation:spin .7s linear infinite}.sw-c{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
-@keyframes capBgIn{from{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}to{opacity:1}}
+@keyframes capBgIn{from{opacity:0}to{opacity:1}}
 @keyframes capBgOut{to{opacity:0}}
-@keyframes capSheetIn{0%{opacity:0;transform:translateY(44px) scale(.93)}55%{opacity:1}100%{opacity:1;transform:none}}
-@keyframes capSheetOut{to{opacity:0;transform:translateY(24px) scale(.96)}}
+@keyframes capSheetIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes capSheetOut{to{opacity:0;transform:translateY(8px) scale(.985)}}
 @keyframes capPopIn{from{opacity:0;transform:translateY(-6px) scale(.97)}}
 @keyframes capPopOut{to{opacity:0;transform:translateY(-4px) scale(.98)}}
 #sheet.open{animation:capBgIn .32s ease both}
 #sheet.closing{animation:capBgOut .2s ease forwards}
-#sheet>#sb{will-change:transform,opacity}
-#sheet.open>#sb{animation:capSheetIn .5s cubic-bezier(.16,1,.3,1) both}
+#sheet>#sb{will-change:auto}
+#sheet.open>#sb{animation:capSheetIn .28s cubic-bezier(.16,1,.3,1) both}
 #sheet.closing>#sb{animation:capSheetOut .2s cubic-bezier(.4,0,1,1) forwards}
 .ps-chev{transition:transform .2s ease}
 .ps-pop{animation:capPopIn .18s cubic-bezier(.2,.8,.2,1);transform-origin:top center}
@@ -345,7 +345,7 @@ html.noanim .paid-checkmark path,html.noanim .transfer-arrow-mark path,html.rm .
 .pt-wrap.done .pt-term{animation:ptGlowPulse 1.45s .55s ease-in-out 2;box-shadow:0 14px 34px color-mix(in srgb,var(--g) 26%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}
 .pt-wrap.done .pt-screen{box-shadow:inset 0 2px 10px rgba(0,0,0,.4),0 0 24px color-mix(in srgb,var(--g) 24%,transparent)}
 .pt-wrap.done .pt-title{color:var(--g)}
-@keyframes ptTickIn{0%{opacity:0;transform:scale(.28) rotate(-35deg)}55%{opacity:1;transform:scale(1.18) rotate(375deg)}76%{transform:scale(.92) rotate(350deg)}100%{opacity:1;transform:scale(1) rotate(360deg)}}
+@keyframes ptTickIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
 @keyframes ptRingDraw{to{stroke-dashoffset:0}}
 @keyframes ptRipple{0%{opacity:.58;transform:scale(.55)}72%{opacity:.2}100%{opacity:0;transform:scale(2.35)}}
 @keyframes ptGlowPulse{0%,100%{box-shadow:0 14px 34px color-mix(in srgb,var(--g) 22%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}50%{box-shadow:0 14px 44px color-mix(in srgb,var(--g) 40%,transparent),0 0 22px color-mix(in srgb,var(--g) 22%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 25%,transparent)}}
@@ -381,3 +381,19 @@ html.noanim .pt-ripple,html.rm .pt-ripple{display:none}
 #lock{z-index:var(--layer-lock)}
 .toast,.payment-success,.account-transfer-animation{z-index:var(--layer-notice)}
 .sbtn,.sbtn:hover,.sbtn:active{z-index:var(--layer-navigation)!important}
+
+/* Financial feedback settles instead of looping while amounts are being read. */
+.ch .ch-sweep,.ch-change-arrow,.ch-change::before,.pd-timing-arrow,.pd-timing::before,
+.odb,.paid-chip{animation-iteration-count:1!important}
+.paid-checkmark path,.transfer-arrow-mark path{animation:capPaidDraw .32s ease-out both;filter:none}
+.transfer-arrow-mark .transfer-arrow-left{animation-delay:.06s}
+@keyframes capPaidDraw{from{stroke-dashoffset:var(--paid-mark-length,18)}to{stroke-dashoffset:0}}
+.pt-wrap.done .pt-check{animation-duration:.24s;animation-timing-function:ease-out}
+.pt-wrap.done .pt-term{animation:none}
+@media(prefers-reduced-motion:reduce){
+  #sheet,#sheet>#sb,#pop,#pop #pp,.row.lp,.row.lp-done{animation:none!important;transition:none!important}
+  .paid-checkmark path,.transfer-arrow-mark path{animation:none!important;stroke-dashoffset:0}
+}
+html:is(.rm,.noanim) #sheet,html:is(.rm,.noanim) #sheet>#sb,
+html:is(.rm,.noanim) #pop,html:is(.rm,.noanim) #pop #pp,
+html:is(.rm,.noanim) .row.lp,html:is(.rm,.noanim) .row.lp-done{animation:none!important;transition:none!important}

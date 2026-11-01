@@ -21,26 +21,29 @@ function animateNetBalance(){
   if(!balance){netBalanceFrom=0;netBalanceDeltaFrom=0;netBalanceStatsFrom=null;return}
   netBalanceStartupComplete=true;
   const reduce=document.documentElement.classList.contains('noanim')||document.documentElement.classList.contains('rm')||matchMedia('(prefers-reduced-motion:reduce)').matches||S.hide==1;
-  const target=+balance.dataset.chBalance||0,targetDelta=+delta.dataset.chDelta||0,
+  const target=+balance.dataset.chBalance||0,targetDelta=+(delta&&delta.dataset.chDelta)||0,
     from=netBalanceFrom,fromDelta=netBalanceDeltaFrom,fromStats=netBalanceStatsFrom;
   netBalanceFrom=0;netBalanceDeltaFrom=0;netBalanceStatsFrom=null;
   const hasDelta=fromStats!=null||from!==0||fromDelta!==0;
   const count=(el,start,end,duration,delay)=>{
     if(!el)return;
     if(el._countRaf)cancelAnimationFrame(el._countRaf);
+    clearTimeout(el._countTimer);el._countTimer=0;el._countRaf=0;
     const final=php(end);
     if(reduce){el.textContent=final;return}
     el.textContent=php(start);
     const begin=()=>{
+      el._countTimer=0;if(!el.isConnected)return;
       const t0=performance.now(),tick=t=>{
         if(!el.isConnected){el._countRaf=0;return}
+        if(S.hide==1||document.hidden||document.documentElement.matches('.rm,.noanim')||matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=final;el._countRaf=0;return}
         const p=Math.min(1,(t-t0)/duration),ease=1-Math.pow(1-p,3);
         el.textContent=php(p===1?end:start+(end-start)*ease);
         if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
       };
       el._countRaf=requestAnimationFrame(tick);
     };
-    if(delay)setTimeout(begin,delay);else begin();
+    if(delay)el._countTimer=setTimeout(begin,delay);else begin();
   };
   count(balance,from,target,1200,hasDelta?180:90);
   count(delta,fromDelta,targetDelta,900,hasDelta?320:380);
@@ -52,13 +55,16 @@ function animateHomeBalanceStats(reduce,fromStats){
   document.querySelectorAll('[data-home-stat]').forEach((el,i)=>{
     if(el._countRaf)cancelAnimationFrame(el._countRaf);
     if(el._countTimer)clearTimeout(el._countTimer);
+    el._countRaf=0;el._countTimer=0;
     const end=+el.dataset.homeStat||0,prefix=el.dataset.statPrefix||'',final=prefix+php(end),
       start=fromStats&&fromStats[i]!=null?+fromStats[i]||0:0;
     if(reduce){el.textContent=final;return}
     el.textContent=prefix+php(start);
     el._countTimer=setTimeout(()=>{
+      el._countTimer=0;if(!el.isConnected)return;
       const t0=performance.now(),tick=t=>{
         if(!el.isConnected){el._countRaf=0;return}
+        if(S.hide==1||document.hidden||document.documentElement.matches('.rm,.noanim')||matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=final;el._countRaf=0;return}
         const p=Math.min(1,(t-t0)/720),ease=1-Math.pow(1-p,3);
         el.textContent=prefix+php(p===1?end:start+(end-start)*ease);
         if(p<1)el._countRaf=requestAnimationFrame(tick);else{el.textContent=final;el._countRaf=0}
@@ -124,6 +130,13 @@ function svSettle(sb){
   if(sv){sv.style.transition='';sv.style.opacity='';sv.style.transform=''}
   sb.style.transition='';sb.style.height='';sb.style.overflow='';
 }
+/* Invalidate all presentation work owned by the departing sheet view. */
+function svCancel(){
+  window._svRevision=(window._svRevision||0)+1;
+  clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;window._navBusy=0;
+  cancelAnimationFrame(window._svRaf);window._svRaf=0;window._svWant=-1;
+  const sb=$('#sb');if(sb){sb.classList.remove('sv-forward','sv-back','sv-transitioning');svSettle(sb)}
+}
 /* Update the content of the screen that is already open (the payment-history year filter) and
    let the container glide to the new height instead of snapping. Keeps its own timer and bails
    out if a screen swap takes over, so it can never fight navS(). */
@@ -165,7 +178,12 @@ function svHold(want,ms){
 function openS(h){
   clearTimeout(window._cl);clearTimeout(window._nt);clearTimeout(window._nr);window._nr=0;
   const e=$('#sheet'),sb=$('#sb');if(!e||!sb)return;
-  svSettle(sb);
+  // A replacement view takes shell ownership now, not when an old flight lands.
+  // Leaving cardfx until that callback would restart the new view's CSS entrance.
+  if(e.classList.contains('open'))e.classList.remove('cardfx');
+  sb.style.pointerEvents='';
+  if(sb._cardCloseFade){sb._cardCloseFade.cancel();sb._cardCloseFade=null;sb.style.pointerEvents=''}
+  svCancel();
   SVKEY=window._svKey||'';window._svKey='';
   document.body.classList.add('sheet-open');
   e.classList.remove('closing','st');
@@ -176,6 +194,7 @@ function openS(h){
 function closeS(){
   const e=$('#sheet');if(!e||!e.classList.contains('open'))return;
   clearTimeout(window._cl);clearTimeout(window._nt);
+  svCancel();
   e.classList.add('closing');
   window._cl=setTimeout(()=>{e.classList.remove('open','closing');document.body.classList.remove('sheet-open');svSettle($('#sb'))},200);
 }
@@ -323,9 +342,9 @@ function initPullToRefresh() {
 /* ===== Cap pull-to-refresh: native-feeling, data-safe (never reloads the page) ===== */
 (function () {
   "use strict";
+  if(window.__capPtrInstalled)return;window.__capPtrInstalled=true;
   const THRESH = 58, MAX = 120, HOLD = 52, SLOP = 8, SIZE = 40;
   const root = document.documentElement;
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const st = document.createElement("style");
   st.textContent =
     "html,body{overscroll-behavior-y:contain}" + // stop the browser's own pull-to-refresh / bounce chaining
@@ -338,7 +357,9 @@ function initPullToRefresh() {
     "#cap-ptr[data-s=off] .off{opacity:1;transform:none}" +
     "@keyframes capPtrSpin{to{transform:rotate(360deg)}}" +
     "#app.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1)}" +
-    "#cap-ptr.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1),opacity .3s}";
+    "#cap-ptr.cap-ptr-anim{transition:transform .38s cubic-bezier(.2,.8,.2,1),opacity .3s}"+
+    "@media(prefers-reduced-motion:reduce){#app.cap-ptr-anim,#cap-ptr,#cap-ptr svg{transition:none!important}#cap-ptr .ring{animation:none!important}}"+
+    "html:is(.rm,.noanim) #app.cap-ptr-anim,html:is(.rm,.noanim) #cap-ptr,html:is(.rm,.noanim) #cap-ptr svg{transition:none!important}html:is(.rm,.noanim) #cap-ptr .ring{animation:none!important}";
   document.head.appendChild(st);
 
   const el = document.createElement("div");
@@ -351,7 +372,7 @@ function initPullToRefresh() {
   const ring = el.querySelector(".ring"), bars = Array.from(el.querySelectorAll(".b")), base = bars.map((b) => +b.getAttribute("stroke-opacity"));
   const showBars = (n) => bars.forEach((b, i) => { b.style.strokeOpacity = n === null ? "" : Math.max(0, Math.min(1, n - i)) * base[i]; });
 
-  let gap = 0, top0 = 0, busy = false, raf = 0, pull = 0, cooldown = 0;
+  let gap = 0, top0 = 0, busy = false, raf = 0, pull = 0, cooldown = 0, settleTimer = 0;
   const app = () => document.getElementById("app");
   const scrollTop = () => (document.scrollingElement || root).scrollTop;
 
@@ -375,9 +396,11 @@ function initPullToRefresh() {
   const rubber = (dy) => MAX * (1 - Math.exp(-dy / (MAX * 1.2)));
 
   function settle() {
+    clearTimeout(settleTimer);
     cancelAnimationFrame(raf);
     paint(0, true);
-    setTimeout(() => {
+    settleTimer=setTimeout(() => {
+      settleTimer=0;
       if (busy) return;
       el.dataset.s = "";
       el.style.opacity = 0;
@@ -443,6 +466,7 @@ function initPullToRefresh() {
     mode = 0;
     if (busy || e.touches.length !== 1 || Date.now() < cooldown) { mode = -1; return; }
     if (scrollTop() > 0 || blockedBy(e.target)) { mode = -1; return; }
+    clearTimeout(settleTimer);
     sx = e.touches[0].clientX; sy = e.touches[0].clientY; mode = 1; top0 = navBottom();
   }, { passive: true });
   addEventListener("touchmove", (e) => {
@@ -482,7 +506,7 @@ function initPullToRefresh() {
     if (e.deltaY >= 0 || scrollTop() > 0 || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { if (acc) { acc = 0; settle(); } return; }
     if (Math.abs(e.deltaY) >= 60 && e.deltaMode === 0 && !acc) return; // a notched mouse wheel, not a trackpad
     if (blockedBy(e.target)) return;
-    if (!acc) top0 = navBottom();
+    if (!acc) {clearTimeout(settleTimer);top0 = navBottom();}
     acc = Math.min(acc - e.deltaY, 420);
     wlast = t;
     const p = rubber(acc * 0.9);

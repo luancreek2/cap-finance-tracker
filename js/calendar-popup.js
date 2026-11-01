@@ -224,9 +224,11 @@
   }
   function cleanup(root){
     if(!root)return;
+    root._swapRevision=(root._swapRevision||0)+1;
+    clearTimeout(root._swapOut);clearTimeout(root._swapIn);
     clearTimeout(root._openTimer);
     if(root._reflow){removeEventListener('resize',root._reflow);document.removeEventListener('scroll',root._reflow,true);removeEventListener('scroll',root._reflow)}
-    if(root._lock){document.body.style.overflow=root._lock.body;document.documentElement.style.overflow=root._lock.html;document.body.style.paddingRight=root._lock.padding}
+    if(root._lock){document.body.style.overflow=root._lock.body;document.documentElement.style.overflow=root._lock.html;document.body.style.paddingRight=root._lock.padding;root._lock=null}
     document.removeEventListener('keydown',root._key,true);
   }
   function mount(html,anchor){
@@ -265,12 +267,17 @@
   };
   window.closeCalendarEventPopup=function(immediate){
     const root=document.getElementById('calendar-event-popup');if(!root)return;cleanup(root);CP=null;
+    clearTimeout(closeTimer);
     if(immediate||rm()){root.remove();return}root.classList.add('closing');closeTimer=setTimeout(()=>root.remove(),220);
   };
   function swap(html){
-    const root=document.getElementById('calendar-event-popup'),view=root&&root.querySelector('.cep-view');if(!view)return;
+    const root=document.getElementById('calendar-event-popup'),view=root&&root.querySelector('.cep-view');if(!view||root.classList.contains('closing'))return;
+    clearTimeout(root._swapOut);clearTimeout(root._swapIn);
+    const revision=root._swapRevision=(root._swapRevision||0)+1;
+    const live=()=>root.isConnected&&!root.classList.contains('closing')&&root._swapRevision===revision;
+    view.classList.remove('out','in');
     const put=()=>{view.innerHTML=html;applyMarquee(root)};
-    if(rm()){put();return}view.classList.add('out');setTimeout(()=>{put();view.classList.remove('out');view.classList.add('in');setTimeout(()=>view.classList.remove('in'),260)},145);
+    if(rm()){put();return}view.classList.add('out');root._swapOut=setTimeout(()=>{if(!live())return;put();view.classList.remove('out');view.classList.add('in');root._swapIn=setTimeout(()=>{if(live())view.classList.remove('in')},260)},145);
   }
   window.calendarPopupBack=function(){const d=CP&&resolve(CP.k,CP.j);if(d)swap(detailHTML(d));else closeCalendarEventPopup();};
   window.calendarPopupEditTx=function(id){
